@@ -35,6 +35,8 @@ test_files = if isempty(ARGS)
         "independent_proposals",
         "laplace_proposals",
         "independent_adaptation",
+        "laplace_population",
+        "gamma_population",
         "transforms",
         "product_proposal",
         "distributions_ext",

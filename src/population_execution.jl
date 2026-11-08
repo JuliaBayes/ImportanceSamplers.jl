@@ -519,7 +519,8 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
             round_size,
             round - 1,
         ) do
-            _commit_prepared_population!(sampler.backend_execution, method_state)
+            status = _commit_prepared_population!(sampler.backend_execution, method_state)
+            _validate_population_commit!(bank, status, transfers)
             KernelAbstractions.synchronize(
                 KernelAbstractions.get_backend(bank.locations),
             )

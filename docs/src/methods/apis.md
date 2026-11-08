@@ -1,7 +1,8 @@
 # [Adaptive population importance sampling](@id apis-method)
 
-APIS fits each proposal's mean from its own samples.
-Proposal scales stay fixed. The output weights use the full current mixture.
+APIS updates proposal centres using proposal-local weighted means.
+The output weights use the full current mixture.
+Gaussian, Student-t and Laplace scales stay fixed. Gamma retains coordinate variance.
 
 ## Example
 
@@ -56,7 +57,9 @@ All epochs remain in the result.
 Means adapt after the final epoch too.
 A successful call retains them for later use.
 
-Covariances, masses, and Student-t degrees of freedom remain fixed.
+Gaussian/Student-t/Laplace scales, Gamma variances, and masses remain fixed.
+Student-t degrees of freedom also remain fixed.
+For Gamma, both shape and scale change to represent the new mean at that variance.
 Broader or narrower proposals therefore require a different initial bank or a separate pilot.
 
 A proposal group with no positive local weight has an undefined mean and fails the call.

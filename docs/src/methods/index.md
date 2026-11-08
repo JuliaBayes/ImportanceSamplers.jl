@@ -62,7 +62,9 @@ The other adaptive methods retain each sample's original round weight.
 These are admissibility conditions, not recommended statistical budgets.
 Covariance fitting and tail coverage often need substantially more samples.
 
-Population methods use native Gaussian or Student-t proposals.
-AMIS and N-PMC also support independent Gamma and Laplace proposals.
+All population methods accept native Gaussian or Student-t proposals.
+DM-PMC and APIS also accept independent Gamma and Laplace populations.
+LAIS also accepts independent Laplace lower proposals.
+AMIS and N-PMC support independent Gamma and Laplace moment fits.
 [Proposals](@ref proposals-guide) explains the supported layouts and Student-t covariance convention.
 [Devices](@ref devices-guide) lists backend support.

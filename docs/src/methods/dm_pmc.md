@@ -1,7 +1,7 @@
 # [DM-PMC, GR-PMC, and LR-PMC](@id dmpmc-method)
 
 DM-PMC moves proposal centres by resampling completed rounds.
-It preserves each proposal's scale and uses a current-population mixture denominator.
+It uses a current-population mixture denominator and retains configured widths.
 
 ## Example
 
@@ -38,8 +38,10 @@ Both policies use the same complete-mixture weights.
 Local resampling preserves one descendant per proposal.
 Global resampling can select duplicate ancestors and reduce population diversity.
 
-The selected sample becomes the next proposal location.
-The original scale or factor remains unchanged.
+The selected sample becomes the next proposal mean or location.
+Gaussian, Student-t and Laplace scales or factors remain unchanged.
+Gamma instead preserves actual coordinate variance `v`, using
+`scale = v/mean` and `shape = mean/scale`.
 Resampling does not tune proposal widths.
 
 ## Allocation and weights
@@ -67,7 +69,8 @@ All rounds contribute to the returned result.
 The last resampling step runs after the final returned round.
 Its centres become the starting population for the next prepared call.
 
-Gaussian and Student-t proposals retain their original scales and Student-t degrees of freedom.
+Gaussian, Student-t and Laplace proposals retain their original scales and Student-t degrees of freedom.
+Gamma proposals retain coordinate variances, not their constructor scale parameters.
 Adapted centres do not compensate for unsuitable scales.
 
 An all-zero round fails.

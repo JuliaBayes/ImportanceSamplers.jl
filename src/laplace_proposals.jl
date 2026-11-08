@@ -23,6 +23,8 @@ This is moment matching, not the weighted-median/absolute-deviation maximum
 likelihood fit. Correlations are not fitted. Invalid fits fail without replacing
 the committed proposal. Each coordinate uses one uniform
 draw. A nonfinite rounded affine draw fails the call without redrawing.
+[`APIS`](@ref), [`DeterministicMixturePMC`](@ref), and [`LAIS`](@ref) update
+locations while retaining each coordinate scale.
 """
 function IndependentLaplace(location, scale)
     stored_location, stored_scale = _independent_parameters(location, scale)

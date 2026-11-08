@@ -7,6 +7,28 @@ _native_uniform_stride(proposal::_BoxUniform) = _proposal_dimension(proposal)
 # Untransformed box densities do not use inverse-coordinate scratch.
 _native_normal_count(::_BoxUniform, count) = 0
 
+# A precision change must rebuild numeric caches before copying prepared arrays.
+_independent_source_precision(proposal::_NativeIndependentProposal, state) =
+    typeof(proposal.lognormalizer)
+_independent_source_precision(
+    bank::ProposalBank{<:AbstractVector{<:_NativeIndependentProposal}},
+    state,
+) = eltype(_static_bank_parameters(state.bank))
+_independent_source_precision(proposal, state) = nothing
+
+function _accelerator_precision_source(device, sampler::_PreparedImportanceSampler)
+    T = applicable(eltype, device) ? eltype(device) : Nothing
+    (T === Float32 || T === Float64) || return nothing
+    source_precision =
+        _independent_source_precision(_algorithm_proposal(sampler.algorithm), sampler.method_state)
+    (isnothing(source_precision) || source_precision === T) && return nothing
+    cpu = MLDataDevices.with_eltype(MLDataDevices.CPUDevice(), T)
+    return _transfer_prepared_sampler(cpu, sampler, Val(false))
+end
+
+_copy_dm_pmc_active_proposal(device, proposal::_NativeIndependentProposal) =
+    _copy_to_device(device, proposal)
+
 _native_buffer_strategy(::_BoxUniform) = _BoxFamily()
 
 function _fill_random_buffers!(rng, buffers::_RandomBuffers{U,N,F,_BoxFamily}) where {U,N,F}
@@ -159,9 +181,19 @@ struct _GammaDrawBuffers{A}
 end
 Adapt.@adapt_structure _GammaDrawBuffers
 
+function _fill_radial_buffers!(rng, buffers::_GammaDrawBuffers)
+    Random.randn!(rng, buffers.normal)
+    Random.rand!(rng, buffers.uniform)
+    return nothing
+end
+
 function _allocate_static_draw_buffers(prototype, bank::_PackedIndependentBank{_GammaFamily}, count)
-    total = _mis_dimension(bank) * count
-    T = eltype(bank.first_parameters)
+    return _allocate_gamma_draw_buffers(prototype, _mis_dimension(bank), count)
+end
+
+function _allocate_gamma_draw_buffers(prototype, dimension, count)
+    total = dimension * count
+    T = eltype(prototype)
     return _GammaDrawBuffers(
         similar(prototype, T, _GAMMA_DRAW_ATTEMPTS * total),
         similar(prototype, T, (_GAMMA_DRAW_ATTEMPTS + 1) * total),
@@ -173,8 +205,7 @@ function _fill_random_buffers!(
     buffers::_PackedStaticMISRandomBuffers{U,N,A,S,F,<:_GammaDrawBuffers},
 ) where {U,N,A,S,F}
     Random.rand!(rng, buffers.uniform)
-    Random.randn!(rng, buffers.radial.normal)
-    Random.rand!(rng, buffers.radial.uniform)
+    _fill_radial_buffers!(rng, buffers.radial)
     return buffers
 end
 
@@ -201,6 +232,10 @@ end
     end
 end
 
+_gamma_draw_workgroupsize(backend, execution, count) = _native_workgroupsize(execution, count)
+# Bound register demand per block, including Reactant's Float64 vector lowering.
+_gamma_draw_workgroupsize(::KernelAbstractions.GPU, execution, count) = 256
+
 function _prepare_mis_normals!(
     values,
     buffers::_GammaDrawBuffers,
@@ -218,7 +253,7 @@ function _prepare_mis_normals!(
         assignments,
         failures;
         ndrange = length(assignments),
-        workgroupsize = _native_workgroupsize(execution, length(assignments)),
+        workgroupsize = _gamma_draw_workgroupsize(backend, execution, length(assignments)),
     )
     KernelAbstractions.synchronize(backend)
     return nothing

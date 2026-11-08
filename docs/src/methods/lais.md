@@ -101,7 +101,7 @@ Lower samples use the equal current-population mixture:
 All rounds keep these weights. There is no all-history reweighting.
 Upper states are not extra output draws.
 
-Lower Gaussian or Student-t scales stay fixed.
+Lower Gaussian, Student-t or independent Laplace scales stay fixed.
 Student-t degrees of freedom also stay fixed and may be any finite positive value.
 
 ## Reuse, diagnostics, and failures

@@ -47,13 +47,15 @@ _cuda_state_resident(device, state::Tuple) =
 _cuda_state_resident(device, state::NamedTuple) =
     all(value -> _cuda_state_resident(device, value), values(state))
 
-function _cuda_state_resident(device, state)
-    type = typeof(state)
-    for field in 1:fieldcount(type)
-        isdefined(state, field) || return false
-        _cuda_state_resident(device, getfield(state, field)) || return false
-    end
-    return true
+@inline function _cuda_state_resident(device, state::T) where {T}
+    return _cuda_fields_resident(device, state, Val(fieldcount(T)))
+end
+
+_cuda_fields_resident(device, state, ::Val{0}) = true
+@inline function _cuda_fields_resident(device, state::T, ::Val{N}) where {T,N}
+    return isdefined(state, N) &&
+           _cuda_state_resident(device, getfield(state, N)) &&
+           _cuda_fields_resident(device, state, Val(N - 1))
 end
 
 ImportanceSamplers._owned_backend_rng(

@@ -440,6 +440,7 @@ _prepare_transferred_method_state(device, algorithm, method_state, _transferred_
     _prepare_method_state(algorithm)
 
 _accelerator_product_source(sampler) = nothing
+_accelerator_precision_source(device, sampler) = nothing
 function _accelerator_product_source(sampler::_PreparedImportanceSampler{R,B,T,A}) where
     {R,B,T,A<:ImportanceSampling}
     sampler.target isa _BoundLogDensityProblemsTarget && return nothing
@@ -583,7 +584,8 @@ function _transfer_prepared_sampler(
     _backend_functional(device) || throw(
         SamplerDeviceError(device, :backend_unavailable),
     )
-    source = _accelerator_product_source(sampler)
+    source = _accelerator_precision_source(device, sampler)
+    isnothing(source) && (source = _accelerator_product_source(sampler))
     if !isnothing(source)
         product_destination = _transfer_prepared_sampler(device, source, Val(clone_rng))
         sampler.rng = source.rng

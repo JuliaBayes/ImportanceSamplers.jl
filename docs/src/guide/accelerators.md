@@ -117,7 +117,10 @@ They do not imply that every user target compiles on every backend.
 
 Gaussian and Student-t proposals support every method, subject to backend limits.
 Boxes support fixed IS/static MIS. Independent Gamma and Laplace also support
-AMIS/N-PMC marginal moment adaptation. On Reactant CPU these independent families
+AMIS/N-PMC marginal moment adaptation and DM-PMC/APIS mean adaptation.
+Laplace also supports LAIS lower proposals. Gamma retains coordinate variance;
+Laplace retains scales in these population methods.
+On Reactant CPU these independent families
 support scalar and vector layouts; Gaussian/Student-t moment fits remain scalar-only.
 
 Reactant CPU rejects GRAMIS, APIS, CAIS, locally resampled DM-PMC,

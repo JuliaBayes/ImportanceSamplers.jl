@@ -2,7 +2,8 @@
     LAIS(bank; transition, rounds, round_size)
 
 Configure layered importance sampling. Each round advances the upper MCMC chains,
-then draws equally from the lower Gaussian or Student-t proposals at their new centres. Use
+then draws equally from the lower Gaussian, Student-t or independent Laplace
+proposals at their new centres. Use
 current-round deterministic-mixture weights and retain all lower samples.
 
 Independent [`RandomWalkMetropolis`](@ref)/[`RAM`](@ref) chains implement
@@ -12,7 +13,7 @@ result and lower-weighting API.
 
 `round_size` is the total lower count per round, either an integer or a vector
 with one entry per round. It must divide equally across positive, equal-mass
-proposals. Each bank uses one radial family. Lower scales and Student-t degrees of freedom
+proposals. Each bank uses one translation family. Lower scales and Student-t degrees of freedom
 stay fixed and independent of `transition`; every positive `nu` is allowed.
 """
 struct LAIS{B<:ProposalBank,K<:AbstractMCMCTransition,S} <: _FixedPopulationSampler

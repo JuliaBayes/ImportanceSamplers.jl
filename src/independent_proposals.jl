@@ -65,6 +65,10 @@ and [`NPMC`](@ref) fit weighted marginal moments, then use
 `shape = mean^2 / variance` and `scale = variance / mean`. This is moment
 matching, not maximum likelihood. Correlations are not fitted. Degenerate or
 unrepresentable fits fail without replacing the committed proposal.
+[`APIS`](@ref) and [`DeterministicMixturePMC`](@ref) instead update each mean
+at fixed coordinate variance, changing both shape and scale. Gamma proposals
+require a target supported on positive coordinates. Adaptation can produce tiny
+shapes whose draws underflow at the chosen precision.
 Native execution uses eight
 rejection candidates per coordinate. Exhaustion or a nonpositive/nonfinite
 rounded draw fails the entire call, without discarding selected samples.

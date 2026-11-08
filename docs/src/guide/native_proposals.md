@@ -109,6 +109,25 @@ Parameters are fixed in plain IS and homogeneous static MIS banks. AMIS and N-PM
 fit Gamma shapes and scales from weighted marginal means and variances.
 Direct Gamma proposals differ from exponentiated Gaussian proposals, especially near zero.
 
+DM-PMC and APIS instead retain each configured coordinate variance `v` and update
+the mean `m`. They reconstruct `shape = m^2/v` and `scale = v/m`.
+Holding the constructor's Gamma scale fixed would not preserve variance.
+The target must have positive-coordinate support. Resampling near zero can
+produce tiny shapes and cause underflow in later draws, especially in `Float32`.
+These calls fail explicitly without clipping parameters or discarding samples.
+
+```@example proposals
+gamma_bank = ProposalBank([
+    IndependentGamma([20.0, 30.0], [0.25, 0.25]),
+    IndependentGamma([24.0, 28.0], [0.25, 0.25]),
+])
+gamma_target = IndependentGamma([30.0, 36.0], [0.2, 0.2])
+gamma_prepared = prepare_sampler(Xoshiro(20), gamma_target,
+    APIS(gamma_bank; rounds=3, round_size=1_024))
+importance_sample!(gamma_prepared)
+current_proposal(gamma_prepared)
+```
+
 Native sampling reserves eight rejection candidates per coordinate. Gamma
 random buffers occupy `17 * dimension * nsamples` floating-point elements;
 packed MIS also retains a coordinate draw buffer. Exhaustion, underflow to zero,
@@ -136,11 +155,20 @@ These fits do not learn correlations and are not maximum-likelihood fits.
 Nonpositive variances or unrepresentable fitted parameters fail the call without
 replacing the last committed proposal. No parameter clipping or Gaussian ridge is applied.
 
-| Family | Fixed IS/static MIS | AMIS/N-PMC | Population methods |
-|:--|:--|:--|:--|
-| Gaussian, Student-t | Yes | Yes | Yes |
-| Box-uniform | Yes | No | No |
-| Independent Gamma, Laplace | Yes | Marginal moment fits | No |
+DM-PMC, APIS and LAIS also accept independent Laplace populations. They update
+locations and preserve coordinate scales. APIS uses local weighted means, not
+weighted medians. LAIS moves locations through its upper MCMC transition.
+
+| Family | Fixed IS/static MIS | AMIS/N-PMC | DM-PMC/APIS | LAIS | CAIS/FirstOrderGRAMIS |
+|:--|:--|:--|:--|:--|:--|
+| Gaussian, Student-t | Yes | Yes | Yes | Yes | Yes |
+| Box-uniform | Yes | No | No | No | No |
+| Independent Gamma | Yes | Marginal moment fits | Fixed coordinate variance | No | No |
+| Independent Laplace | Yes | Marginal moment fits | Fixed coordinate scale | Fixed coordinate scale | No |
+
+Moving or shrinking boxes can remove target support, so boxes remain fixed.
+Independent vectors cannot represent the full covariance updates used by CAIS
+and FirstOrderGRAMIS. Unshifted Gamma is not the lower translation family used by LAIS.
 
 ## Proposal populations
 

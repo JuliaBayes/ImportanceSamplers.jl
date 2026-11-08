@@ -4,15 +4,18 @@ const _VALIDATED_APIS_TOKEN = _ValidatedAPISToken()
 """
     APIS(bank; rounds, round_size)
 
-Configure adaptive population importance sampling with a fixed Gaussian or Student-t
-proposal population. Student-t locations adapt, but each positive `nu` and
-scale stays fixed. A bank uses one radial family. Each round is one APIS epoch. `round_size` is the total
+Configure adaptive population importance sampling with a fixed Gaussian,
+Student-t, independent Laplace or independent Gamma proposal population.
+Gaussian, Student-t and Laplace scales stay fixed. Gamma uses the mean/variance
+parameterization and retains each coordinate variance while adapting its mean.
+Student-t also retains each positive `nu`. A bank uses one family.
+Each round is one APIS epoch. `round_size` is the total
 number of samples in an epoch and may be a positive `Int` or a vector with one
 entry per epoch.
 
 APIS requires equal positive proposal masses, equal allocation within every
-epoch, and at least two samples per proposal. It updates proposal means after
-each epoch while retaining the configured scale factors.
+epoch, and at least two samples per proposal. It updates proposal centres after
+each epoch while retaining Gaussian/Student-t/Laplace scales or Gamma variances.
 """
 struct APIS{B<:ProposalBank,S} <: _FixedPopulationSampler
     bank::B

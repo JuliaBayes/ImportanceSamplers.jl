@@ -286,8 +286,7 @@ function _fill_moment_random_buffers!(
     buffers,
     history::_IndependentProposalHistory{_GammaFamily},
 )
-    Random.randn!(rng, buffers.radial.normal)
-    Random.rand!(rng, buffers.radial.uniform)
+    _fill_radial_buffers!(rng, buffers.radial)
     return nothing
 end
 

@@ -40,8 +40,10 @@ a positive `Vector{Int}` with one entry per round. `resampling` selects global
 or local ancestor selection while keeping the same deterministic-mixture
 weights.
 
-Native Gaussian and Student-t populations use one radial family. Adaptation
-changes locations and preserves each scale and positive Student-t degrees of freedom.
+Native Gaussian, Student-t and independent Laplace populations change locations
+and preserve each scale and positive Student-t degrees of freedom. Independent
+Gamma populations resample means at fixed coordinate variance, updating both
+shape and scale. Each bank uses one family.
 """
 struct DeterministicMixturePMC{
     B<:ProposalBank,
@@ -105,8 +107,9 @@ end
 
 Return an independent snapshot of the proposal population currently owned by a
 CPU-prepared [`DeterministicMixturePMC`](@ref) sampler. Active proposals use the
-latest adapted locations; their configured scales or factors and masses remain
-fixed. Inert zero-mass proposals retain their configured positions and stable
+latest adapted means. Gaussian, Student-t and Laplace scales or factors remain
+fixed. Gamma retains its configured coordinate variance. Masses stay fixed.
+Inert zero-mass proposals retain their configured positions and stable
 IDs.
 
 The returned [`ProposalBank`](@ref) does not alias the sampler. The one-argument

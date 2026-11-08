@@ -110,8 +110,7 @@ function _population_proposal_snapshot(locations, proposal_ids, sampler)
             slot,
             sampler.method_state.bank,
         )
-        proposals[proposal_id] = _radial_proposal(proposal.family, location,
-            proposal.scale, proposal.lognormalizer)
+        proposals[proposal_id] = _population_snapshot_proposal(proposal, location)
     end
     configured_masses = sampler.algorithm.bank.masses
     snapshot = ProposalBank(proposals, configured_masses)
@@ -120,6 +119,9 @@ function _population_proposal_snapshot(locations, proposal_ids, sampler)
     copyto!(snapshot.masses, configured_masses)
     return snapshot
 end
+
+_population_snapshot_proposal(proposal::_NativeRadialProposal, location) =
+    _radial_proposal(proposal.family, location, proposal.scale, proposal.lognormalizer)
 
 _population_snapshot_location(locations, slot, bank::_PackedDiagonalBank) =
     _population_snapshot_location(locations, slot, bank.layout)
