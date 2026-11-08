@@ -969,7 +969,7 @@ end
         covariance = case.phase === :factorization ? reshape([2.0], 1, 1) : nothing
         transfers = ImportanceSamplers._ResultTransferCounter(0, 0)
         failure = caught_exception() do
-            ImportanceSamplers._capture_gaussian_round(
+            ImportanceSamplers._capture_moment_round(
                 AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=1),
                 2,
                 case.phase,

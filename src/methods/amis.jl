@@ -6,9 +6,12 @@ const _VALIDATED_AMIS_TOKEN = _ValidatedAMISToken()
 
 Configure adaptive multiple importance sampling with a fixed round schedule.
 `proposal` must be a native `Float32` or `Float64` scalar spherical, vector
-spherical, diagonal, or factor Gaussian or Student-t. Student-t fits require
+spherical, diagonal, or factor Gaussian or Student-t, or an independent Gamma
+or Laplace proposal. Independent families fit marginal moments without a
+covariance ridge or correlations; invalid fits fail rather than being clipped.
+Student-t fits require
 `nu > 2`, keep `nu` fixed, and convert fitted covariance to Student-t scale.
-Loading Distributions.jl accepts its supported normal and Student-t forms
+Loading Distributions.jl accepts its supported normal, Student-t, Gamma and Laplace forms
 through native conversion. `round_size` is either one positive `Int` repeated for every
 round or a positive `Vector{Int}` with one entry per round.
 

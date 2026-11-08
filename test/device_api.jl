@@ -1813,7 +1813,7 @@ end
         normalized = zeros(T, 4)
         transfers = IS._ResultTransferCounter(0, 0)
 
-        summary = @inferred IS._normalize_gaussian_weights!(
+        summary = @inferred IS._normalize_moment_weights!(
             normalized,
             logweights,
             3,
@@ -1908,7 +1908,7 @@ end
         failure_storage[2],
     )
     @test failure_snapshot.count == 1
-    @test failure_snapshot.reason_bits == IS._GAUSSIAN_COVARIANCE_INVALID
+    @test failure_snapshot.reason_bits == IS._MOMENT_FIT_INVALID
     @test iszero(failure_storage[3])
     after = try
         current_proposal(MLDataDevices.cpu_device(), prepared)

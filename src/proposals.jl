@@ -200,21 +200,21 @@ Adapt.@adapt_structure _StudentTProposal
 
 const _NativeGaussianFloat = Union{Float32,Float64}
 
-function _validated_gaussian_location(location::T) where {T<:_NativeGaussianFloat}
-    isfinite(location) || throw(ArgumentError("location must be finite"))
+function _validated_native_parameter(location::T) where {T<:_NativeGaussianFloat}
+    isfinite(location) || throw(ArgumentError("native parameter must be finite"))
     return location
 end
 
-function _validated_gaussian_location(
+function _validated_native_parameter(
     location::AbstractVector{T},
 ) where {T<:_NativeGaussianFloat}
-    isempty(location) && throw(ArgumentError("location must be nonempty"))
-    all(isfinite, location) || throw(ArgumentError("location must contain only finite values"))
+    isempty(location) && throw(ArgumentError("native parameter must be nonempty"))
+    all(isfinite, location) || throw(ArgumentError("native parameter must contain only finite values"))
     return collect(location)
 end
 
-function _validated_gaussian_location(location)
-    throw(ArgumentError("location must be a Float32 or Float64 scalar or vector"))
+function _validated_native_parameter(location)
+    throw(ArgumentError("native parameter must be a Float32 or Float64 scalar or vector"))
 end
 
 _gaussian_float_type(::T) where {T<:_NativeGaussianFloat} = T
@@ -248,7 +248,7 @@ deviation of the same type. Its covariance is `scale^2` for a scalar and
 `scale^2 I` for a vector.
 """
 function SphericalGaussian(location, scale)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     T = _gaussian_float_type(stored_location)
     stored_scale = _validated_gaussian_scale(scale, T)
     dimension = _gaussian_dimension(stored_location)
@@ -293,7 +293,7 @@ or `Float64` element type. The scales are standard deviations, so the
 covariance diagonal is `scales .^ 2`.
 """
 function DiagonalGaussian(location, scales)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     stored_location isa AbstractVector || throw(
         ArgumentError("DiagonalGaussian requires a vector location"),
     )
@@ -364,7 +364,7 @@ not an inverse covariance. Density evaluation uses triangular solves and never
 forms a covariance inverse.
 """
 function FactorGaussian(location, factor)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     stored_location isa AbstractVector || throw(
         ArgumentError("FactorGaussian requires a vector location"),
     )
@@ -450,7 +450,7 @@ Construct a normalized scalar or spherical multivariate Student-t proposal.
 The scale is the standard elliptical scale, not the standard deviation.
 """
 function SphericalStudentT(dof, location, scale)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     T = _gaussian_float_type(stored_location)
     stored_scale = _validated_gaussian_scale(scale, T)
     dimension = _gaussian_dimension(stored_location)
@@ -469,7 +469,7 @@ Construct a normalized multivariate Student-t proposal with diagonal elliptical
 scales. The scales are not marginal standard deviations.
 """
 function DiagonalStudentT(dof, location, scales)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     stored_location isa AbstractVector || throw(
         ArgumentError("DiagonalStudentT requires a vector location"),
     )
@@ -494,7 +494,7 @@ Construct a normalized multivariate Student-t proposal with elliptical scale
 matrix `factor * factor'`. Density evaluation uses triangular solves.
 """
 function FactorStudentT(dof, location, factor)
-    stored_location = _validated_gaussian_location(location)
+    stored_location = _validated_native_parameter(location)
     stored_location isa AbstractVector || throw(
         ArgumentError("FactorStudentT requires a vector location"),
     )
@@ -722,7 +722,7 @@ end
 
 @inline function _gamma_parameters(shape::T) where {T}
     offset = shape - T(1 / 3)
-    return offset, inv(sqrt(T(9) * offset))
+    return offset, inv(sqrt(offset)) / T(3)
 end
 
 @inline function _gamma_candidate(offset::T, coefficient::T, normal::T, uniform::T) where {T}

@@ -121,6 +121,16 @@ struct _ScaledNormals{A,T}
     multiplier::T
 end
 
+@inline function _native_draw_inputs(base, normals, uniforms, offset, slot)
+    multiplier, reason = _native_radial_multiplier(base, normals, uniforms, offset, slot)
+    return _ScaledNormals(normals, multiplier), reason
+end
+
+@inline _native_sample_coordinate(base, inputs, offset, coordinate) =
+    _gaussian_coordinate(base.location, base.scale, inputs, offset, coordinate)
+
+_native_scalar_layout(base::_NativeRadialProposal) = base.location isa _NativeGaussianFloat
+
 @inline Base.getindex(normals::_ScaledNormals, index) =
     @inbounds(normals.values[index]) * normals.multiplier
 
@@ -150,26 +160,23 @@ end
     end
 
     shape = dof / typeof(dof)(2)
-    adjusted_shape = shape < one(shape) ? shape + one(shape) : shape
-    gamma_offset, coefficient = _gamma_parameters(adjusted_shape)
-    for attempt in 1:_STUDENT_T_GAMMA_ATTEMPTS
-        normal = @inbounds normals[offset + attempt - 1]
-        uniform = @inbounds uniforms[uniform_offset + attempt]
-        gamma, accepted = _gamma_candidate(gamma_offset, coefficient, normal, uniform)
+    gamma, reason = _buffered_unit_gamma(shape, normals, uniforms, offset - 1, uniform_offset)
+    iszero(reason) || return zero(shape), reason
+    return sqrt(dof / (typeof(dof)(2) * gamma)), UInt16(0)
+end
+
+@inline function _buffered_unit_gamma(shape::T, normals, uniforms, normal_offset, uniform_offset) where {T}
+    adjusted = shape < one(T) ? shape + one(T) : shape
+    offset, coefficient = _gamma_parameters(adjusted)
+    for attempt in 1:_GAMMA_DRAW_ATTEMPTS
+        gamma, accepted = _gamma_candidate(offset, coefficient,
+            normals[normal_offset + attempt], uniforms[uniform_offset + attempt])
         accepted || continue
-        if shape < one(shape)
-            correction = @inbounds uniforms[
-                uniform_offset + _STUDENT_T_GAMMA_ATTEMPTS + 1
-            ]
-            correction > zero(shape) ||
-                return zero(shape), _NATIVE_PROPOSAL_DRAW_EXHAUSTED
-            gamma *= correction^inv(shape)
-        end
-        isfinite(gamma) && gamma > zero(shape) ||
-            return zero(shape), _NATIVE_PROPOSAL_DRAW_EXHAUSTED
-        return sqrt(dof / (typeof(dof)(2) * gamma)), UInt16(0)
+        shape < one(T) && (gamma *= uniforms[uniform_offset + _GAMMA_DRAW_ATTEMPTS + 1]^inv(shape))
+        isfinite(gamma) && gamma > zero(T) || break
+        return gamma, UInt16(0)
     end
-    return zero(shape), _NATIVE_PROPOSAL_DRAW_EXHAUSTED
+    return zero(T), _NATIVE_PROPOSAL_DRAW_EXHAUSTED
 end
 
 _prepare_mis_normals!(normals, ::Nothing, bank, assignments, failures, execution) = nothing
@@ -203,23 +210,17 @@ function _prepare_mis_normals!(normals, radial::NamedTuple, bank, assignments,
     return nothing
 end
 
-@inline function _native_gaussian_coordinate(
+@inline function _native_proposal_coordinate(
     base::Union{_GaussianProposal,_StudentTProposal},
     normals,
     offset,
     coordinate,
     proposal_slot,
 )
-    return _gaussian_coordinate(
-        base.location,
-        base.scale,
-        normals,
-        offset,
-        coordinate,
-    )
+    return _native_sample_coordinate(base, normals, offset, coordinate)
 end
 
-@inline function _native_gaussian_coordinate(
+@inline function _native_proposal_coordinate(
     bank::_PackedDiagonalBank,
     normals,
     offset,
@@ -233,7 +234,7 @@ end
     )
 end
 
-@inline function _native_gaussian_coordinate(
+@inline function _native_proposal_coordinate(
     bank::_PackedFactorBank,
     normals,
     offset,
@@ -466,7 +467,7 @@ end
     return :(NamedTuple{$Names}(($(leaves...),)))
 end
 
-@inline function _native_store_gaussian!(
+@inline function _native_store_sample!(
     samples::AbstractVector,
     slot,
     gaussian,
@@ -474,7 +475,7 @@ end
     offset,
     proposal_slot,
 )
-    value = _native_gaussian_coordinate(
+    value = _native_proposal_coordinate(
         gaussian,
         normals,
         offset,
@@ -485,7 +486,7 @@ end
     return isfinite(value)
 end
 
-@inline function _native_store_gaussian!(
+@inline function _native_store_sample!(
     samples::AbstractMatrix,
     slot,
     gaussian,
@@ -495,7 +496,7 @@ end
 )
     valid = true
     for coordinate in axes(samples, 1)
-        value = _native_gaussian_coordinate(
+        value = _native_proposal_coordinate(
             gaussian,
             normals,
             offset,
@@ -509,7 +510,7 @@ end
 end
 
 @inline function _native_generate_sample!(samples, slot, base, ::_NoSampleTransform, normals, offset)
-    valid = _native_store_gaussian!(samples, slot, base, normals, offset, 0)
+    valid = _native_store_sample!(samples, slot, base, normals, offset, 0)
     reason = valid ? UInt16(0) : _NATIVE_GENERATED_NONFINITE
     return zero(base.lognormalizer), reason, 0
 end
@@ -522,14 +523,14 @@ end
     normals,
     offset,
 )
-    coordinate = _gaussian_coordinate(base.location, base.scale, normals, offset, 1)
+    coordinate = _native_sample_coordinate(base, normals, offset, 1)
     sample, logabsjac, reason = _native_transform_with_logjac(transform, coordinate)
     @inbounds samples[slot] = sample
     return logabsjac, reason, 1
 end
 
 @inline function _native_generate_sample!(samples, slot, base, ::IdentityTransform, normals, offset)
-    valid = _native_store_gaussian!(samples, slot, base, normals, offset, 0)
+    valid = _native_store_sample!(samples, slot, base, normals, offset, 0)
     reason = valid ? UInt16(0) : _NATIVE_GENERATED_NONFINITE
     return zero(base.lognormalizer), reason, 1
 end
@@ -548,13 +549,7 @@ end
     coordinate_sum_correction = zero(base.lognormalizer)
     for output_index in 1:input_dimension
         coordinate_index = first(selector) + output_index - 1
-        coordinate = _gaussian_coordinate(
-            base.location,
-            base.scale,
-            normals,
-            offset,
-            coordinate_index,
-        )
+        coordinate = _native_sample_coordinate(base, normals, offset, coordinate_index)
         isfinite(coordinate) ||
             return zero(coordinate), _NATIVE_TRANSFORM_NONFINITE_INPUT
         @inbounds output[output_index, slot] = coordinate
@@ -637,13 +632,7 @@ end
     normals,
     offset,
 )
-    coordinate = _gaussian_coordinate(
-        base.location,
-        base.scale,
-        normals,
-        offset,
-        block.location,
-    )
+    coordinate = _native_sample_coordinate(base, normals, offset, block.location)
     sample, logabsjac, reason =
         _native_transform_with_logjac(block.transform, coordinate)
     @inbounds output[slot] = sample
@@ -671,13 +660,7 @@ end
     end
     for output_index in eachindex(block.location)
         coordinate_index = first(block.location) + output_index - 1
-        coordinate = _gaussian_coordinate(
-            base.location,
-            base.scale,
-            normals,
-            offset,
-            coordinate_index,
-        )
+        coordinate = _native_sample_coordinate(base, normals, offset, coordinate_index)
         @inbounds output[output_index, slot] = coordinate
         isfinite(coordinate) ||
             return zero(coordinate), _NATIVE_TRANSFORM_NONFINITE_INPUT
@@ -750,7 +733,7 @@ end
 )
     slot = @index(Global, Linear)
     normal_offset = (slot - 1) * _native_normal_stride(base) + 1
-    multiplier, multiplier_reason = _native_radial_multiplier(
+    inputs, multiplier_reason = _native_draw_inputs(
         base,
         normal_buffer,
         uniform_buffer,
@@ -760,13 +743,12 @@ end
     if !iszero(multiplier_reason)
         _record_native_failure!(failure_storage, slot, 0, multiplier_reason)
     else
-        normals = _ScaledNormals(normal_buffer, multiplier)
         _, reason, block = _native_generate_sample!(
             samples,
             slot,
             base,
             transform,
-            normals,
+            inputs,
             normal_offset,
         )
         if !iszero(reason)
@@ -840,7 +822,7 @@ function _throw_native_failure(snapshot, transform)
         )
         throw(SamplerExecutionError(:proposal_draw, index, CapturedException(cause, backtrace())))
     elseif bits & _NATIVE_PROPOSAL_DRAW_EXHAUSTED != 0
-        cause = ErrorException("Student-t radial sampler exhausted its random buffer")
+        cause = ErrorException("proposal sampler exhausted its random buffer")
         throw(SamplerExecutionError(:proposal_draw, index, CapturedException(cause, backtrace())))
     elseif bits & _NATIVE_GENERATED_NONFINITE != 0
         cause = DomainError(bits, "generated proposal samples must contain only finite values")
@@ -906,7 +888,7 @@ function _launch_native_fused!(
         logweights,
         failure_record.storage,
         iszero(length(uniform_buffer)) ? nothing : uniform_buffer,
-        normal_buffer,
+        iszero(length(normal_buffer)) ? nothing : normal_buffer,
         target,
         base,
         transform,

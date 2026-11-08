@@ -322,7 +322,14 @@ end
 end
 
 @inline function _bounded_interval_value(lower, upper, probability)
-    return (one(probability) - probability) * lower + probability * upper
+    if lower < zero(lower) && upper > zero(upper)
+        return (one(probability) - probability) * lower + probability * upper
+    end
+    # Same-sign widths cannot overflow. Anchor at the nearer endpoint so
+    # separately rounded products cannot escape an adjacent-float interval.
+    width = upper - lower
+    return probability <= oftype(probability, 0.5) ? lower + probability * width :
+        upper - (one(probability) - probability) * width
 end
 
 @inline _transform_with_logjac(transform::_NativeScalarTransform, z::_TransformFloat) =

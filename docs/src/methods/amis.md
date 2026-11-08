@@ -35,12 +35,19 @@ Use `round_size=[1_000, 2_000, 3_000, 4_000]` for unequal counts.
 1. Draw new samples from the current proposal.
 2. Evaluate their target values.
 3. Update every retained sample's temporal-mixture denominator.
-4. Fit a weighted mean and covariance using all retained samples.
+4. Fit proposal parameters by weighted moment matching using all retained samples.
 5. Retain the fitted proposal for the next round or prepared call.
 
 Target values are not reevaluated for earlier samples.
 Student-t adaptation keeps the degrees of freedom fixed and requires `nu > 2`.
 The fitted covariance is converted to Student-t scale.
+
+Gaussian and Student-t vector fits learn full covariance. Independent Gamma and
+Laplace proposals instead fit marginal means and variances, without correlations
+or a covariance ridge. Gamma uses `shape = mean^2 / variance` and
+`scale = variance / mean`. Laplace uses `location = mean` and
+`scale = sqrt(variance / 2)`. These are moment fits, not maximum-likelihood fits.
+Degenerate or unrepresentable independent fits fail without committing new parameters.
 
 ## Retrospective denominator
 

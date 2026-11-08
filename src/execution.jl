@@ -315,9 +315,9 @@ _supports_native_transform(transform, dimension) = false
 function _supports_native_fused_cpu(proposal::TransformedProposal)
     base = proposal.base
     transform = proposal.transform
-    base isa Union{_GaussianProposal,_StudentTProposal} || return false
+    base isa Union{_GaussianProposal,_StudentTProposal,_NativeIndependentProposal} || return false
     _supports_native_fused_cpu(base) || return false
-    dimension = _gaussian_dimension(base.location)
+    dimension = _proposal_dimension(base)
     _supports_native_transform(transform, dimension) || return false
     transform isa IntervalTransform || return true
     T = _native_fused_float_type(base)
@@ -339,7 +339,7 @@ function _allocate_random_buffers(device, proposal, nsamples)
     uniform = similar(prototype, T, _native_uniform_count(proposal, nsamples))
     normal = similar(prototype, T, _native_normal_count(proposal, nsamples))
     failure_scratch = _allocate_native_failure_scratch(normal, nsamples)
-    return _RandomBuffers(uniform, normal, failure_scratch, nothing,
+    return _RandomBuffers(uniform, normal, failure_scratch, _native_buffer_strategy(proposal),
         _native_range_exponents(proposal, normal, length(normal)))
 end
 
@@ -543,29 +543,31 @@ _native_fused_components(proposal::_StudentTProposal) =
 _native_fused_components(proposal::TransformedProposal) =
     (proposal.base, proposal.transform)
 
+_native_buffer_strategy(proposal) = nothing
+_native_buffer_strategy(proposal::TransformedProposal) = _native_buffer_strategy(proposal.base)
+
 function _native_fused_float_type(proposal)
     base, _ = _native_fused_components(proposal)
-    return base.location isa _NativeGaussianFloat ?
-           typeof(base.location) : eltype(base.location)
+    return typeof(base.lognormalizer)
 end
 
 function _native_fused_dimension(proposal)
     base, _ = _native_fused_components(proposal)
-    return _gaussian_dimension(base.location)
+    return _proposal_dimension(base)
 end
-const _STUDENT_T_GAMMA_ATTEMPTS = 8
+const _GAMMA_DRAW_ATTEMPTS = 8
 
 _native_normal_stride(base::_GaussianProposal) = _gaussian_dimension(base.location)
 _native_uniform_stride(::_GaussianProposal) = 0
 
 function _native_normal_stride(base::_StudentTProposal)
     dimension = _gaussian_dimension(base.location)
-    return dimension + (isone(base.family.dof) ? 1 : _STUDENT_T_GAMMA_ATTEMPTS)
+    return dimension + (isone(base.family.dof) ? 1 : _GAMMA_DRAW_ATTEMPTS)
 end
 
 function _native_uniform_stride(base::_StudentTProposal)
     isone(base.family.dof) && return 0
-    return _STUDENT_T_GAMMA_ATTEMPTS + (base.family.dof < typeof(base.family.dof)(2))
+    return _GAMMA_DRAW_ATTEMPTS + (base.family.dof < typeof(base.family.dof)(2))
 end
 
 function _native_normal_count(proposal, nsamples)
@@ -612,13 +614,13 @@ function _allocate_native_samples(prototype, proposal::TransformedProposal, nsam
     transform = proposal.transform
     T = _native_fused_float_type(base)
     if transform isa _NativeScalarTransform &&
-       base.location isa _NativeGaussianFloat
+       _native_scalar_layout(base)
         return similar(prototype, T, nsamples)
     elseif transform isa _FlatTransformLayout
         return _allocate_flat_samples(prototype, T, transform, nsamples)
     end
     output_dimension = transform isa SimplexTransform ?
-                       transform.dimension : _gaussian_dimension(base.location)
+                       transform.dimension : _native_fused_dimension(base)
     return similar(prototype, T, output_dimension, nsamples)
 end
 

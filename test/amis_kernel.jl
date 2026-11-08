@@ -78,14 +78,14 @@ if isdefined(AMISKernelIS, :_launch_prefilled_amis_round!)
         @inline _mis_dimension(history::Main.AMISKernelCountingHistory) =
             _mis_dimension(history.history)
 
-        @inline function _native_gaussian_coordinate(
+        @inline function _native_proposal_coordinate(
             history::Main.AMISKernelCountingHistory,
             normals,
             offset,
             coordinate,
             proposal_slot,
         )
-            return _native_gaussian_coordinate(
+            return _native_proposal_coordinate(
                 history.history,
                 normals,
                 offset,
@@ -144,7 +144,7 @@ if isdefined(AMISKernelIS, :_launch_prefilled_amis_round!)
 
         function _launch_mis_round!(
             samples,
-            output::_GaussianRoundOutput,
+            output::_MomentRoundOutput,
             failure_storage,
             normal_buffer,
             target,
@@ -633,7 +633,7 @@ end
         end
 
         @test failure isa SamplerExecutionError
-        @test AMISKernelIS._gaussian_round_phase(failure, :sampling) === case.phase
+        @test AMISKernelIS._moment_round_phase(failure, :sampling) === case.phase
     end
 
     storage = zeros(UInt64, 3)
@@ -647,13 +647,13 @@ end
         storage,
         4,
         0,
-        AMISKernelIS._GAUSSIAN_COVARIANCE_INVALID,
+        AMISKernelIS._MOMENT_FIT_INVALID,
     )
     packed = AMISKernelIS._device_failure_snapshot(
         AMISKernelIS._DeviceFailureRecord(storage),
     )
     combined_failure = try
-        AMISKernelIS._capture_gaussian_round(
+        AMISKernelIS._capture_moment_round(
             AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=1),
             1,
             :sampling,
@@ -663,7 +663,7 @@ end
             nothing,
             AMISKernelIS._ResultTransferCounter(0, 0),
         ) do
-            packed.failure.reason_bits == AMISKernelIS._GAUSSIAN_COVARIANCE_INVALID ||
+            packed.failure.reason_bits == AMISKernelIS._MOMENT_FIT_INVALID ||
                 AMISKernelIS._throw_native_failures(
                     packed.failure,
                     packed.draw_failure,
@@ -715,7 +715,7 @@ end
         end
         normals = round == 1 ? Float64[-0.5, 0.75] : Float64[-1, 0.25, 1]
         failure = try
-            AMISKernelIS._capture_gaussian_round(
+            AMISKernelIS._capture_moment_round(
                 AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=1),
                 round,
                 :sampling,
@@ -779,7 +779,7 @@ end
 
         @test decoded.count == 1
         @test decoded.first_logical_index == 4
-        @test decoded.reason_bits == AMISKernelIS._GAUSSIAN_COVARIANCE_INVALID
+        @test decoded.reason_bits == AMISKernelIS._MOMENT_FIT_INVALID
         @test !isfinite(only(lognormalizer))
         @test iszero(failures[3])
     end

@@ -20,7 +20,8 @@ samples = importance_sample!(prepared)
 ```
 
 The reference mean is `[1, -1]`.
-Vector proposals learn full covariance even when their initial scale is spherical or diagonal.
+Gaussian and Student-t vector proposals learn full covariance even when their
+initial scale is spherical or diagonal.
 
 ## Estimation and adaptation weights
 
@@ -29,11 +30,15 @@ For each round:
 1. Draw `n` samples from the current proposal.
 2. Compute raw log weights `logtarget - logproposal`.
 3. Clip fitting weights at the `isqrt(n)`-th largest weight.
-4. Fit a mean and covariance from that round's clipped weights.
-5. Add a scale-relative covariance ridge and retain the fitted proposal.
+4. Fit proposal moments from that round's clipped weights.
+5. Retain the fitted proposal, with a scale-relative ridge for Gaussian/Student-t covariance.
 
 The estimator uses the original raw weights from every round.
 There is no temporal-mixture denominator or resampling step.
+
+Independent Gamma and Laplace use the marginal moment fits described for
+[AMIS](@ref amis-method). They do not fit correlations or use a covariance ridge.
+Degenerate or unrepresentable independent fits fail instead of clipping parameters.
 
 `diagnostics.adaptation_ess` describes the clipped fitting weights.
 `diagnostics.round_ess` describes each round's raw estimator weights.

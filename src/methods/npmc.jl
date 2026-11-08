@@ -2,10 +2,12 @@
     NPMC(proposal; rounds, round_size)
 
 Configure nonlinear population Monte Carlo with a native scalar or vector
-Gaussian or Student-t proposal and a fixed round schedule, as accepted by [`AMIS`](@ref).
-Each round fits a full covariance to that round's samples using weights clipped
-at the `isqrt(n)`-th largest weight, where `n` is the round size. The fit adds
-the same scale-aware covariance ridge as AMIS. Student-t fits require `nu > 2`,
+Gaussian, Student-t, independent Gamma or independent Laplace proposal and a
+fixed round schedule, as accepted by [`AMIS`](@ref). Each round fits moments
+using weights clipped at the `isqrt(n)`-th largest weight, where `n` is the
+round size. Gaussian/Student-t fits add the same scale-aware covariance ridge
+as AMIS. Independent families fit marginal moments without a ridge and reject
+degenerate or unrepresentable parameters. Student-t fits require `nu > 2`,
 retain `nu`, and convert covariance to Student-t scale before publication.
 
 Returned samples retain their raw `logtarget - logproposal` weights and round

@@ -24,10 +24,10 @@ otherwise construction rejects the bank instead of making that proposal inert.
 Zero-mass proposals remain in the configuration and retain their stable
 one-based IDs, but are neither assigned nor evaluated. Positive-mass proposals
 must share a sample dimension. Generic CPU execution additionally requires one
-concrete proposal element type. Native Gaussian banks with one scalar/vector
-layout and floating type may be packed during preparation. Loading
-Distributions.jl converts `Normal` and conventional `MvNormal` entries to these
-native forms during construction.
+concrete proposal element type. Homogeneous native Gaussian, Student-t, box and
+independent Gamma banks with one scalar/vector layout and floating type may be
+packed during preparation. Loading Distributions.jl converts supported entries
+to their native forms during construction.
 
 `ProposalBank` deliberately implements neither `rand` nor
 `DensityInterface.logdensityof`: a bank is a proposal population, not a mixture
@@ -168,6 +168,20 @@ struct _PackedStudentTFamily{D}
     uniform_stride::Int
 end
 
+struct _PackedIndependentBank{F,P,N,M,C,I,L}
+    family::F
+    first_parameters::P
+    second_parameters::P
+    lognormalizers::N
+    logmasses::M
+    cdf::C
+    proposal_ids::I
+    layout::L
+end
+
+const _PackedStaticBank = Union{_PackedDiagonalBank,_PackedFactorBank,_PackedIndependentBank}
+Adapt.@adapt_structure _PackedIndependentBank
+
 _exponent_bounds(bank::_PackedFactorBank) = bank.exponent_bounds
 _exponent_bounds(bank::_PackedDiagonalBank) = nothing
 
@@ -201,9 +215,9 @@ end
 _allocate_radial_buffers(prototype, ::GaussianFamily, count) = nothing
 _radial_normal_stride(family::_PackedStudentTFamily) = family.normal_stride
 _radial_uniform_stride(family::_PackedStudentTFamily) = family.uniform_stride
-_radial_normal_stride(family::StudentTFamily) = isone(family.dof) ? 1 : _STUDENT_T_GAMMA_ATTEMPTS
+_radial_normal_stride(family::StudentTFamily) = isone(family.dof) ? 1 : _GAMMA_DRAW_ATTEMPTS
 _radial_uniform_stride(family::StudentTFamily) = isone(family.dof) ? 0 :
-    _STUDENT_T_GAMMA_ATTEMPTS + (family.dof < 2)
+    _GAMMA_DRAW_ATTEMPTS + (family.dof < 2)
 function _allocate_radial_buffers(prototype, family::Union{_PackedStudentTFamily,StudentTFamily}, count)
     return (normal=similar(prototype, eltype(prototype), _radial_normal_stride(family) * count),
         uniform=similar(prototype, eltype(prototype), _radial_uniform_stride(family) * count))

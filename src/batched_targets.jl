@@ -158,9 +158,9 @@ end
 end
 
 _batch_logweights(output::AbstractVector) = output
-_batch_logweights(output::Union{_MISRoundOutput,_GaussianRoundOutput}) = output.logweights
+_batch_logweights(output::Union{_MISRoundOutput,_MomentRoundOutput}) = output.logweights
 _batch_value_buffer(output) = similar(_batch_logweights(output))
-_batch_value_buffer(output::_GaussianRoundOutput) = output.logtargets
+_batch_value_buffer(output::_MomentRoundOutput) = output.logtargets
 _batch_value_buffer(output::_MISRoundOutput{W,I,<:_MISAdaptationOutput}) where {W,I} =
     output.adaptation.logtargets
 
@@ -185,7 +185,7 @@ function _launch_gaussian_target!(
     end
     return nothing
 end
-@inline _finish_batch_weight!(output::_GaussianRoundOutput, value, index) =
+@inline _finish_batch_weight!(output::_MomentRoundOutput, value, index) =
     _logweight_from_logmixture(value, output.lognumerators[index], output.logtotal)
 
 @kernel function _finish_batch_weights_kernel!(output, logs, failure_storage)

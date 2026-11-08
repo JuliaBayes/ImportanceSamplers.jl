@@ -9,8 +9,8 @@ Adaptation can improve it but cannot recover regions that the run never visits.
 |:--|:--|:--|
 | [Plain IS](@ref plain-is) | Nothing | Single proposal |
 | [Static MIS](@ref static-mis) | Nothing | Chosen fixed-bank scheme |
-| [AMIS](@ref amis-method) | One mean and covariance | Mixture of all generating proposals |
-| [N-PMC](@ref npmc-method) | One mean and covariance, using clipped fit weights | Generating proposal |
+| [AMIS](@ref amis-method) | One proposal, by moment matching | Mixture of all generating proposals |
+| [N-PMC](@ref npmc-method) | One proposal, by clipped-weight moment matching | Generating proposal |
 | [DM-PMC](@ref dmpmc-method) | Population centres, by resampling | Current realized population mixture |
 | [GR-PMC](@ref dmpmc-method) | Centres, by global resampling with equal allocation | Current equal population mixture |
 | [LR-PMC](@ref dmpmc-method) | Centres, by local resampling with equal allocation | Current equal population mixture |
@@ -24,7 +24,7 @@ FirstOrderGRAMIS is a first-order hybrid, not the Hessian-based GRAMIS paper alg
 
 Plain IS suits a fixed proposal, including a prior or an independently fitted proposal.
 Static MIS retains several fixed proposals.
-AMIS and N-PMC fit one elliptical proposal.
+AMIS and N-PMC fit one Gaussian, Student-t, independent Gamma or independent Laplace proposal.
 Population methods retain several proposals, with different rules for moving or fitting them.
 
 No method dominates for every target, dimension, budget, and estimand.
@@ -62,6 +62,7 @@ The other adaptive methods retain each sample's original round weight.
 These are admissibility conditions, not recommended statistical budgets.
 Covariance fitting and tail coverage often need substantially more samples.
 
-Adaptive methods use native Gaussian or Student-t proposals.
+Population methods use native Gaussian or Student-t proposals.
+AMIS and N-PMC also support independent Gamma and Laplace proposals.
 [Proposals](@ref proposals-guide) explains the supported layouts and Student-t covariance convention.
 [Devices](@ref devices-guide) lists backend support.

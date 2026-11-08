@@ -23,10 +23,11 @@ Configure plain or static multiple importance sampling.
 `proposal` must implement `rand(rng, proposal)` and
 `DensityInterface.logdensityof(proposal, sample)` for the same normalized
 measure. `nsamples` must be a positive `Int` and is the exact number of samples
-returned by every run. Generic proposals execute on CPU; the native Gaussian
-and transform subset also supports prepared CUDA execution. Loading
-Distributions.jl adds automatic native conversion for `Normal` and conventional
-`MvNormal` proposals.
+returned by every run. Generic proposals execute on CPU; supported native
+proposals also support prepared accelerator execution. Loading Distributions.jl
+adds native conversion for `Uniform`, `Gamma`, `Normal`, conventional `MvNormal`,
+and supported Student-t forms. Native families include Gaussian, Student-t,
+[`BoxUniform`](@ref), and [`IndependentGamma`](@ref) proposals.
 
 When the first argument is a [`ProposalBank`](@ref), `mis_scheme` selects one of
 the four complete assignment/denominator contracts described by

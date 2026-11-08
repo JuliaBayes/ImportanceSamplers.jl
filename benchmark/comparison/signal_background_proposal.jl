@@ -93,7 +93,7 @@ end
         iszero(reason) || return reason
         scaled = IS._ScaledNormals(normals, multiplier)
         for j in 1:4
-            x[j] = IS._native_gaussian_coordinate(q.globals, scaled,
+            x[j] = IS._native_proposal_coordinate(q.globals, scaled,
                 normal_offset, j, component)
         end
     end

@@ -1,12 +1,12 @@
-_gaussian_round_error(::AMIS) = AMISRoundError
-_gaussian_method_name(::AMIS) = :amis
-_gaussian_proposal_evaluations(algorithm::AMIS, n) = algorithm.rounds * n
-_allocate_gaussian_adaptation_ess(::AMIS, round_ess) = nothing
-_gaussian_extra_diagnostics(::AMIS, adaptation_ess, schedule) = (;)
-_gaussian_summary_indices(::AMIS, state, round) =
+_moment_round_error(::AMIS) = AMISRoundError
+_moment_method_name(::AMIS) = :amis
+_moment_proposal_evaluations(algorithm::AMIS, n) = algorithm.rounds * n
+_allocate_moment_adaptation_ess(::AMIS, round_ess) = nothing
+_moment_extra_diagnostics(::AMIS, adaptation_ess, schedule) = (;)
+_moment_summary_indices(::AMIS, state, round) =
     1:(state.offsets[round + 1] - 1)
-_gaussian_adaptation_workspace!(::AMIS, device, state, round) = state.workspace
-_launch_adaptive_gaussian_round!(::AMIS, args...) =
+_moment_adaptation_workspace!(::AMIS, device, state, round) = state.workspace
+_launch_adaptive_moment_round!(::AMIS, args...) =
     _launch_prefilled_amis_round!(args...)
 
 struct _AMISMixtureDenominator{L}
@@ -253,7 +253,7 @@ function _launch_prefilled_amis_factor_batch!(
             execution,
         )
     catch cause
-        _throw_gaussian_stage(phase, cause)
+        _throw_moment_stage(phase, cause)
     end
     return nothing
 end
@@ -318,7 +318,7 @@ function _launch_prefilled_amis_round!(
         phase = :sampling
         new_indices = first_sample:last_sample
         logtotal = log(eltype(logcounts)(last_sample))
-        output = _GaussianRoundOutput(
+        output = _MomentRoundOutput(
             view(logtargets, new_indices),
             view(lognumerators, new_indices),
             view(logweights, new_indices),
@@ -351,7 +351,7 @@ function _launch_prefilled_amis_round!(
             execution,
         )
     catch cause
-        _throw_gaussian_stage(phase, cause)
+        _throw_moment_stage(phase, cause)
     end
     return nothing
 end
@@ -468,5 +468,5 @@ function _preflight_amis_kernels(
         end
     end
 
-    return _preflight_gaussian_fit_kernels(device, method_state, buffers)
+    return _preflight_moment_fit_kernels(device, method_state, buffers)
 end

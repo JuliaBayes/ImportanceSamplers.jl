@@ -199,8 +199,7 @@ struct _MomentDrawPhase{A,D,F,E}
 end
 
 function (phase::_MomentDrawPhase)(rng, workspace, history, logcounts, buffers, target, round_ids)
-    Random.randn!(rng, buffers.normal)
-    IS._fill_radial_buffers!(rng, buffers.radial)
+    IS._fill_moment_random_buffers!(rng, buffers, history)
     state = (; workspace, history, logcounts, phase.schedule, phase.offsets)
     IS._launch_moment_round!(phase.algorithm, state, buffers, _separate_target(target), round_ids,
         phase.round, phase.execution, phase.device, phase.factor_execution)
@@ -250,6 +249,21 @@ function (phase::_MomentFitPhase)(workspace, history::IS._ScalarProposalHistory,
     return moments, true
 end
 
+function (phase::_MomentFitPhase)(workspace, history::IS._IndependentProposalHistory, failure_storage)
+    moments = _normalize_weights!(workspace.normalized_weights, workspace.logweights, phase.count)
+    IS._fit_independent_parameters!(workspace, history, phase.count, failure_storage)
+    return moments, true
+end
+
+# Array-level lgamma avoids Reactant's scalar CUDA-intrinsic lowering in KA kernels.
+function IS._independent_logconstants!(constants::AbstractArray{<:Reactant.TracedRNumber},
+    shapes, scales, ::IS._GammaFamily)
+    constants .= ifelse.(shapes .< 32,
+        -IS.SpecialFunctions.loggamma.(shapes) .- shapes .* log.(scales),
+        IS._gamma_center_logconstant.(shapes, scales))
+    return constants
+end
+
 struct _PublishMomentPhase
     slot::Int
 end
@@ -263,10 +277,10 @@ end
 
 function (phase::_NPMCFitPhase)(workspace, history, failure_storage)
     state = (; workspace, phase.offsets)
-    fit_workspace = IS._gaussian_adaptation_workspace!(phase.algorithm, phase.device,
+    fit_workspace = IS._moment_adaptation_workspace!(phase.algorithm, phase.device,
         state, phase.fit.round)
     moments, success = phase.fit(fit_workspace, history, failure_storage)
-    indices = IS._gaussian_summary_indices(phase.algorithm, state, phase.fit.round)
+    indices = IS._moment_summary_indices(phase.algorithm, state, phase.fit.round)
     raw = _logweight_moments(view(workspace.logweights, indices))
     return moments, success, raw
 end
@@ -301,6 +315,17 @@ function _reset_moment_history!(history::IS._ScalarProposalHistory, record)
     return nothing
 end
 
+function _reset_moment_history!(history::IS._IndependentProposalHistory, record)
+    if length(history.lognormalizers) > 1
+        history.first_parameters[:, 2:end] = zero.(history.first_parameters[:, 2:end])
+        history.second_parameters[:, 2:end] = zero.(history.second_parameters[:, 2:end])
+        history.logconstants[:, 2:end] = zero.(history.logconstants[:, 2:end])
+        history.lognormalizers[2:end] = zero.(history.lognormalizers[2:end])
+    end
+    fill!(record.storage, zero(UInt64))
+    return nothing
+end
+
 struct _CompiledMomentExecution{D,F,P,R,M}
     draws::D
     fits::F
@@ -327,7 +352,7 @@ function _prepare_execution(sampler, state::IS._PreparedMomentSampler)
         Reactant.@compile phase(rng, workspace, history, logcounts, buffers, target, round_ids)
     end
     fits = map(eachindex(state.schedule)) do round
-        phase = _MomentFitPhase(round, IS._gaussian_adaptation_count(sampler.algorithm, state, round))
+        phase = _MomentFitPhase(round, IS._moment_adaptation_count(sampler.algorithm, state, round))
         if sampler.algorithm isa IS.NPMC
             phase = _NPMCFitPhase(sampler.algorithm, sampler.device, offsets, phase)
         end
@@ -346,13 +371,13 @@ end
 
 IS._execute_prepared_sampler!(sampler, ::_CompiledMomentExecution, threaded) =
     IS._importance_sample_cpu!(sampler, threaded)
-IS._reset_prepared_gaussian_history!(plan::_CompiledMomentExecution, history, rounds, record) =
+IS._reset_prepared_moment_history!(plan::_CompiledMomentExecution, history, rounds, record) =
     plan.reset(history, record)
-IS._store_prepared_gaussian_candidate!(plan::_CompiledMomentExecution, history, slot, workspace) =
+IS._store_prepared_moment_candidate!(plan::_CompiledMomentExecution, history, slot, workspace) =
     plan.publish[slot](history, workspace)
-IS._prepared_gaussian_adaptation_workspace!(::_CompiledMomentExecution, algorithm, device, state, round) =
+IS._prepared_moment_adaptation_workspace!(::_CompiledMomentExecution, algorithm, device, state, round) =
     state.workspace
-IS._prepared_gaussian_summary(::_CompiledMomentExecution, algorithm, state, round, fit, transfers) =
+IS._prepared_moment_summary(::_CompiledMomentExecution, algorithm, state, round, fit, transfers) =
     fit.raw_summary
 IS._draw_moment_round!(sampler, plan::_CompiledMomentExecution, state, round_ids, target, round, execution) =
     plan.draws[round](sampler.rng.rng, state.workspace, state.history, state.logcounts,
@@ -366,7 +391,7 @@ function IS._fit_prepared_moment_proposal!(plan::_CompiledMomentExecution, devic
         values = Array(fit[1])
         IS._record_reported_transfer!(transfers, 1, sizeof(values), Val(:logweight_moments))
         isfinite(values[2]) && values[2] > 0 || throw(IS.AllZeroWeightsError())
-        phase = :factorization
+        phase = IS._moment_fit_phase(history)
         Bool(fit[2]) || throw(LA.PosDefException(0))
         summary = IS._logweight_summary(values..., count)
         if length(fit) == 3
@@ -376,7 +401,7 @@ function IS._fit_prepared_moment_proposal!(plan::_CompiledMomentExecution, devic
         end
         return summary
     catch cause
-        IS._throw_gaussian_stage(phase, cause)
+        IS._throw_moment_stage(phase, cause)
     end
 end
 
@@ -804,7 +829,15 @@ function _store_moment_candidate!(history::IS._ScalarProposalHistory, slot, work
     return nothing
 end
 
-function IS._store_gaussian_candidate!(
+function _store_moment_candidate!(history::IS._IndependentProposalHistory, slot, workspace)
+    history.first_parameters[:, slot] = workspace.candidate_first
+    history.second_parameters[:, slot] = workspace.candidate_second
+    history.logconstants[:, slot] = workspace.candidate_logconstants
+    history.lognormalizers[slot:slot] = workspace.candidate_lognormalizer
+    return nothing
+end
+
+function IS._store_moment_candidate!(
     history::IS._FactorProposalHistory{<:Reactant.AnyConcreteRArray}, slot, workspace::IS._MomentWorkspace,
 )
     Reactant.@jit _store_moment_candidate!(history, slot, workspace)
@@ -827,7 +860,7 @@ function _normalize_weights!(weights, logweights, count; normalize=true)
     return vcat(maximum_logweight, total, squared_sum)
 end
 
-function IS._normalize_gaussian_weights!(
+function IS._normalize_moment_weights!(
     weights::_ReactantStorage, logweights, count, transfers::IS._ResultTransferCounter,
 )
     moments = Array(Reactant.@jit _normalize_weights!(weights, logweights, count))

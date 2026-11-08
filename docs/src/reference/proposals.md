@@ -14,6 +14,9 @@ FactorGaussian
 SphericalStudentT
 DiagonalStudentT
 FactorStudentT
+BoxUniform
+IndependentGamma
+IndependentLaplace
 ```
 
 ## Composition and populations

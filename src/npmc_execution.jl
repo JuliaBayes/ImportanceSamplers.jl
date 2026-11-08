@@ -1,11 +1,11 @@
-_gaussian_round_error(::NPMC) = NPMCRoundError
-_gaussian_method_name(::NPMC) = :npmc
-_gaussian_proposal_evaluations(::NPMC, n) = n
-_allocate_gaussian_adaptation_ess(::NPMC, round_ess) = similar(round_ess)
-_gaussian_extra_diagnostics(::NPMC, adaptation_ess, schedule) =
+_moment_round_error(::NPMC) = NPMCRoundError
+_moment_method_name(::NPMC) = :npmc
+_moment_proposal_evaluations(::NPMC, n) = n
+_allocate_moment_adaptation_ess(::NPMC, round_ess) = similar(round_ess)
+_moment_extra_diagnostics(::NPMC, adaptation_ess, schedule) =
     (; adaptation_ess, clipped_counts=isqrt.(collect(schedule)))
 
-_gaussian_summary_indices(::NPMC, state, round) =
+_moment_summary_indices(::NPMC, state, round) =
     state.offsets[round]:(state.offsets[round + 1] - 1)
 
 function _sort_clipping_weights!(::MLDataDevices.AbstractCPUDevice, scratch, threshold_index)
@@ -18,9 +18,9 @@ function _sort_clipping_weights!(device, scratch, threshold_index)
     return nothing
 end
 
-function _gaussian_adaptation_workspace!(algorithm::NPMC, device, state, round)
+function _moment_adaptation_workspace!(algorithm::NPMC, device, state, round)
     workspace = state.workspace
-    indices = _gaussian_summary_indices(algorithm, state, round)
+    indices = _moment_summary_indices(algorithm, state, round)
     raw = view(workspace.logweights, indices)
     scratch = view(workspace.lognumerators, indices)
     clipped = view(workspace.logtargets, indices)
@@ -29,6 +29,10 @@ function _gaussian_adaptation_workspace!(algorithm::NPMC, device, state, round)
     _sort_clipping_weights!(device, scratch, threshold_index)
     # A one-element device view keeps the order statistic on its device.
     _clip_logweights!(clipped, raw, view(scratch, threshold_index:threshold_index))
+    return _moment_workspace_view(workspace, indices, clipped, scratch)
+end
+
+function _moment_workspace_view(workspace::_MomentWorkspace, indices, clipped, scratch)
     return _MomentWorkspace(
         _sample_view(workspace.samples, indices),
         clipped,
@@ -46,19 +50,19 @@ end
 
 _clip_logweights!(clipped, raw, threshold) = (clipped .= min.(raw, threshold))
 
-struct _GeneratingGaussianDenominator end
-@inline _mis_term_bounds(history, ::_GeneratingGaussianDenominator, slot) = (slot, slot)
-@inline _mis_denominator_term(::Type{T}, history, ::_GeneratingGaussianDenominator, slot) where {T} =
+struct _GeneratingHistoryDenominator end
+@inline _mis_term_bounds(history, ::_GeneratingHistoryDenominator, slot) = (slot, slot)
+@inline _mis_denominator_term(::Type{T}, history, ::_GeneratingHistoryDenominator, slot) where {T} =
     (slot, zero(T))
 
-function _launch_adaptive_gaussian_round!(
+function _launch_adaptive_moment_round!(
     ::NPMC, samples, logtargets, scratch, logweights, round_ids,
     failure_storage, normal_buffer, target, history, logcounts, offsets,
     round, solve_scratch, execution, device, factor_execution,
 )
     indices = offsets[round]:(offsets[round + 1] - 1)
     new_samples = _sample_view(samples, indices)
-    output = _GaussianRoundOutput(
+    output = _MomentRoundOutput(
         view(logtargets, indices), view(scratch, indices),
         view(logweights, indices), view(round_ids, indices),
         zero(eltype(logweights)), round,
@@ -73,7 +77,7 @@ function _launch_adaptive_gaussian_round!(
         _launch_mis_round!(
             new_samples, output, failure_storage, normal_buffer, target,
             history, _FixedMISAssignments(round, length(indices)),
-            _GeneratingGaussianDenominator(), solve_scratch, execution,
+            _GeneratingHistoryDenominator(), solve_scratch, execution,
         )
     end
     return nothing
@@ -131,7 +135,7 @@ function _preflight_accelerator_method(
     backend = KernelAbstractions.get_backend(buffers.normal)
     kernel = _gaussian_round_launch_kernel!(backend)
     round = findmax(state.schedule)[2]
-    indices = _gaussian_summary_indices(algorithm, state, round)
+    indices = _moment_summary_indices(algorithm, state, round)
     samples = _sample_view(workspace.samples, indices)
     round_ids = similar(workspace.logweights, Int, 1)
     use_factor_batch = state.history isa _FactorProposalHistory &&
@@ -149,7 +153,7 @@ function _preflight_accelerator_method(
         round_ids, zero(T), round, buffers.failure_scratch.record.storage,
         buffers.normal, target_argument, state.history,
         _FixedMISAssignments(round, length(indices)),
-        _GeneratingGaussianDenominator(), solve_scratch,
+        _GeneratingHistoryDenominator(), solve_scratch,
     )
         _preflight_kernel_argument(device, kernel, argument)
     end
@@ -171,5 +175,5 @@ function _preflight_accelerator_method(
             _preflight_kernel_argument(device, weight_kernel, argument)
         end
     end
-    return _preflight_gaussian_fit_kernels(device, state, buffers)
+    return _preflight_moment_fit_kernels(device, state, buffers)
 end

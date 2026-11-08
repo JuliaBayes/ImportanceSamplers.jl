@@ -8,6 +8,18 @@ import Statistics
 ImportanceSamplers._default_mass_type(proposal::Distributions.Distribution) =
     float(eltype(proposal))
 
+function ImportanceSamplers._prepare_proposal_input(proposal::Distributions.Uniform)
+    return ImportanceSamplers.BoxUniform(Distributions.params(proposal)...)
+end
+
+function ImportanceSamplers._prepare_proposal_input(proposal::Distributions.Gamma)
+    return ImportanceSamplers.IndependentGamma(Distributions.params(proposal)...)
+end
+
+function ImportanceSamplers._prepare_proposal_input(proposal::Distributions.Laplace)
+    return ImportanceSamplers.IndependentLaplace(Distributions.params(proposal)...)
+end
+
 function ImportanceSamplers._prepare_proposal_input(proposal::Distributions.Normal)
     location, scale = Distributions.params(proposal)
     return ImportanceSamplers.SphericalGaussian(location, scale)
@@ -67,6 +79,9 @@ end
 function ImportanceSamplers._prepare_proposal_inputs(
     proposals::AbstractVector{<:Union{
         Distributions.Normal,
+        Distributions.Uniform,
+        Distributions.Gamma,
+        Distributions.Laplace,
         Distributions.MvNormal,
         Distributions.TDist,
         Distributions.Cauchy,

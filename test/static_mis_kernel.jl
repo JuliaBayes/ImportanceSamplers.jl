@@ -273,8 +273,8 @@ end
         )
         normals = T[1, 2]
         sample = T[
-            ISK._native_gaussian_coordinate(packed, normals, 1, 1, 1),
-            ISK._native_gaussian_coordinate(packed, normals, 1, 2, 1),
+            ISK._native_proposal_coordinate(packed, normals, 1, 1, 1),
+            ISK._native_proposal_coordinate(packed, normals, 1, 2, 1),
         ]
 
         @test sample == T[3, 6.25]

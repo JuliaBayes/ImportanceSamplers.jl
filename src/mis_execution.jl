@@ -167,7 +167,7 @@ end
 _MISRoundOutput(logweights, proposal_ids) =
     _MISRoundOutput(logweights, proposal_ids, nothing)
 
-struct _GaussianRoundOutput{T,N,W,R,L}
+struct _MomentRoundOutput{T,N,W,R,L}
     logtargets::T
     lognumerators::N
     logweights::W
@@ -177,7 +177,7 @@ struct _GaussianRoundOutput{T,N,W,R,L}
 end
 
 Adapt.@adapt_structure _MISRoundOutput
-Adapt.@adapt_structure _GaussianRoundOutput
+Adapt.@adapt_structure _MomentRoundOutput
 
 @inline _factor_batch_is_generating(::Nothing, sample_index, proposal_slot) = false
 @inline _factor_batch_is_generating(assignments, sample_index, proposal_slot) =
@@ -335,7 +335,7 @@ end
     generating_slot = @inbounds assignments[sample_index]
     dimension = _mis_dimension(bank)
     normal_offset = (sample_index - 1) * dimension + 1
-    valid = _native_store_gaussian!(
+    valid = _native_store_sample!(
         samples,
         sample_index,
         bank,
@@ -613,7 +613,7 @@ end
     generating_slot = @inbounds assignments[sample_index]
     dimension = _mis_dimension(bank)
     normal_offset = (sample_index - 1) * dimension + 1
-    valid = _native_store_gaussian!(
+    valid = _native_store_sample!(
         samples,
         sample_index,
         bank,
@@ -843,7 +843,7 @@ end
 
 function _launch_mis_round!(
     samples,
-    output::_GaussianRoundOutput,
+    output::_MomentRoundOutput,
     failure_storage,
     normal_buffer,
     target,

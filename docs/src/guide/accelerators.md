@@ -109,11 +109,16 @@ They do not imply that every user target compiles on every backend.
 | Backend | Native sampler scope | Main limits |
 |:--|:--|:--|
 | Ordinary CPU | All methods, plus generic proposals where the method permits them | `Float32`/`Float64` log densities |
-| Native CUDA | All methods with supported native Gaussian/Student-t proposals | Device-compatible target and gradient operations |
-| Metal | Native Gaussian/Student-t paths for all methods | `Float32`, explicit GRAMIS gradient |
+| Native CUDA | Supported native proposal/method combinations below | Device-compatible target and gradient operations |
+| Metal | Supported native proposal/method combinations below | `Float32`, explicit GRAMIS gradient |
 | Reactant GPU | Built-in compiled paths, including batch targets | Traceable operations and fixed prepared schedules |
-| Reactant CPU | Plain/static IS, scalar AMIS/NPMC, global DM-PMC, and built-in LAIS cases | Preflight restrictions listed below |
+| Reactant CPU | Plain/static IS, supported AMIS/NPMC, global DM-PMC, and built-in LAIS cases | Preflight restrictions listed below |
 | AMDGPU | Not validated or claimed | A KernelAbstractions backend alone does not supply full package support |
+
+Gaussian and Student-t proposals support every method, subject to backend limits.
+Boxes support fixed IS/static MIS. Independent Gamma and Laplace also support
+AMIS/N-PMC marginal moment adaptation. On Reactant CPU these independent families
+support scalar and vector layouts; Gaussian/Student-t moment fits remain scalar-only.
 
 Reactant CPU rejects GRAMIS, APIS, CAIS, locally resampled DM-PMC,
 factor-proposal AMIS/NPMC, and LAIS-SMH during preflight.

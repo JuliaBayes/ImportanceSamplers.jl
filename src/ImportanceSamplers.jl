@@ -14,6 +14,7 @@ import LogExpFunctions
 import MLDataDevices
 import Random
 import Statistics
+import SpecialFunctions
 
 export AbstractImportanceSampler,
     AbstractMCMCTransition,
@@ -34,6 +35,7 @@ export AbstractImportanceSampler,
     NPMCRoundError,
     AllZeroWeightsError,
     BatchedFactorExecution,
+    BoxUniform,
     DiagonalGaussian,
     DiagonalStudentT,
     DeterministicMixturePMC,
@@ -44,6 +46,8 @@ export AbstractImportanceSampler,
     FirstOrderGRAMISRoundError,
     FusedFactorExecution,
     ImportanceSampling,
+    IndependentGamma,
+    IndependentLaplace,
     GlobalResampling,
     LocalResampling,
     IdentityTransform,
@@ -88,6 +92,8 @@ export AbstractImportanceSampler,
 
 include("proposals.jl")
 include("transforms.jl")
+include("independent_proposals.jl")
+include("laplace_proposals.jl")
 include("proposal_composition.jl")
 include("proposal_banks.jl")
 include("targets.jl")
@@ -116,6 +122,9 @@ include("adaptive_gaussian_execution.jl")
 include("amis_execution.jl")
 include("npmc_execution.jl")
 include("static_mis_execution.jl")
+include("independent_execution.jl")
+include("laplace_execution.jl")
+include("independent_adaptation.jl")
 include("population_execution.jl")
 include("sample_metropolis_hastings.jl")
 include("cais_execution.jl")

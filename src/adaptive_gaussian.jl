@@ -81,13 +81,25 @@ struct _PreparedMomentSampler{S,O,L,H,W}
     committed_in_workspace::Bool
 end
 
-function _gaussian_storage_prototype(proposal::_NativeRadialProposal)
+function _moment_storage_prototype(proposal::_NativeRadialProposal)
     location = proposal.location
     return location isa _NativeGaussianFloat ?
            Vector{typeof(location)}(undef, 0) : location
 end
 
-function _allocate_gaussian_history(prototype, proposal::_NativeRadialProposal, rounds)
+_moment_binding_sample(proposal::_NativeRadialProposal) =
+    proposal.location isa _NativeGaussianFloat ? zero(proposal.location) : view(proposal.location, :)
+_moment_history_parameters(history) = history.means
+_moment_history_binding_sample(history) = history isa _ScalarProposalHistory ?
+    zero(eltype(history.means)) : view(history.means, :, 1)
+_moment_workspace_candidate(history, accelerator) = accelerator || history isa _FactorProposalHistory
+_moment_fit_diagnostics(workspace::_MomentWorkspace) = workspace.covariance
+_moment_fit_phase(history) = :factorization
+_moment_invalid_fit(history) = throw(LinearAlgebra.PosDefException(1))
+_initialize_moment_workspace!(workspace::_MomentWorkspace, history) =
+    _initialize_gaussian_covariance!(workspace.covariance, history)
+
+function _allocate_moment_history(prototype, proposal::_NativeRadialProposal, rounds)
     location = proposal.location
     T = location isa _NativeGaussianFloat ? typeof(location) : eltype(location)
     lognormalizers = similar(prototype, T, rounds)
@@ -131,7 +143,7 @@ function _store_gaussian_factor!(factor, scale::_FactorGaussianScale)
     return factor
 end
 
-function _allocate_gaussian_workspace(
+function _allocate_moment_workspace(
     prototype,
     proposal::_NativeRadialProposal,
     capacity,
@@ -193,24 +205,24 @@ function _initialize_gaussian_covariance!(
     return covariance
 end
 
-function _prepare_gaussian_state(algorithm::_MomentAdaptiveSampler, ::Type{L}) where {L}
+function _prepare_moment_state(algorithm::_MomentAdaptiveSampler, ::Type{L}) where {L}
     schedule = _resolve_adaptive_schedule(algorithm.rounds, algorithm.round_size)
     offsets = cumsum(vcat(1, schedule))
     proposal = algorithm.proposal
-    prototype = _gaussian_storage_prototype(proposal)
+    prototype = _moment_storage_prototype(proposal)
     T = _native_fused_float_type(proposal)
     logcounts = similar(prototype, T, algorithm.rounds)
     for round in eachindex(schedule)
         logcounts[round] = log(T(schedule[round]))
     end
-    history = _allocate_gaussian_history(prototype, proposal, algorithm.rounds)
-    workspace = _allocate_gaussian_workspace(
+    history = _allocate_moment_history(prototype, proposal, algorithm.rounds)
+    workspace = _allocate_moment_workspace(
         prototype,
         proposal,
         offsets[end] - 1,
         L,
     )
-    _initialize_gaussian_covariance!(workspace.covariance, history)
+    _initialize_moment_workspace!(workspace, history)
     return _PreparedMomentSampler(
         schedule,
         offsets,
@@ -222,7 +234,7 @@ function _prepare_gaussian_state(algorithm::_MomentAdaptiveSampler, ::Type{L}) w
 end
 
 function _prepare_method_state(algorithm::_MomentAdaptiveSampler)
-    return _prepare_gaussian_state(
+    return _prepare_moment_state(
         algorithm,
         _native_fused_float_type(algorithm.proposal),
     )
@@ -230,15 +242,14 @@ end
 
 function _prepare_method_state(algorithm::_MomentAdaptiveSampler, prepared_target)
     proposal = algorithm.proposal
-    binding_sample = proposal.location isa _NativeGaussianFloat ?
-                     zero(proposal.location) : view(proposal.location, :)
+    binding_sample = _moment_binding_sample(proposal)
     target = _bind_resolved_target(prepared_target, binding_sample)
     log_type = _resolve_native_logweight_type(
         target,
         proposal,
         typeof(binding_sample),
     )
-    return _prepare_gaussian_state(algorithm, log_type)
+    return _prepare_moment_state(algorithm, log_type)
 end
 
 function _allocate_random_buffers(
@@ -273,7 +284,7 @@ function _copy_accelerator_algorithm(
     return deepcopy(algorithm)
 end
 
-function _copy_gaussian_history(device, history::_ScalarProposalHistory)
+function _copy_moment_history(device, history::_ScalarProposalHistory)
     means = _copy_to_device(device, history.means)
     return _ScalarProposalHistory(
         means,
@@ -283,7 +294,7 @@ function _copy_gaussian_history(device, history::_ScalarProposalHistory)
     )
 end
 
-function _copy_gaussian_history(device, history::_FactorProposalHistory)
+function _copy_moment_history(device, history::_FactorProposalHistory)
     means = _copy_to_device(device, history.means)
     return _FactorProposalHistory(
         means,
@@ -294,7 +305,7 @@ function _copy_gaussian_history(device, history::_FactorProposalHistory)
     )
 end
 
-function _copy_gaussian_workspace(device, workspace::_MomentWorkspace)
+function _copy_moment_workspace(device, workspace::_MomentWorkspace)
     return _MomentWorkspace(
         _copy_to_device(device, workspace.samples),
         _copy_to_device(device, workspace.logtargets),
@@ -320,8 +331,8 @@ function _prepare_transferred_method_state(
         _HostIntSequence(method_state.schedule),
         _HostIntSequence(method_state.offsets),
         _copy_to_device(device, method_state.logcounts),
-        _copy_gaussian_history(device, method_state.history),
-        _copy_gaussian_workspace(device, method_state.workspace),
+        _copy_moment_history(device, method_state.history),
+        _copy_moment_workspace(device, method_state.workspace),
         method_state.committed_in_workspace,
     )
     _preflight_gaussian_factorization!(device, transferred)
@@ -363,7 +374,7 @@ _prepared_backend_state(sampler, method_state::_PreparedMomentSampler) = (
 """
     current_proposal(sampler)
 
-Return an independent native Gaussian or Student-t snapshot of the proposal committed by a
+Return an independent snapshot of the proposal committed by a
 CPU-prepared [`AMIS`](@ref) or [`NPMC`](@ref) sampler. For an accelerator-prepared sampler, pass
 an explicit preserving CPU destination. A successful call commits its final
 fitted proposal for the next call; a failed call leaves this snapshot unchanged.
@@ -395,9 +406,9 @@ function current_proposal(
     _preserving_cpu_destination(destination)
     method_state = sampler.method_state
     parameters = _with_backend_device(sampler.device) do
-        _copy_gaussian_snapshot_parameters(destination, method_state)
+        _copy_moment_snapshot_parameters(destination, method_state)
     end
-    return _moment_proposal_snapshot(method_state.history.family, parameters...)
+    return _moment_proposal_snapshot(method_state.history, parameters...)
 end
 
 function current_proposal(
@@ -412,7 +423,7 @@ function current_proposal(
     )
 end
 
-function _gaussian_snapshot_parameters(
+function _moment_snapshot_parameters(
     method_state::_PreparedMomentSampler{S,O,L,H,W},
 ) where {S,O,L,H<:_ScalarProposalHistory,W}
     if method_state.committed_in_workspace
@@ -423,7 +434,7 @@ function _gaussian_snapshot_parameters(
     return view(history.means, 1:1), view(history.scales, 1:1)
 end
 
-function _gaussian_snapshot_parameters(
+function _moment_snapshot_parameters(
     method_state::_PreparedMomentSampler{S,O,L,H,W},
 ) where {S,O,L,H<:_FactorProposalHistory,W}
     if method_state.committed_in_workspace
@@ -434,13 +445,16 @@ function _gaussian_snapshot_parameters(
     return view(history.means, :, 1), view(history.factors, :, :, 1)
 end
 
-function _copy_gaussian_snapshot_parameters(destination, method_state::_PreparedMomentSampler)
-    parameters = _gaussian_snapshot_parameters(method_state)
+function _copy_moment_snapshot_parameters(destination, method_state::_PreparedMomentSampler)
+    parameters = _moment_snapshot_parameters(method_state)
     return map(parameter -> destination(Array(parameter)), parameters)
 end
 
 _moment_proposal_snapshot(method_state::_PreparedMomentSampler) =
-    _moment_proposal_snapshot(method_state.history.family, _gaussian_snapshot_parameters(method_state)...)
+    _moment_proposal_snapshot(method_state.history, _moment_snapshot_parameters(method_state)...)
+
+_moment_proposal_snapshot(history::Union{_ScalarProposalHistory,_FactorProposalHistory}, parameters...) =
+    _moment_proposal_snapshot(history.family, parameters...)
 
 _moment_proposal_snapshot(::GaussianFamily, means::AbstractVector, scales::AbstractVector) =
     SphericalGaussian(means[1], scales[1])
