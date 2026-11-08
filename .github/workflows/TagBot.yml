@@ -1,0 +1,41 @@
+name: TagBot
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  TagBot:
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: JuliaRegistries/TagBot@87cc4cc2b4639f6c743f5772f376a32914060732 # v1.25.15
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Build documentation for unarchived tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # GITHUB_TOKEN-created tags do not trigger the CI push workflow.
+          while IFS= read -r tag; do
+            [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            if git cat-file -e "origin/gh-pages:${tag}/index.html" 2>/dev/null; then
+              continue
+            fi
+            if ! git cat-file -e "${tag}:docs/deploy.jl" 2>/dev/null; then
+              echo "::warning::Documentation for ${tag} needs a one-time backfill."
+              continue
+            fi
+            gh workflow run CI.yml --repo "$GITHUB_REPOSITORY" --ref "$tag"
+          done < <(git tag --list 'v*')

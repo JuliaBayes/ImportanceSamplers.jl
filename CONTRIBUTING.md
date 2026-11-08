@@ -50,7 +50,18 @@ The root URL redirects to the latest release, or to `dev` before any release.
 Pull requests build an artifact but do not deploy. Keep Pages configured to use
 GitHub Actions. Only the deployment job receives repository write permission.
 
-Push a release tag with credentials that trigger workflows, or dispatch `CI.yml`
-on that tag. Tags created using only `GITHUB_TOKEN` do not trigger another
-workflow automatically. If TagBot is added, configure its SSH key accordingly.
+TagBot creates tags and GitHub releases after registration. Its workflow
+explicitly dispatches `CI.yml` for release tags without archived documentation,
+because tags created with `GITHUB_TOKEN` do not trigger push workflows.
+No SSH deploy key is required. A manually pushed release tag also triggers CI.
 See [Documenter's hosting guide](https://documenter.juliadocs.org/stable/man/hosting/).
+
+## Releases
+
+Set `Project.toml` to the intended release version and merge after CI passes.
+Request registration with `@JuliaRegistrator register` on the release commit.
+After registration merges, TagBot creates the tag and GitHub release; CI then
+publishes its versioned documentation. Verify the release and `/stable/` site.
+The Registrator GitHub App must have access to this repository.
+
+Dependabot groups GitHub Actions updates into a weekly pull request.
