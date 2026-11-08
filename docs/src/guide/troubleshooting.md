@@ -11,9 +11,9 @@ Check proposal location, covariance, tails, and mode coverage.
 Use an independent pilot or a broader family when appropriate.
 A larger count does not repair missing support.
 
-Location-only methods do not tune scales.
-DM-PMC, APIS, and LAIS keep their lower proposal scales fixed.
-LAIS RAM tunes upper MCMC increments, not those lower scales.
+DM-PMC and APIS retain Gaussian, Student-t, and Laplace proposal scales.
+Gamma proposals retain coordinate variances while their shape and scale change.
+LAIS retains lower proposal scales. RAM tunes its upper MCMC increments only.
 
 ## All-zero weights
 
