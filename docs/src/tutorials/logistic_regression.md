@@ -3,7 +3,7 @@
 This example infers an intercept and two slopes from binary observations.
 It uses a short adaptive run to fit a proposal, then draws from that fixed proposal.
 
-## 1. Create a small dataset
+## Data
 
 ```@example logistic
 using ImportanceSamplers, Random, Statistics, LinearAlgebra
@@ -21,7 +21,7 @@ p = (; X, y, prior_scale=2.0)
 Each row of `X` describes one observation. The first column supplies the intercept.
 The context `p` holds data and constants. Only the coefficient vector `beta` is sampled.
 
-## 2. Define the posterior log density
+## Posterior log density
 
 Assume independent normal priors with standard deviation two for the coefficients.
 
@@ -48,7 +48,7 @@ It omits parameter-independent constants, so its normalizer is not the model evi
 The two-argument signature separates the unknown `beta` from the fixed context `p`.
 No wrapper is required.
 
-## 3. Fit a proposal
+## Proposal adaptation
 
 ```@example logistic
 initial = SphericalStudentT(5.0, zeros(3), 2.0)
@@ -68,7 +68,7 @@ AMIS adapts a location and full covariance. The Student-t degrees of freedom sta
 The pilot starts broadly. It may still miss a remote mode.
 A fitted proposal does not remove the need to inspect the final weights.
 
-## 4. Draw the final sample
+## Fixed-proposal sampling
 
 ```@example logistic
 samples = importance_sample(
@@ -87,7 +87,7 @@ The final run uses a fresh random stream and a fixed proposal.
 Its budget is independent of the pilot budget.
 Only `samples` supplies the following estimates.
 
-## 5. Summarize uncertainty and predict
+## Posterior summaries and prediction
 
 ```@example logistic
 intervals = quantile(samples, [0.025, 0.975])
@@ -106,7 +106,7 @@ The prediction averages the success probability over posterior uncertainty.
 More observations can make prior importance sampling inefficient.
 Adapting the proposal helps only when the pilot reaches the posterior mass.
 
-## Extend the example
+## Related examples
 
 - Use [batch targets](@ref batch-guide) to evaluate a design matrix against many coefficient vectors.
 - Transfer the complete prepared sampler for [GPU execution](@ref devices-guide).

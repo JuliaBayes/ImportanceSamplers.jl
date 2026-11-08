@@ -4,7 +4,7 @@ LAIS uses an upper MCMC process to move proposal centres.
 It then draws lower importance samples around those centres.
 Only the lower samples enter the returned weighted result.
 
-## Start with random-walk Metropolis
+## Random-walk Metropolis
 
 ```@example lais
 using ImportanceSamplers, Random, Statistics
@@ -31,7 +31,7 @@ The upper covariance `0.5` is a variance.
 The lower `SphericalGaussian(..., 1.0)` argument is a standard deviation.
 These control different distributions.
 
-## Tune the upper transition with RAM
+## Robust adaptive Metropolis
 
 ```@example lais
 tuned_algorithm = LAIS(
@@ -52,13 +52,13 @@ Later calls do not repeat completed warmup.
 Its tuning index continues across successful calls.
 
 RAM uses acceptance probabilities, including rejected moves.
-It does **not** fit the lower proposal scales.
-Choose those scales separately, or fit them in an independent pilot.
+It does not fit the lower proposal scales.
+Those scales require separate specification or an independent pilot fit.
 
 Upper covariance inputs may be an isotropic variance, SPD matrix, `Cholesky` factorization,
 or a vector with one covariance specification per chain.
 
-## Use an interacting upper population
+## Sample Metropolis-Hastings
 
 ```@example lais
 upper = SampleMetropolisHastings(

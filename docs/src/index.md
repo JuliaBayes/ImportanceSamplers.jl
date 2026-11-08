@@ -8,12 +8,12 @@ Importance sampling estimates integrals and expectations using weighted draws.
 ImportanceSamplers provides fixed and adaptive proposals, multiple-proposal methods,
 and explicit CPU or accelerator execution.
 
-You supply a **log target**, a normalized proposal, and a random-number generator.
-The result contains samples and their raw log weights.
+Inputs are a log target, a normalized proposal, and a random-number generator.
+The result contains samples and raw log weights.
 
-## Install
+## Installation
 
-Install the package in your project:
+Install the package with Pkg:
 
 ```julia
 using Pkg
@@ -22,7 +22,7 @@ Pkg.add(url="https://github.com/JuliaBayes/ImportanceSamplers.jl.git")
 
 Accelerator and automatic-differentiation packages are optional.
 
-## Draw weighted samples
+## Weighted sampling
 
 Estimate the mean of a three-dimensional standard Gaussian. Its log density is
 `-sum(abs2, x) / 2`, up to an additive constant. Each `x` is a vector of the three
@@ -43,7 +43,7 @@ The proposal is a Gaussian with mean `zeros(3)` and standard deviation `1.5` in
 each coordinate. The result stores one draw per column, with a matching raw log
 weight in `samples.logweights`.
 
-## Estimate an expectation
+## Expectations
 
 ```@example overview
 (
@@ -62,28 +62,28 @@ The weights correct for drawing from the proposal rather than the target.
 The proposal must cover every region that contributes to the expectation.
 Weight ESS measures concentration, not whether a run found every mode or tail.
 
-## Continue the example
+## Tutorials
 
-[Your first weighted estimate](@ref first-estimate) samples a three-dimensional
+[Weighted estimation](@ref first-estimate) samples a three-dimensional
 target and computes its mean, covariance, and normalizing constant.
 
-Then follow either worked application:
+The application tutorials cover:
 
 - [Logistic regression](@ref logistic-tutorial): define a posterior, adapt a proposal, and predict a probability.
 - [Numerical integration](@ref integration-tutorial): estimate ordinary integrals, including signed integrands.
 
 Every tutorial defines its data and runs from top to bottom.
 
-## Find a specific task
+## User guide
 
 | Task | Page |
 |:--|:--|
 | Pass data or use an existing density | [Targets and data](@ref targets-guide) |
 | Choose Gaussian or Student-t proposals | [Proposals](@ref proposals-guide) |
 | Use positive, bounded, or simplex parameters | [Constraints and named parameters](@ref transforms-guide) |
-| Compute expectations, intervals, or resampled draws | [Working with results](@ref results-guide) |
+| Compute expectations, intervals, or resampled draws | [Weighted samples](@ref results-guide) |
 | Reuse a fitted proposal | [Adaptation and reuse](@ref reuse-guide) |
-| Choose an importance-sampling method | [Choosing a method](@ref choosing-method) |
+| Choose an importance-sampling method | [Method comparison](@ref choosing-method) |
 | Evaluate many samples with matrix operations | [Batch targets](@ref batch-guide) |
 | Supply gradients or use automatic differentiation | [Gradients](@ref gradients-guide) |
 | Execute on CUDA, Metal, or Reactant | [Devices](@ref devices-guide) |
@@ -92,5 +92,5 @@ Every tutorial defines its data and runs from top to bottom.
 ## Documentation versions
 
 `dev` documents the current `main` branch. Tagged releases retain their own
-documentation. `stable` points to the latest release. Use the deployed site's
-version selector to choose the documentation for your installed package.
+documentation. `stable` points to the latest release. The site's version selector
+provides documentation for each release.

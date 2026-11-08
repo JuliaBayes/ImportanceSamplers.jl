@@ -3,7 +3,7 @@
 A proposal supplies normalized draws and their log density.
 Its support must cover the regions that contribute to the target integral.
 
-## Start with a Gaussian
+## Gaussian proposals
 
 ```@example proposals
 using ImportanceSamplers, Random, LinearAlgebra
@@ -30,7 +30,7 @@ The diagonal and factor forms take vector locations.
 Factor a covariance once. Do not pass the covariance itself as `L`.
 The implementation uses multiplication and triangular solves, not a covariance inverse.
 
-## Use heavier tails
+## Student-t proposals
 
 ```@example proposals
 proposal = FactorStudentT(
@@ -66,7 +66,7 @@ AMIS, NPMC, CAIS, and FirstOrderGRAMIS require `nu > 2` because they fit covaria
 Location-only methods accept any finite `nu > 0`.
 None fits `nu` by maximum likelihood.
 
-## Form a proposal population
+## Proposal populations
 
 ```@example proposals
 bank = ProposalBank([
@@ -88,7 +88,7 @@ Native banks use one scalar/vector layout, dimension, floating type, and radial 
 A Gaussian/Student-t mixed bank is not supported.
 Student-t components may have different degrees of freedom.
 
-## Preserve precision
+## Precision
 
 Native proposals support `Float32` and `Float64` and copy their input arrays.
 Use matching types for locations, scales, factors, and Student-t degrees of freedom.
@@ -110,7 +110,7 @@ eltype(bank32.masses)
 Masses participate in numerical promotion.
 A device changes precision only when you request that conversion explicitly.
 
-## Use Distributions.jl
+## Distributions.jl interface
 
 Loading Distributions.jl activates native conversion for `Normal`, conventional
 `MvNormal` forms, `TDist`, `Cauchy`, and supported multivariate Student-t forms.
@@ -129,7 +129,7 @@ A mixture distribution remains one atomic proposal.
 To expose its components to MIS, construct
 `ProposalBank(components(mixture), probs(mixture))` explicitly.
 
-## Define a custom CPU proposal
+## Custom CPU proposals
 
 Implement these two operations for the same normalized measure:
 

@@ -9,7 +9,7 @@ Consider
 I=\int_{\mathbb R^3}\exp(-\lVert x\rVert^2)\,dx=\pi^{3/2}.
 ```
 
-## Integrate a nonnegative function
+## Nonnegative integrands
 
 ```@example integration
 using ImportanceSamplers, Random, Statistics
@@ -30,7 +30,7 @@ The normalized proposal supplies draws over the integration domain.
 For plain IS, the estimate is the average of ``f(x_i)/q(x_i)``.
 The package stores this ratio in log form.
 
-## Integrate a signed function
+## Signed integrands
 
 A signed integrand has no real logarithm everywhere.
 Choose a positive envelope ``g`` and write the integrand as ``g(x)h(x)`` instead.
@@ -54,7 +54,7 @@ The product equals the ordinary weighted average
 This estimate can have either sign. It needs proposal support wherever ``g h`` contributes
 and finite variance for conventional Monte Carlo error estimates.
 
-## Integrate over a constrained domain
+## Constrained domains
 
 A proposal may live directly on the domain, or a transform may map unconstrained draws into it.
 The target must use the same reference measure as the proposal.

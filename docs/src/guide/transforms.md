@@ -3,7 +3,7 @@
 Use `transform=` when the target has constrained or named parameters.
 The sampler works in flat numerical coordinates and presents logical parameters to the target.
 
-## A simplex, a positive value, and an unconstrained value
+## Named constrained parameters
 
 This target has three positive weights that sum to one, a positive rate, and a real offset.
 
@@ -52,7 +52,7 @@ The proposal has four coordinates, although the logical sample contains five sca
 An integer selector gives a scalar field. A range gives a vector field.
 A `K`-component simplex consumes `K - 1` coordinates.
 
-## Inspect the returned shape
+## Sample structure
 
 ```@example transforms
 (
@@ -72,7 +72,7 @@ Use bare selectors for unconstrained fields, such as `offset=4` or
 `5:8=>IdentityTransform()`. Every output field still has an explicit name.
 Omitting `transform` leaves the whole sample unchanged.
 
-## Choose a scalar constraint
+## Scalar transforms
 
 | Support | Constructor | Map |
 |:--|:--|:--|
@@ -92,7 +92,7 @@ For a Gaussian base, the exponential map gives a lognormal upper tail.
 Softplus gives a lighter, Gaussian-like upper tail.
 Neither choice guarantees finite importance-weight variance.
 
-## Apply the Jacobian once
+## Target Jacobian
 
 For a map ``\theta=T(z)``, the sampler evaluates
 
@@ -100,8 +100,7 @@ For a map ``\theta=T(z)``, the sampler evaluates
 \log\pi(T(z))+\log|\det J_T(z)|.
 ```
 
-Your target returns the log density in logical coordinates.
-Do not add the same Jacobian yourself.
+The target returns the log density in logical coordinates without this Jacobian.
 
 `current_proposal(prepared)` returns the fitted proposal in numerical coordinates.
 Keep the layout when using that proposal in another sampler.
@@ -109,10 +108,10 @@ Keep the layout when using that proposal in another sampler.
 If another package already supplies an unconstrained target with its Jacobian,
 do not apply the transform again.
 
-## Transform the proposal instead
+## Proposal transforms
 
 `TransformedProposal` owns the change of variables at the proposal boundary.
-This is useful for fixed IS with a constrained proposal:
+For fixed IS with a constrained proposal:
 
 ```@example transforms
 proposal = TransformedProposal(

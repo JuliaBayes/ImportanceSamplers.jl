@@ -1,6 +1,6 @@
 # [Results and statistics](@id result-reference)
 
-See [Working with results](@ref results-guide) for weighted estimates, indexing, and device rules.
+See [Weighted samples](@ref results-guide) for weighted estimates, indexing, and device rules.
 
 ## Containers and weights
 

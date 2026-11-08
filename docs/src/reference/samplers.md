@@ -1,6 +1,6 @@
 # [Samplers and transitions](@id sampler-reference)
 
-See [Choosing a method](@ref choosing-method) for the method comparison and allocation requirements.
+See [Method comparison](@ref choosing-method) for adaptation, weighting, and allocation requirements.
 
 ## Algorithm configurations
 

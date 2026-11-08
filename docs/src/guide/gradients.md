@@ -3,7 +3,7 @@
 Only `FirstOrderGRAMIS` needs target gradients among the implemented samplers.
 Value-only operations still use the log target without requesting a gradient.
 
-## Supply a gradient
+## Explicit gradients
 
 ```@example gradients
 using ImportanceSamplers, Random, Statistics
@@ -39,9 +39,9 @@ An applicable in-place form has priority.
 A device gradient must support the supplied device arrays.
 Do not retain its borrowed input or output buffers.
 
-## Select automatic differentiation
+## Automatic differentiation
 
-Install an AD backend in your project, then pass its ADTypes selector through `LogTarget`.
+`LogTarget` accepts an ADTypes selector for an installed AD backend.
 For example, with ForwardDiff installed:
 
 ```julia
@@ -59,7 +59,7 @@ An explicit `grad=` takes priority over `adtype`.
 A bare first-order LogDensityProblems target can supply its own value/gradient interface.
 Failure in the selected source does not trigger a different source.
 
-## Differentiate named parameters
+## Named-parameter gradients
 
 For a target taking `theta = (; rate, offset)`, a logical gradient has matching fields:
 
@@ -99,7 +99,7 @@ Differentiate only the logical log target.
 The package adds the transform pullback and the log-Jacobian derivative.
 CPU AD instead differentiates the composed flat-coordinate target.
 
-## Use gradients on accelerators
+## Accelerator gradients
 
 | Execution | Gradient route |
 |:--|:--|

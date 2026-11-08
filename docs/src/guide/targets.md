@@ -1,9 +1,9 @@
 # [Targets and data](@id targets-guide)
 
-A target returns the log of the density or nonnegative integrand you want to study.
+A target returns the log density or log of a nonnegative integrand.
 The proposal determines which parameters are sampled and their shape.
 
-## Pass data separately
+## Target context
 
 ```@example targets
 using ImportanceSamplers, Random, Statistics
@@ -26,7 +26,7 @@ A target without data can use `logtarget(theta)` instead.
 A named target can use `theta.scale` or `theta.weights` through a
 [transform layout](@ref transforms-guide).
 
-## Adapt an existing keyword function
+## Keyword functions
 
 Julia keyword arguments need an ordinary callable wrapper:
 
@@ -39,12 +39,12 @@ mean(other)
 ```
 
 There is no reserved keyword name or fixed number of keywords.
-The wrapper translates your function's signature into the package's `(theta, p)` convention.
+The wrapper converts the function signature to the package's `(theta, p)` convention.
 
 Pass numerical arrays through `p` for device execution.
 A closure over host arrays does not transfer those arrays to a GPU.
 
-## Use an existing density interface
+## Density interfaces
 
 Objects implementing `DensityInterface.logdensityof` can serve as targets.
 For example, with Distributions.jl installed:
@@ -70,7 +70,7 @@ A first-order interface can also supply [gradients](@ref gradients-guide).
 Use `LogTarget(callable)` to select callable semantics explicitly when an object
 also advertises a density interface. The selected interface does not change after an execution error.
 
-## Observe the numerical contract
+## Numerical requirements
 
 A log target must return `Float32` or `Float64` with an inferable return type.
 Finite values and `-Inf` are valid. `-Inf` means zero target density.
@@ -83,7 +83,7 @@ Scalar targets may run concurrently. Treat the input sample and context as read-
 Avoid hidden mutable scratch storage. Use an explicit [batch callback](@ref batch-guide)
 when evaluation should share work across samples.
 
-## Keep density measures consistent
+## Reference measures
 
 The target and proposal must describe densities against the same reference measure.
 A transformed target needs exactly one Jacobian adjustment.

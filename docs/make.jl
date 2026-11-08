@@ -28,7 +28,7 @@ makedocs(
     pages=[
         "Getting started" => "index.md",
         "Tutorials" => [
-            "First weighted estimate" => "tutorials/first_estimate.md",
+            "Weighted estimation" => "tutorials/first_estimate.md",
             "Logistic regression" => "tutorials/logistic_regression.md",
             "Numerical integration" => "tutorials/integration.md",
         ],
@@ -36,11 +36,11 @@ makedocs(
             "Targets and data" => "guide/targets.md",
             "Proposals" => "guide/native_proposals.md",
             "Constraints and named parameters" => "guide/transforms.md",
-            "Working with results" => "guide/results.md",
+            "Weighted samples" => "guide/results.md",
             "Adaptation and reuse" => "guide/reuse.md",
         ],
         "Methods" => [
-            "Choosing a method" => "methods/index.md",
+            "Method comparison" => "methods/index.md",
             "Plain IS" => "methods/importance_sampling.md",
             "Static MIS" => "methods/static_mis.md",
             "AMIS" => "methods/amis.md",

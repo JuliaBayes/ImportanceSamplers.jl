@@ -3,7 +3,7 @@
 Static MIS samples a fixed bank of proposals.
 A complete scheme selects both the generating proposal and the weight denominator.
 
-## Cover two modes
+## Bimodal example
 
 ```@example static
 using ImportanceSamplers, Random, Statistics
@@ -33,7 +33,7 @@ The population's masses match its two mixture masses, while the proposals are wi
 `samples.provenance.proposal_id` identifies the generating bank entry.
 The bank keeps its input order and stable one-based identifiers.
 
-## Choose the scheme
+## Selection and weighting schemes
 
 For masses ``\alpha_j``, define
 ``\psi(x)=\sum_j\alpha_jq_j(x)``.
@@ -59,7 +59,7 @@ algorithm = ImportanceSampling(four_proposal_bank; nsamples=10_000, mis_scheme=s
 Within a group, nominal masses are renormalized to sum to one.
 Zero-mass proposals keep their identifiers but generate no samples.
 
-## Weigh cost against coverage
+## Density cost and support conditions
 
 A full-mixture denominator shares density information across proposals.
 Its cost grows with the number of active proposals.

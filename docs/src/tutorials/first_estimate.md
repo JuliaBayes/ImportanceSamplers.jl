@@ -1,9 +1,9 @@
-# [Your first weighted estimate](@id first-estimate)
+# [Weighted estimation](@id first-estimate)
 
 This tutorial estimates the moments of a three-dimensional Gaussian.
-It introduces the same workflow used by every sampler.
+The preparation and estimation interface is shared by all samplers.
 
-## 1. Define the log target
+## Log target
 
 ```@example first
 using ImportanceSamplers, Random, Statistics
@@ -18,7 +18,7 @@ The corresponding normalized target is a standard Gaussian in three dimensions.
 
 The omitted normalizing constant does not affect weighted means or variances.
 
-## 2. Choose a proposal and draw samples
+## Proposal and sampling
 
 ```@example first
 proposal = SphericalGaussian(zeros(3), 1.5)
@@ -37,7 +37,7 @@ deviation, not a variance. This proposal is wider than the target.
 The result stores one sample per column: `samples.samples[:, i]` is the
 three-dimensional draw at index `i`.
 
-## 3. Compute weighted summaries
+## Weighted moments
 
 ```@example first
 (
@@ -48,7 +48,7 @@ three-dimensional draw at index `i`.
 ```
 
 The reference mean is `zeros(3)`. The reference covariance is the identity matrix.
-The estimates differ because the run has finite size.
+Finite-sample estimates differ from these reference values.
 
 These methods use normalized importance weights. In contrast,
 `mean(samples.samples; dims=2)` ignores the weights and describes the proposal draws.
@@ -64,7 +64,7 @@ Functions of the sampled parameters use the same interface:
 
 The reference values are three and one, respectively.
 
-## 4. Inspect the weights
+## Log weights and effective sample size
 
 ```@example first
 weights = normalized_weights(samples)
@@ -84,7 +84,7 @@ The raw log weight is
 Weight ESS measures concentration. It lies between one and the draw count when
 the weights are valid. It does not test whether important regions were missed.
 
-## 5. Estimate the normalizing constant
+## Normalizing constant
 
 ```@example first
 (
@@ -99,7 +99,7 @@ Here ``Z=(2\pi)^{3/2}``, since the target omitted the Gaussian normalization.
 Adding a constant to the log target adds that constant to this result.
 For Bayesian evidence, retain all prior and likelihood normalization constants.
 
-## Next step
+## Related examples
 
 [Logistic regression](@ref logistic-tutorial) adds observed data and an adaptive proposal.
-[Working with results](@ref results-guide) covers indexing, intervals, resampling, and diagnostics.
+[Weighted samples](@ref results-guide) covers indexing, intervals, resampling, and diagnostics.

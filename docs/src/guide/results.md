@@ -1,9 +1,9 @@
-# [Working with results](@id results-guide)
+# [Weighted samples](@id results-guide)
 
 Every sampler returns `WeightedSamples`.
 The samples and their weights together define the estimate.
 
-## Compute summaries
+## Weighted moments
 
 ```@example results
 using ImportanceSamplers, Random, Statistics
@@ -33,7 +33,7 @@ Compute a scalar function of each sampled parameter vector directly:
 `std(f, samples)` follows the same convention.
 The variance describes `f(X)` under the target, not the Monte Carlo error of its estimated mean.
 
-## Inspect individual draws
+## Indexing and provenance
 
 ```@example results
 samples[1]
@@ -56,7 +56,7 @@ Population methods expose `provenance.proposal_id`.
 Adaptive methods expose `provenance.round`.
 These are generating identifiers, not a request to recompute weights.
 
-## Select a subset
+## Sample subsets
 
 ```@example results
 subset = samples[1:100]
@@ -73,7 +73,7 @@ A target-dependent selection also changes the population described by the summar
 Results own their arrays. Later sampler calls do not change an earlier result.
 Treat result arrays as read-only to preserve alignment and weight semantics.
 
-## Compute intervals
+## Weighted quantiles
 
 ```@example results
 (
@@ -88,7 +88,7 @@ A vector of probabilities gives one output column per probability for vector sam
 Quantiles, medians, scalar indexing, and iteration require CPU storage.
 Transfer a GPU result explicitly before using them.
 
-## Obtain unweighted draws
+## Resampling
 
 ```@example results
 draws = resample(Xoshiro(7), samples)
@@ -104,7 +104,7 @@ Its summaries use ordinary unweighted definitions.
 Resampling adds randomness and does not increase the information in the weighted result.
 Keep the original result for weighted summaries and normalizer estimates.
 
-## Interpret ESS and normalizers
+## Effective sample size and normalizers
 
 ```@example results
 weights = normalized_weights(samples)
@@ -129,7 +129,7 @@ AMIS has additional [retrospective-weight caveats](@ref amis-method).
 If every raw log weight is `-Inf`, the plain IS result remains inspectable and
 `lognormalizer` returns `-Inf`. Normalized summaries throw `AllZeroWeightsError`.
 
-## Keep device results resident
+## Device results
 
 `normalized_weights`, moments, scalar functionals, slicing, and resampling have device paths.
 Array outputs stay on the device. Scalar reductions can require synchronization.

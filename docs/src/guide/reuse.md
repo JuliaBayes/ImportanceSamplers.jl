@@ -3,7 +3,7 @@
 An algorithm describes a sampling method.
 A prepared sampler owns the target, random stream, workspaces, and learned proposal.
 
-## Prepare once, run again
+## Repeated execution
 
 ```@example reuse
 using ImportanceSamplers, Random, Statistics
@@ -29,7 +29,7 @@ A successful adaptive call retains its final fitted proposal even when that prop
 generated no sample in the completed call.
 AMIS also starts a new retrospective history on the next call.
 
-## Choose the count
+## Sample counts
 
 Plain and static IS take `nsamples`.
 Adaptive methods take `rounds` and `round_size`:
@@ -50,7 +50,7 @@ Population methods have additional [allocation requirements](@ref choosing-metho
 A prepared call restarts round-indexed schedules at round one.
 LAIS transition state follows its separate tuning rules.
 
-## Reuse only the learned proposal
+## Proposal snapshots
 
 ```@example reuse
 proposal = current_proposal(prepared)
@@ -73,7 +73,7 @@ For an accelerator sampler, request an explicit CPU snapshot with
 `current_proposal(MLDataDevices.CPUDevice(), prepared)`.
 This transfers the proposal, not the complete result or sampler.
 
-## Change the target
+## Retargeting
 
 ```@example reuse
 new_p = (; centre=[1.5, -0.5])
@@ -96,7 +96,7 @@ Retargeting does not prove that condition.
 On an accelerator, retargeting stages the learned proposal through CPU memory before
 constructing fresh state on the original device. This is a setup cost, not a per-sample transfer.
 
-## Respect ownership and failures
+## Ownership and failures
 
 The sampler owns the RNG supplied to preparation.
 Do not also consume it elsewhere when reproducibility matters.

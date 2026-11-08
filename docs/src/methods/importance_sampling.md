@@ -38,7 +38,7 @@ For integrable ``\pi f``, the linear estimate
 Finite variance needs the corresponding squared ratio to be integrable.
 Self-normalized expectations and logarithms generally have finite-sample bias.
 
-## Use the prior as proposal
+## Prior proposals
 
 For a Bayesian target
 ``\log\pi(\theta)=\log p(y\mid\theta)+\log p(\theta)``,

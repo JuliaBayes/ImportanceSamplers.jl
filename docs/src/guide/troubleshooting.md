@@ -3,7 +3,7 @@
 Inspect the exception and its cause before increasing the sampling budget.
 Many failures indicate a model, support, or execution mismatch.
 
-## The weights concentrate on a few samples
+## Weight concentration
 
 Compute `inv(sum(abs2, normalized_weights(samples)))` and inspect the largest normalized weights.
 
@@ -15,7 +15,7 @@ Location-only methods do not tune scales.
 DM-PMC, APIS, and LAIS keep their lower proposal scales fixed.
 LAIS RAM tunes upper MCMC increments, not those lower scales.
 
-## All weights are zero
+## All-zero weights
 
 A valid `-Inf` target value means zero density.
 For plain IS, an all-zero run retains its samples and reports `lognormalizer == -Inf`.
@@ -24,7 +24,7 @@ Normalized summaries throw `AllZeroWeightsError`.
 Adaptive methods may fail earlier because a round or local fit has no usable mass.
 Check constraints, proposal support, and target underflow.
 
-## A target returns NaN or +Inf
+## Nonfinite target values
 
 `SamplerExecutionError` reports a phase and sample index.
 A batch-wide failure uses index zero because no single sample is identified.
@@ -33,7 +33,7 @@ Its captured exception retains the original error and backtrace.
 Use a stable log-density expression.
 Do not replace invalid arithmetic with a finite number merely to continue sampling.
 
-## Covariance adaptation fails
+## Covariance adaptation
 
 Inspect the method-specific round error, its `phase`, and its `cause`.
 Check local sample counts, weight concentration, and repeated or degenerate samples.
@@ -45,7 +45,7 @@ AMIS, N-PMC, and first-order GRAMIS use their documented stabilization rules.
 A failed adaptive call preserves the pre-call proposal state.
 Its RNG still advances. Repeating the call is not an exact replay.
 
-## A device transfer fails
+## Device transfer
 
 `SamplerDeviceError.reason` identifies the rejected capability.
 Common causes include:
@@ -59,12 +59,12 @@ Common causes include:
 Consult [Devices](@ref devices-guide).
 An unsupported contract has no silent CPU fallback.
 
-## A result cannot be indexed
+## Scalar indexing
 
 Transfer device results to CPU before scalar indexing, iteration, quantiles, or medians.
 Array slicing and resident weighted moments use separate supported paths.
 
-## A prepared sampler cannot be moved or entered
+## Sampler migration and concurrent use
 
 Transfer it before the first execution begins.
 An accelerator-prepared sampler cannot itself migrate to another device.
@@ -73,7 +73,7 @@ Request an explicit result or proposal copy instead.
 A prepared sampler is mutable and non-reentrant.
 Use one sampler and RNG per concurrent task.
 
-## Report a reproducible failure
+## Failure reports
 
 Include a small target, proposal, seed, count schedule, and device selection.
 Include `Project.toml`, `Manifest.toml`, the package commit, and the command that failed.

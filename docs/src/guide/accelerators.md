@@ -3,7 +3,7 @@
 Prepare on CPU, then apply an explicit MLDataDevices device to the complete sampler.
 The target data, proposal, random buffers, and adaptation state move together.
 
-## Prepare device-compatible state
+## Prepared state
 
 ```@example devices
 using ImportanceSamplers, Random, Statistics
@@ -30,12 +30,11 @@ This example chooses `Float32` so its numerical setup also works on Metal.
 CPU and CUDA also support `Float64`.
 The package does not require every model to use one precision.
 
-The top-level function holds no hidden data.
-Its numerical array lives in `p`, so device transfer can move it explicitly.
+Numerical data is passed through `p`, not captured by the target function.
 
-## Run on CUDA
+## CUDA
 
-Install CUDA.jl in your project, then continue:
+With CUDA.jl installed:
 
 ```julia
 using CUDA
@@ -63,7 +62,7 @@ device = MLDataDevices.CUDADevice{typeof(physical),Nothing}(physical)
 Array summaries remain on the GPU.
 `host_samples` is an explicit, independent CPU copy.
 
-## Run on Metal
+## Metal
 
 Use the same numerical setup, with Metal installed:
 
@@ -81,7 +80,7 @@ Metal uses `Float32`.
 The explicit device policy may convert supplied floating-point state.
 Constructing the whole model in `Float32` makes that choice visible from the start.
 
-## Run through Reactant
+## Reactant
 
 For the checked NVIDIA GPU path, install Reactant and CUDA:
 
@@ -102,7 +101,7 @@ Device preparation compiles the built-in numerical phases.
 Later calls reuse those executables with the current RNG and adapted proposals.
 Preparation can therefore cost much more than one warmed run.
 
-## Current backend scope
+## Backend support
 
 These entries describe implemented paths with representative hardware checks.
 They do not imply that every user target compiles on every backend.
@@ -144,7 +143,7 @@ Other generic products remain CPU-only.
 Native `transform=` layouts can expose named, bounded, positive, and simplex parameters.
 Do not infer bank support from a standalone transformed proposal.
 
-## Preserve residency and ownership
+## Residency and ownership
 
 Samples, log weights, proposal state, and numerical workspaces remain on the device.
 Bounded failure and round summaries can synchronize with the host.
@@ -164,7 +163,7 @@ Use [`retarget`](@ref reuse-guide) to rebuild target-dependent state on the same
 Accelerator setup consumes a seed from the source RNG for an owned backend stream.
 Seeded replay assumes the same software, hardware, and execution configuration.
 
-## Pass state through supported containers
+## State containers
 
 Named tuples already support recursive device conversion.
 Custom context or callable structs with arrays need a standard `Adapt.adapt_structure` rule.
@@ -175,7 +174,7 @@ Those arrays are not sampler-owned data and cannot be transferred reliably.
 There is no silent CPU fallback for an unsupported device contract.
 The exception's `reason` identifies the rejected capability.
 
-## Further details
+## References
 
 - [Performance](@ref performance-guide) explains factor batching and compilation costs.
 - [Validation](@ref validation-guide) gives runnable backend checks.

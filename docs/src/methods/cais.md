@@ -30,7 +30,7 @@ Every proposal needs at least `d + 2` samples per round in dimension `d`.
 
 ## Estimator and adaptation
 
-Returned weights use the **generating proposal**, not a full mixture:
+Returned weights use the generating proposal, not a full mixture:
 
 ```math
 \ell_{t,j,i}=\log\pi(x_{t,j,i})-\log q_{t,j}(x_{t,j,i}).
@@ -46,7 +46,7 @@ The covariance rule depends on their local ESS:
 
 The second branch changes the covariance fit, not the returned estimator weights or next mean.
 
-## Set the covariance threshold
+## Covariance threshold
 
 ```julia
 algorithm = CAIS(
@@ -62,7 +62,7 @@ That fraction is a package default, not a universal paper prescription.
 `diagnostics.local_ess` records the weights used for the covariance fit.
 `diagnostics.tempering_powers` distinguishes raw from tempered fitting.
 
-## Exact replacement and failures
+## Covariance replacement and failures
 
 CAIS replaces the covariance rather than blending it.
 It adds no ridge, eigenvalue floor, or silent old-factor fallback.

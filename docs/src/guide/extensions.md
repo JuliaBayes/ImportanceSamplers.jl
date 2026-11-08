@@ -1,9 +1,9 @@
 # [Custom proposals and transitions](@id extension-guide)
 
-Use the existing interfaces when the built-in proposals or LAIS transitions do not fit your model.
-These extension points do not change the public sampling workflow.
+Custom proposals and LAIS transitions use the existing interfaces.
+They retain the public preparation and sampling workflow.
 
-## Define a normalized CPU proposal
+## Normalized CPU proposals
 
 This example samples a uniform distribution on `(-1, 1)`:
 
@@ -34,7 +34,7 @@ Generic proposals support CPU execution.
 Adaptive methods require their supported native proposal forms.
 A generic proposal does not become GPU-compatible through an Adapt rule alone.
 
-## Preserve the sample structure
+## Sample structure
 
 A draw may be a scalar, a dense vector, or a named tuple of scalar/vector leaves.
 Every draw must retain its structure, dimensions, and leaf types.
@@ -46,7 +46,7 @@ Target and density functions must be pure and thread-safe for threaded execution
 A generic proposal bank also needs one concrete proposal element type.
 Use a concrete wrapper type when several instances differ only in parameters.
 
-## Extend the LAIS upper transition
+## LAIS transition interface
 
 Subtype `AbstractMCMCTransition` and implement the existing namespaced interface:
 
@@ -72,7 +72,7 @@ These are implementation extension points, not a compatibility promise for arbit
 The [built-in transitions](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/src/mcmc_transitions.jl)
 provide the current concrete contract.
 
-## Integrate a model package
+## Model adapters
 
 An adapter must define the sampled coordinates, the log target, the context, and the proposal.
 Exactly one side owns each constraint transform and Jacobian.

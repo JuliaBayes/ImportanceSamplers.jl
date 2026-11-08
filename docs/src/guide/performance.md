@@ -1,9 +1,9 @@
 # [Performance](@id performance-guide)
 
-Measure the complete workflow that matters to your application.
-Separate preparation, compilation, sampling, summaries, and explicit transfers.
+Performance measurements should cover the complete application workflow,
+with preparation, compilation, sampling, summaries, and explicit transfers reported separately.
 
-## Use CPU threads deliberately
+## CPU threading
 
 Launch Julia with a chosen thread budget:
 
@@ -26,7 +26,7 @@ Avoid oversubscribing the machine with both outer threads and multithreaded BLAS
 The largest thread count need not be fastest.
 Compare several budgets on the same workload.
 
-## Compare factor execution policies
+## Factor execution
 
 ```@example performance
 using ImportanceSamplers, Random, LinearAlgebra
@@ -56,7 +56,7 @@ Mixed sample/log-weight precision can require an explicit batched request.
 The diagnostic records the resolved policy.
 It does not prove that every phase used a matrix operation.
 
-## Account for named product storage
+## Named product storage
 
 Diagonal Gaussian products can use native CPU execution. Correlated products
 keep blockwise generic CPU arithmetic where available, avoiding a dense solve
@@ -70,7 +70,7 @@ Native named layouts currently retain a flat sample batch while constructing
 the named output arrays. Budget for both batches, alongside random buffers and
 method workspaces. They stay on the selected device; this is not CPU readback.
 
-## Time warmed sampling
+## Warmed sampling
 
 Use BenchmarkTools in a benchmark environment:
 
@@ -93,7 +93,7 @@ A warmed adaptive benchmark retains its learned proposal across calls.
 It is not a fresh-initialization accuracy experiment.
 Use independent prepared samplers when comparing fresh-run accuracy.
 
-## Account for memory and compilation
+## Memory and compilation
 
 Every adaptive result retains all configured rounds.
 AMIS additionally keeps proposal history and revisits denominators.
@@ -108,7 +108,7 @@ Further signatures and view operations may compile eagerly.
 Functionals with captured state also compile eagerly so state changes remain visible.
 Custom LAIS transitions do not receive the built-in compilation guarantees.
 
-## Compare fairly
+## Benchmark design
 
 Interleave baseline and candidate timings on shared hardware.
 Record thread counts, BLAS threads, device, precision, budgets, and host load.

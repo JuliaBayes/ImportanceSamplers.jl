@@ -6,7 +6,7 @@ The package test suite and standalone reproducers check mathematical and device-
 A successful example is not proof of accuracy for every model.
 A checked-in GPU script is not evidence that it passed on the current machine.
 
-## Checked sampler examples
+## Executable support table
 
 This table executes each example during the build. Every row checks 256 retained
 samples, finite values, sample and log-weight precision, and normalized weights.
@@ -43,7 +43,7 @@ The checker verifies residency before explicit CPU readback. Any failed check
 stops table generation. Optional-backend checks below cover deeper numerical,
 reuse, statistics, and failure contracts.
 
-## Run the package tests
+## Package tests
 
 From a checkout:
 
@@ -57,7 +57,7 @@ The CI configuration defines the tested Julia environments.
 Accelerator checks are separate, explicit hardware runs.
 They do not run on the default hosted CPU CI jobs.
 
-## Run a focused reproducer
+## Equation and backend reproducers
 
 Use the repository's validation environment:
 
@@ -100,7 +100,7 @@ IMPORTANCE_SAMPLERS_SOURCE_COMMIT=PASTE_FULL_COMMIT_HERE julia --project=validat
 Inspect the checkout and loaded package path first.
 The environment variable records a claim. It does not verify the loaded source.
 
-## Build the manual
+## Documentation build
 
 ```sh
 julia --project=docs -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'
@@ -116,7 +116,7 @@ Repository source links are checked against local files to avoid repeated GitHub
 That check does not verify the remote branch.
 CI deploys the built manual from `main`.
 
-## Record useful evidence
+## Validation records
 
 Record the commit and tracked diff, `Project.toml`, `Manifest.toml`, command, seed,
 precision, counts, threads, device, and complete result.

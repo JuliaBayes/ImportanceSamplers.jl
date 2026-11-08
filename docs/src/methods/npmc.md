@@ -22,7 +22,7 @@ samples = importance_sample!(prepared)
 The reference mean is `[1, -1]`.
 Vector proposals learn full covariance even when their initial scale is spherical or diagonal.
 
-## Separate fitting weights from estimator weights
+## Estimation and adaptation weights
 
 For each round:
 
@@ -37,7 +37,6 @@ There is no temporal-mixture denominator or resampling step.
 
 `diagnostics.adaptation_ess` describes the clipped fitting weights.
 `diagnostics.round_ess` describes each round's raw estimator weights.
-They answer different questions.
 
 ## Scope and failures
 

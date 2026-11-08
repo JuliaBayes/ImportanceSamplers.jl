@@ -30,7 +30,7 @@ The initial proposal is spherical, but adaptation learns a full covariance.
 `round_size` is a total count per round.
 Use `round_size=[1_000, 2_000, 3_000, 4_000]` for unequal counts.
 
-## Understand one round
+## Adaptation recurrence
 
 1. Draw new samples from the current proposal.
 2. Evaluate their target values.

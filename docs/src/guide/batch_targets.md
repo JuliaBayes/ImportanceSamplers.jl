@@ -3,7 +3,7 @@
 A scalar target evaluates one draw.
 An optional batch callback evaluates many draws with shared matrix operations or device kernels.
 
-## Evaluate a regression model in batches
+## Batched linear regression
 
 ```@example batch
 using ImportanceSamplers, Random, Statistics, LinearAlgebra
@@ -47,7 +47,7 @@ The scalar and batch functions compute the same unnormalized log posterior.
 Each sample is a column.
 The matrix multiplication `p.X * samples` evaluates all proposed coefficient vectors together.
 
-## Match the callback shape
+## Callback interface
 
 | Scalar target input | Batch input | Output buffer |
 |:--|:--|:--|
@@ -67,7 +67,7 @@ Each output must equal the scalar target for that sample.
 It must not depend on other samples or the batch width.
 Widths may vary. Empty batches are skipped.
 
-## Control work and memory
+## Parallelism and memory
 
 The callback owns CPU parallelism.
 `threaded=true` does not divide one callback into concurrent calls.
@@ -80,7 +80,7 @@ Scratch must remain valid for the callback's actual width and device.
 Without `batch=`, the package already evaluates independent scalar targets in parallel.
 A batch callback changes how the model computes, not whether the sampler can run in parallel.
 
-## Use constraints, gradients, and devices
+## Transforms, gradients, and devices
 
 With `transform=`, the callback receives logical named leaves.
 The package adds the Jacobian. Do not add it in the callback.
@@ -93,7 +93,7 @@ A device callback receives resident inputs, outputs, and context.
 Use the current task's stream or complete private-stream work before returning.
 Failure checks may synchronize at batch boundaries, not once per sample.
 
-## Understand adaptive calls
+## Adaptive execution
 
 Adaptive methods batch the current round's samples.
 AMIS caches earlier target values.
@@ -106,7 +106,7 @@ Reactant uses fixed-width padded batches so prepared executables can be reused.
 Inactive candidates retain their accepted locations and their new values are discarded.
 Their extra evaluations appear in the diagnostics.
 
-## Compare both paths
+## Scalar and batch performance
 
 Batching can help data-heavy matrix models.
 Cheap scalar targets can be faster with fused scalar execution.

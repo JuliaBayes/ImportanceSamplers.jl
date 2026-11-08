@@ -27,7 +27,7 @@ This equal-mass, equal-allocation configuration uses local resampling, the LR-PM
 Replace `LocalResampling()` with `GlobalResampling()` for the GR-PMC case.
 Global resampling is the default.
 
-## Choose the resampling scope
+## Resampling policies
 
 | Policy | Source of the next centre in each slot |
 |:--|:--|
@@ -40,7 +40,7 @@ Global resampling can select duplicate ancestors and reduce population diversity
 
 The selected sample becomes the next proposal location.
 The original scale or factor remains unchanged.
-Resampling does **not** tune proposal widths.
+Resampling does not tune proposal widths.
 
 ## Allocation and weights
 
@@ -68,7 +68,7 @@ The last resampling step runs after the final returned round.
 Its centres become the starting population for the next prepared call.
 
 Gaussian and Student-t proposals retain their original scales and Student-t degrees of freedom.
-Good centres cannot compensate for unsuitable scales.
+Adapted centres do not compensate for unsuitable scales.
 
 An all-zero round fails.
 Local resampling also fails when one proposal's sample group has no nonzero weight.

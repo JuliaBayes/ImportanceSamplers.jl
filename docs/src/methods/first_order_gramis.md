@@ -35,7 +35,7 @@ The bank needs at least two distinct initial means, equal positive masses,
 a shared dimension, and one native radial family.
 Every proposal needs at least `d + 2` draws per round.
 
-## Follow one round
+## Adaptation recurrence
 
 1. Draw and weight samples from the current, fixed population.
 2. Fit proposal-local covariances using raw or tempered fitting weights.
@@ -54,7 +54,7 @@ Returned weights use the current realized-count mixture:
 Later adaptation does not change those weights.
 The final fitted population remains available for the next prepared call.
 
-## Control the mean update
+## Mean update
 
 Backtracking tests candidates of the form
 
@@ -74,7 +74,7 @@ The final mean, including repulsion, therefore need not increase the log target.
 `repulsion_strength` accepts a scalar, one value per round, or a round-indexed function.
 Schedules restart at round one on each prepared call.
 
-## Control covariance fitting
+## Covariance fitting
 
 Local fitting ratios use the generating proposal, not the returned mixture denominator.
 Above the ESS threshold, the covariance uses raw weights centred at the old proposal mean.
@@ -88,7 +88,7 @@ An invalid fitted factor fails the call and leaves the committed population unch
 Student-t proposals require `nu > 2`.
 Preconditioning and fitting use actual covariance before conversion to Student-t scale.
 
-## Distinguish the published methods
+## Differences from published GRAMIS
 
 | Aspect | This implementation |
 |:--|:--|

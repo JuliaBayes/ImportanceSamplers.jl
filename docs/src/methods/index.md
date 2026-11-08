@@ -1,11 +1,11 @@
-# [Choosing a method](@id choosing-method)
+# [Method comparison](@id choosing-method)
 
-Begin with a proposal that covers the target.
-Adaptation can improve a useful initial proposal, but it cannot recover regions that the run never visits.
+The initial proposal must cover the target.
+Adaptation can improve it but cannot recover regions that the run never visits.
 
-## Match the method to the task
+## Adaptation and weighting
 
-| Method | What changes | Weight denominator |
+| Method | Adapted state | Weight denominator |
 |:--|:--|:--|
 | [Plain IS](@ref plain-is) | Nothing | Single proposal |
 | [Static MIS](@ref static-mis) | Nothing | Chosen fixed-bank scheme |
@@ -30,7 +30,7 @@ Population methods retain several proposals, with different rules for moving or 
 No method dominates for every target, dimension, budget, and estimand.
 Compare accuracy as well as weight ESS and elapsed time.
 
-## Understand the common workflow
+## Preparation and execution
 
 ```julia
 prepared = prepare_sampler(rng, logtarget, p, algorithm)
@@ -48,7 +48,7 @@ All rounds contribute to the returned result.
 Only AMIS retrospectively changes earlier weights.
 The other adaptive methods retain each sample's original round weight.
 
-## Allocate enough samples
+## Allocation requirements
 
 | Method | Per-round allocation requirement |
 |:--|:--|
@@ -64,4 +64,4 @@ Covariance fitting and tail coverage often need substantially more samples.
 
 Adaptive methods use native Gaussian or Student-t proposals.
 [Proposals](@ref proposals-guide) explains the supported layouts and Student-t covariance convention.
-[Devices](@ref devices-guide) is the single reference for backend support.
+[Devices](@ref devices-guide) lists backend support.

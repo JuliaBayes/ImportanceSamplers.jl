@@ -28,7 +28,7 @@ Each epoch keeps its proposals fixed while drawing the assigned samples.
 The bank needs equal positive masses.
 Each round size must be divisible by the proposal count and give at least two draws per proposal.
 
-## Distinguish the two weight roles
+## Estimation and adaptation weights
 
 For a sample from proposal ``j``, the retained estimator weight uses
 

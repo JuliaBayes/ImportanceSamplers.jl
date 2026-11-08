@@ -3,7 +3,7 @@
 The repository contains model comparisons, analytic accuracy checks, and per-method performance scripts.
 Benchmark dependencies remain separate from package and documentation dependencies.
 
-## Reproduce a model comparison
+## Model comparison
 
 Run the comparison from the repository root:
 
@@ -23,7 +23,7 @@ To print an existing table without sampling:
 julia --project=benchmark/comparison benchmark/comparison/compare.jl --report benchmark/comparison/results-2026-09-16-comparison.toml
 ```
 
-## Models and competing samplers
+## Models and samplers
 
 | Model | Parameters | Data |
 |:--|--:|:--|
@@ -43,7 +43,7 @@ The [combined report](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/m
 retains timing ranges and accuracy warnings.
 Some rows reuse archived measurements. They are not simultaneous measurements and cannot establish a speedup by themselves.
 
-## Interpret ESS/s carefully
+## Effective sample size per second
 
 | Sampler class | Reported ESS |
 |:--|:--|
@@ -62,7 +62,7 @@ Accuracy checks and ESS calculations occur outside the timed interval.
 Use the full reports to inspect moment errors, divergences, R-hat, and per-seed variation.
 A high ESS/s cell does not override a failed accuracy check.
 
-## Compare scalar and batch targets
+## Scalar and batch evaluation
 
 The paired [CPU report](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/benchmark/comparison/batch-cpu-2026-09-28-paired.md)
 and [CUDA report](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/benchmark/comparison/batch-cuda-2026-09-28-paired.md)
@@ -74,7 +74,7 @@ Separate collection windows cannot establish a regression or speedup by themselv
 The [batch API guide](@ref batch-guide) explains the callback contract.
 The comparison README gives the paired-run commands.
 
-## Examine signal-background coverage
+## Signal-background coverage
 
 The model-specific conditional proposal has a separate runner:
 
@@ -90,7 +90,7 @@ Its weight ESS is not tail-functional ESS.
 The archived moment reference and the independent coordinate-specific tail checks answer different questions.
 Passing those moment checks does not establish coverage of every tail functional.
 
-## Measure other costs
+## Additional benchmarks
 
 - [`benchmark/time_to_accuracy.jl`](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/benchmark/time_to_accuracy.jl)
   compares normalizer, mean, and second-moment errors against independent references.
