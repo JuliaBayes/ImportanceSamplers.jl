@@ -135,7 +135,7 @@ struct _PreparedProposalToken end
 
 Construct a proposal that maps draws from `base` into logical values through
 `transform`. Its density uses the exact normalized change of variables
-`log q_x(x) = log q_z(z) - log|J(z)|`. The proposal owns this Jacobian;
+`log q_x(x) = log q_z(z) - log|J(z)|`. The proposal applies this Jacobian;
 target densities must use the resulting logical reference measure without
 applying it again.
 
@@ -246,6 +246,8 @@ Construct a normalized scalar or vector Gaussian proposal with finite
 `Float32` or `Float64` location and a finite positive scalar standard
 deviation of the same type. Its covariance is `scale^2` for a scalar and
 `scale^2 I` for a vector.
+
+See [`DiagonalGaussian`](@ref), [`FactorGaussian`](@ref), and [`SphericalStudentT`](@ref).
 """
 function SphericalGaussian(location, scale)
     stored_location = _validated_native_parameter(location)
@@ -291,6 +293,8 @@ Construct a normalized vector Gaussian proposal with independent finite
 positive coordinate scales. Location and scales must use the same `Float32`
 or `Float64` element type. The scales are standard deviations, so the
 covariance diagonal is `scales .^ 2`.
+
+See [`SphericalGaussian`](@ref), [`FactorGaussian`](@ref), and [`DiagonalStudentT`](@ref).
 """
 function DiagonalGaussian(location, scales)
     stored_location = _validated_native_parameter(location)
@@ -362,6 +366,9 @@ lower-triangular factor with positive diagonal. A `Cholesky` factorization is
 accepted through its lower factor. The covariance is `L * L'`; pass a factor,
 not an inverse covariance. Density evaluation uses triangular solves and never
 forms a covariance inverse.
+
+See [`FactorStudentT`](@ref) for heavier tails and [`BatchedFactorExecution`](@ref)
+for matrix-based draws and densities in [`ImportanceSampling`](@ref).
 """
 function FactorGaussian(location, factor)
     stored_location = _validated_native_parameter(location)
@@ -448,6 +455,8 @@ end
 Construct a normalized scalar or spherical multivariate Student-t proposal.
 `dof`, `location`, and `scale` must share a `Float32` or `Float64` type.
 The scale is the standard elliptical scale, not the standard deviation.
+
+See [`SphericalGaussian`](@ref), [`DiagonalStudentT`](@ref), and [`FactorStudentT`](@ref).
 """
 function SphericalStudentT(dof, location, scale)
     stored_location = _validated_native_parameter(location)
@@ -467,6 +476,9 @@ end
 
 Construct a normalized multivariate Student-t proposal with diagonal elliptical
 scales. The scales are not marginal standard deviations.
+
+Coordinates share a radial multiplier and are not independent. See
+[`DiagonalGaussian`](@ref), [`SphericalStudentT`](@ref), and [`FactorStudentT`](@ref).
 """
 function DiagonalStudentT(dof, location, scales)
     stored_location = _validated_native_parameter(location)
@@ -492,6 +504,9 @@ end
 
 Construct a normalized multivariate Student-t proposal with elliptical scale
 matrix `factor * factor'`. Density evaluation uses triangular solves.
+
+For `dof > 2`, covariance is `dof / (dof - 2) * factor * factor'`.
+See [`FactorGaussian`](@ref) and [`BatchedFactorExecution`](@ref).
 """
 function FactorStudentT(dof, location, factor)
     stored_location = _validated_native_parameter(location)

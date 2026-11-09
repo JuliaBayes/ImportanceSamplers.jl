@@ -1,7 +1,7 @@
 # [Adaptation and reuse](@id reuse-guide)
 
 An algorithm describes a sampling method.
-A prepared sampler owns the target, random stream, workspaces, and learned proposal.
+A prepared sampler stores the target, random stream, workspaces, and learned proposal.
 
 ## Repeated execution
 
@@ -96,9 +96,9 @@ Retargeting does not prove that condition.
 On an accelerator, retargeting stages the learned proposal through CPU memory before
 constructing fresh state on the original device. This is a setup cost, not a per-sample transfer.
 
-## Ownership and failures
+## Random streams and failures
 
-The sampler owns the RNG supplied to preparation.
+The sampler retains and advances the RNG supplied to preparation.
 Do not also consume it elsewhere when reproducibility matters.
 Use separate samplers and RNGs for concurrent runs.
 

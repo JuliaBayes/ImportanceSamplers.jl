@@ -84,7 +84,7 @@ A subset does not preserve the complete estimator.
 `lognormalizer(subset)` is therefore unavailable.
 A target-dependent selection also changes the population described by the summary.
 
-Results own their arrays. Later sampler calls do not change an earlier result.
+Results contain separate arrays. Later sampler calls do not change an earlier result.
 Treat result arrays as read-only to preserve alignment and weight semantics.
 
 ## Weighted quantiles

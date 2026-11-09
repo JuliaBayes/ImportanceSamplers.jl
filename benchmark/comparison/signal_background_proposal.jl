@@ -57,6 +57,8 @@ IS._native_normal_stride(q::SignalBackgroundProposal) =
 IS._native_uniform_stride(q::SignalBackgroundProposal) =
     1 + max(8, IS._radial_uniform_stride(IS.StudentTFamily(q.dof, q.lognormalizer))) +
     5 * IS._radial_uniform_stride(IS.StudentTFamily(q.dof, q.lognormalizer))
+IS._native_range_exponents(::SignalBackgroundProposal, prototype, count) =
+    similar(prototype, Int, count)
 IS._allocate_native_samples(prototype, q::SignalBackgroundProposal, count) =
     similar(prototype, eltype(q.coefficients), 9, count)
 
@@ -137,9 +139,10 @@ function Random.rand(rng::Random.AbstractRNG, q::SignalBackgroundProposal)
 end
 
 IS.DensityInterface.logdensityof(q::SignalBackgroundProposal, x::AbstractVector) =
-    proposal_logdensity(q, x, Matrix{eltype(x)}(undef, 4, 1), 1)
+    proposal_logdensity(q, x, IS._range_scratch(
+        Matrix{eltype(x)}(undef, 4, 1), Matrix{Int}(undef, 4, 1)), 1)
 
-@kernel function conditional_draws!(samples, logweights, failures, q, normals, uniforms)
+@kernel function conditional_draws!(samples, logweights, failures, q, normals, uniforms, exponents)
     slot = @index(Global, Linear)
     sample = view(samples, :, slot)
     reason = draw!(sample, q, normals, uniforms,
@@ -149,7 +152,8 @@ IS.DensityInterface.logdensityof(q::SignalBackgroundProposal, x::AbstractVector)
         reason = IS._NATIVE_GENERATED_NONFINITE
     end
     if iszero(reason)
-        logweights[slot] = proposal_logdensity(q, sample, normals, slot)
+        scratch = IS._range_scratch(view(normals, 1:4, :), view(exponents, 1:4, :))
+        logweights[slot] = proposal_logdensity(q, sample, scratch, slot)
         reason = IS._native_proposal_reason(logweights[slot])
     end
     if !iszero(reason)
@@ -172,10 +176,10 @@ IS.Adapt.@adapt_structure DrawTarget
     (zero(eltype(target.logweights)), UInt16(0), true) : target.target(sample, slot)
 
 function IS._launch_native_fused!(samples, logweights, failures, uniforms, normals,
-    target, q::SignalBackgroundProposal, transform::IS._NoSampleTransform, execution)
+    target, q::SignalBackgroundProposal, transform::IS._NoSampleTransform, execution, exponents)
     if target isa IS._NativeBatchTarget
         IS._launch_native_fused!(samples, logweights, failures, uniforms, normals,
-            IS._deferred_target(target), q, transform, execution)
+            IS._deferred_target(target), q, transform, execution, exponents)
         return IS._finish_batch_weights!(logweights, target.target, samples,
             failures.storage, execution; transform)
     end
@@ -183,9 +187,10 @@ function IS._launch_native_fused!(samples, logweights, failures, uniforms, norma
     launch = (; ndrange=length(logweights),
         workgroupsize=IS._native_workgroupsize(execution, length(logweights)))
     conditional_draws!(backend)(samples, logweights, failures.storage, q,
-        reshape(normals, IS._native_normal_stride(q), length(logweights)), uniforms; launch...)
+        reshape(normals, IS._native_normal_stride(q), length(logweights)), uniforms,
+        reshape(exponents, IS._native_normal_stride(q), length(logweights)); launch...)
     IS._native_factor_batch_finish_kernel!(backend)(samples, logweights,
-        failures.storage, DrawTarget(target, logweights); launch...)
+        failures.storage, DrawTarget(target, logweights), nothing; launch...)
     IS.KernelAbstractions.synchronize(backend)
     return nothing
 end

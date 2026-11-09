@@ -61,7 +61,7 @@ end
 """
     WeightedSamples(samples, logweights; provenance=NamedTuple(), diagnostics=NamedTuple())
 
-Construct an owned, complete weighted-sample result.
+Construct a complete weighted-sample result with independent copies of the input arrays.
 
 `samples` is a numeric vector, numeric matrix, or nonempty named-tuple tree of
 those arrays. Its final logical axis must align with the raw, unnormalized

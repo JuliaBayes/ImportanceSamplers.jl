@@ -1,7 +1,7 @@
 # [Proposals and transforms](@id proposal-reference)
 
 [Proposals](@ref proposals-guide) explains scale conventions.
-[Constraints and named parameters](@ref transforms-guide) explains coordinate and Jacobian ownership.
+[Constraints and named parameters](@ref transforms-guide) explains coordinates and Jacobian adjustments.
 
 ## Native families
 

@@ -105,7 +105,7 @@ end
     current_proposal(sampler)
     current_proposal(destination, sampler)
 
-Return an independent snapshot of the proposal population currently owned by a
+Return an independent snapshot of the proposal population currently stored by a
 CPU-prepared [`DeterministicMixturePMC`](@ref) sampler. Active proposals use the
 latest adapted means. Gaussian, Student-t and Laplace scales or factors remain
 fixed. Gamma retains its configured coordinate variance. Masses stay fixed.

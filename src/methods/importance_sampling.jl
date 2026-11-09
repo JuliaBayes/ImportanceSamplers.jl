@@ -6,8 +6,8 @@ struct _SingleProposalMethodState end
 
 Abstract supertype for importance-sampling algorithm configurations.
 
-Algorithms are immutable descriptions. Execution state, RNG ownership, and a
-bound target belong to the object returned by [`prepare_sampler`](@ref).
+Algorithms are immutable descriptions. [`prepare_sampler`](@ref) stores execution
+state, the RNG, and a bound target in a reusable sampler.
 """
 abstract type AbstractImportanceSampler end
 
@@ -20,14 +20,21 @@ const _VALIDATED_IMPORTANCE_SAMPLING_TOKEN = _ValidatedImportanceSamplingToken()
 
 Configure plain or static multiple importance sampling.
 
-`proposal` must implement `rand(rng, proposal)` and
-`DensityInterface.logdensityof(proposal, sample)` for the same normalized
-measure. `nsamples` must be a positive `Int` and is the exact number of samples
+Generic CPU proposals require both operations below for the same normalized measure.
+
+| Operation | Requirement |
+|:--|:--|
+| `Random.rand(rng, proposal)` | Return a scalar, vector, or named tuple with consistent shape and leaf types |
+| `DensityInterface.logdensityof(proposal, sample)` | Return the normalized log density of the draw law |
+
+`nsamples` must be a positive `Int` and is the exact number of samples
 returned by every run. Generic proposals execute on CPU; supported native
 proposals also support prepared accelerator execution. Loading Distributions.jl
 adds native conversion for `Uniform`, `Gamma`, `Normal`, conventional `MvNormal`,
-and supported Student-t forms. Native families include Gaussian, Student-t,
-[`BoxUniform`](@ref), and [`IndependentGamma`](@ref) proposals.
+and supported Student-t forms. Native proposals include
+[`SphericalGaussian`](@ref), [`DiagonalGaussian`](@ref), [`FactorGaussian`](@ref),
+[`SphericalStudentT`](@ref), [`DiagonalStudentT`](@ref), [`FactorStudentT`](@ref),
+[`BoxUniform`](@ref), [`IndependentGamma`](@ref), and [`IndependentLaplace`](@ref).
 
 When the first argument is a [`ProposalBank`](@ref), `mis_scheme` selects one of
 the four complete assignment/denominator contracts described by
@@ -99,7 +106,8 @@ end
     SamplerBusyError
 
 Exception thrown when a prepared sampler is entered while it is already
-running. Prepared samplers are mutable, single-owner, and non-reentrant.
+running. Prepared samplers are mutable and non-reentrant. Do not share one
+sampler between concurrent calls.
 """
 struct SamplerBusyError <: Exception end
 
@@ -223,18 +231,30 @@ struct _DefaultFactorExecution <: _AbstractFactorExecution end
 """
     FusedFactorExecution()
 
-Evaluate each factor-Gaussian draw and density in fused sample kernels. This is
+Evaluate [`FactorGaussian`](@ref) and [`FactorStudentT`](@ref) draws and densities
+in fused sample kernels. This is
 the default on CPU and an explicit override on other supported devices. See the
-accelerator guide for backend-resolved defaults.
+accelerator guide for backend-resolved defaults. See also [`BatchedFactorExecution`](@ref).
 """
 struct FusedFactorExecution <: _AbstractFactorExecution end
 
 """
     BatchedFactorExecution()
 
-Use batched matrix multiplication and triangular solves for factor-Gaussian
-draws and densities when the sampler and device support them. Other cases use
-the fused path. Benchmark this explicit request on the target device.
+Use matrix multiplication and triangular solves for [`FactorGaussian`](@ref)
+and [`FactorStudentT`](@ref) draws and densities. Student-t draws share one radial
+multiplier across each sample's coordinates.
+
+| Sampling path | Batched factors |
+|:--|:--|
+| Plain IS with no transform or [`IdentityTransform`](@ref) | Gaussian and Student-t |
+| Static MIS with a full-mixture denominator | Packed Gaussian and Student-t banks |
+| Adaptive sampling | Supported packed factor banks and proposal histories |
+| Other proposals, transforms, or unsupported devices | [`FusedFactorExecution`](@ref) fallback |
+
+CPU uses fused execution by default. Supported accelerator paths use batching.
+Student-t batching needs one extra dimension-by-count workspace on the device.
+Benchmark an explicit override on the target device. See [`prepare_sampler`](@ref).
 """
 struct BatchedFactorExecution <: _AbstractFactorExecution end
 
@@ -298,10 +318,21 @@ during preparation. Callable applicability and scalar log-density types are
 validated on the first retained execution, when the logical sample type is
 available. The target must return a `Float32` or `Float64` log density.
 
-The prepared sampler retains and advances the supplied RNG; treat that RNG as
-owned by the sampler after preparation. A prepared sampler is mutable and
+Choose one target interface, not every row. Without explicit context, resolution
+prefers LogDensityProblems, then DensityInterface, then callable semantics.
+[`LogTarget`](@ref) selects callable semantics explicitly. Passing `p` also
+selects the two-argument callable form.
+
+| Target form | Required operations | Optional operations |
+|:--|:--|:--|
+| Callable | `logtarget(sample)` or `logtarget(sample, p)` | Batch and gradient callbacks through [`LogTarget`](@ref) |
+| DensityInterface object | `DensityInterface.DensityKind(target)` advertising a density, and `DensityInterface.logdensityof(target, sample)` | None required |
+| LogDensityProblems object | `LogDensityProblems.capabilities`, `LogDensityProblems.dimension`, and `LogDensityProblems.logdensity` | First-order capability and `LogDensityProblems.logdensity_and_gradient` for gradient methods |
+
+The prepared sampler retains and advances the supplied RNG. Do not consume that
+RNG elsewhere while using the sampler. A prepared sampler is mutable and
 non-reentrant. Repeated calls to [`importance_sample!`](@ref) create separate,
-noncumulative results that own their arrays.
+noncumulative results with separate arrays.
 
 Preparation always produces a CPU sampler. Apply an explicit
 `MLDataDevices.AbstractDevice` value to the complete prepared sampler before
@@ -317,7 +348,7 @@ device. Set `threaded=false` for serial CPU evaluation. On CPU,
 `threaded=true` falls back to serial execution when Julia has one default
 thread; accelerator launch policy does not depend on host thread count.
 The default factor path is fused on CPU and batched on accelerators that support
-factor batching. Use `FusedFactorExecution()` or `BatchedFactorExecution()` to
+factor batching. Use [`FusedFactorExecution`](@ref) or [`BatchedFactorExecution`](@ref) to
 override that choice; unsupported batched cases use the fused path.
 Native Gaussian MIS with wider logweights supports explicit batching without
 narrowing those weights. Its default remains fused; explicit batching uses
@@ -724,7 +755,7 @@ end
 function _retarget_sampler(rng, sampler, target)
     sampler.running && throw(SamplerBusyError())
     rng === sampler.rng && throw(
-        ArgumentError("retarget requires an RNG distinct from the source-owned RNG"),
+        ArgumentError("retarget requires an RNG distinct from the source sampler's RNG"),
     )
     prepared = _prepare_importance_sampler(
         rng,
@@ -750,13 +781,13 @@ adaptation history, workspaces, diagnostics, and failure buffers. Samples,
 weights, and normalizer state from the source are never reused. The source
 sampler remains unchanged and usable.
 
-On CPU, the returned sampler owns the supplied RNG. Accelerator setup consumes
-one `UInt64` after preflight to seed an owned backend RNG. A later backend RNG
+On CPU, the returned sampler retains and advances the supplied RNG. Accelerator setup consumes
+one `UInt64` after preflight to seed a separate backend RNG. A later backend RNG
 construction failure can therefore consume that value. The supplied RNG must
-differ from the source sampler's owned RNG.
+differ from the source sampler's RNG.
 
 Retargeting supports prepared [`DeterministicMixturePMC`](@ref), [`APIS`](@ref),
-[`CAIS`](@ref), [`NPMC`](@ref), [`LAIS`](@ref), [`AMIS`](@ref), and `FirstOrderGRAMIS` samplers.
+[`CAIS`](@ref), [`NPMC`](@ref), [`LAIS`](@ref), [`AMIS`](@ref), and [`FirstOrderGRAMIS`](@ref) samplers.
 LAIS retains learned transition factors but resets current-target caches and
 tuning progress, including warmup, for the new target.
 Plain and static importance sampling have no learned proposal state; call
@@ -871,7 +902,7 @@ Execute one complete estimator run using a prepared sampler.
 The bang records that the sampler's RNG stream and running state are mutated.
 It also permanently fixes device placement when execution begins, whether the
 run succeeds or fails.
-Each returned [`WeightedSamples`](@ref) owns its storage and cannot be changed
+Each returned [`WeightedSamples`](@ref) has separate storage and cannot be changed
 by later runs. Concurrent use of one sampler is unsupported; use separate
 prepared samplers and RNGs. An entry that observes the sampler already busy,
 including recursive re-entry, throws [`SamplerBusyError`](@ref); this check does

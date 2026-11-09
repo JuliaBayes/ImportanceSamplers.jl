@@ -322,7 +322,8 @@ end
         samples,
         logweights,
         failures,
-        target;
+        target,
+        nothing;
         ndrange=1,
         workgroupsize=1,
     )
@@ -502,6 +503,15 @@ end
     @test result.samples == [1.0, -0.5]
     @test result.logweights ≈ zeros(2) atol=8eps(Float64)
 
+    factor = FactorStudentT(1.0, zeros(2), [2.0 0; 0.5 1.0])
+    batched = importance_sample(
+        PrefilledRadialRNG(Float64[], [2.0, 4.0, 2.0, -3.0, 6.0, 3.0]),
+        factor, ImportanceSampling(factor; nsamples=2);
+        factor_execution=BatchedFactorExecution(),
+    )
+    @test batched.samples == [2.0 -2.0; 2.5 1.5]
+    @test batched.logweights ≈ zeros(2) atol=8eps(Float64)
+
     exhausted_proposal = SphericalStudentT(2.0, 0.0, 1.0)
     exhausted = prepare_sampler(
         PrefilledRadialRNG(ones(8), vcat(0.0, fill(-10.0, 8))),
@@ -517,6 +527,19 @@ end
     end
     @test error isa SamplerExecutionError
     @test error.phase == :proposal_draw
+
+    factor = FactorStudentT(2.0, zeros(2), Matrix{Float64}(LinearAlgebra.I, 2, 2))
+    failed = try
+        importance_sample(
+            PrefilledRadialRNG(ones(8), vcat(0.0, 0.0, fill(-10.0, 8))),
+            factor, ImportanceSampling(factor; nsamples=1);
+            factor_execution=BatchedFactorExecution(),
+        )
+    catch caught
+        caught
+    end
+    @test failed isa SamplerExecutionError && failed.phase == :proposal_draw
+    @test failed.captured.ex isa ErrorException
 end
 
 @testset "portable block transforms produce aligned logical samples" begin

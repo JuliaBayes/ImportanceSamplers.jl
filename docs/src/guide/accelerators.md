@@ -151,7 +151,7 @@ Other generic products remain CPU-only.
 Native `transform=` layouts can expose named, bounded, positive, and simplex parameters.
 Do not infer bank support from a standalone transformed proposal.
 
-## Residency and ownership
+## Residency and transfers
 
 Samples, log weights, proposal state, and numerical workspaces remain on the device.
 Bounded failure and round summaries can synchronize with the host.
@@ -168,7 +168,7 @@ An accelerator-prepared sampler cannot itself migrate to another device or back 
 Use `current_proposal(MLDataDevices.CPUDevice(), sampler)` for a proposal snapshot.
 Use [`retarget`](@ref reuse-guide) to rebuild target-dependent state on the same device.
 
-Accelerator setup consumes a seed from the source RNG for an owned backend stream.
+Accelerator setup consumes a seed from the source RNG for a separate backend stream.
 Seeded replay assumes the same software, hardware, and execution configuration.
 
 ## State containers
@@ -177,7 +177,7 @@ Named tuples already support recursive device conversion.
 Custom context or callable structs with arrays need a standard `Adapt.adapt_structure` rule.
 
 Do not capture host arrays in opaque closures or rely on global arrays.
-Those arrays are not sampler-owned data and cannot be transferred reliably.
+The sampler cannot reliably transfer those arrays. Pass them explicitly through `p`.
 
 There is no silent CPU fallback for an unsupported device contract.
 The exception's `reason` identifies the rejected capability.

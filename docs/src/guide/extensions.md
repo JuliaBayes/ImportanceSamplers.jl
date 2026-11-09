@@ -76,7 +76,7 @@ provide the current concrete contract.
 ## Model adapters
 
 An adapter must define the sampled coordinates, the log target, the context, and the proposal.
-Exactly one side owns each constraint transform and Jacobian.
+Exactly one side applies each constraint transform and Jacobian.
 
 No BAT, Wren, or Turing adapter ships with this package.
 Objects exposing supported density interfaces can already use those interfaces directly.

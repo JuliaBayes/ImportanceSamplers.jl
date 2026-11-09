@@ -273,17 +273,17 @@ _factor_batch_locations(history::_FactorProposalHistory) = history.means
 _factor_batch_factors(bank::_PackedFactorBank) = bank.factors
 _factor_batch_factors(history::_FactorProposalHistory) = history.factors
 
-_factor_batch_location(proposal::_GaussianProposal, proposal_slot) =
+_factor_batch_location(proposal::_NativeRadialProposal, proposal_slot) =
     proposal.location
-_factor_batch_factor(proposal::_GaussianProposal, proposal_slot) =
+_factor_batch_factor(proposal::_NativeRadialProposal, proposal_slot) =
     proposal.scale.factor
 _factor_batch_lognormalizers(bank::_PackedFactorBank) =
     bank.lognormalizers
 _factor_batch_lognormalizers(history::_FactorProposalHistory) =
     history.lognormalizers
-_factor_batch_lognormalizers(proposal::_GaussianProposal) =
+_factor_batch_lognormalizers(proposal::_NativeRadialProposal) =
     proposal.lognormalizer
-_factor_batch_exponent_bound(proposal::_GaussianProposal, slot) =
+_factor_batch_exponent_bound(proposal::_NativeRadialProposal, slot) =
     _scale_exponent_bound(proposal.scale)
 _factor_batch_exponent_bound(source, slot) =
     _exponent_bound_at(source.exponent_bounds, slot)
@@ -390,6 +390,24 @@ function _packed_factor_range_logradius!(source, sample, slot, scratch, sample_i
         i -> _packed_sample_coordinate(sample, i),
         i -> _packed_gaussian_location(source, i, slot),
         (i,j) -> _packed_gaussian_factor(source, i, j, slot))
+end
+
+function _packed_factor_range_logradius!(
+    source::_NativeRadialProposal,
+    sample,
+    slot,
+    scratch,
+    sample_index,
+)
+    values = _solve_values(scratch)
+    return _factor_range_logradius!(
+        view(values, :, sample_index),
+        view(_solve_exponents(scratch), :, sample_index),
+        size(values, 1),
+        i -> sample[i],
+        i -> source.location[i],
+        (i, j) -> source.scale.factor[i, j],
+    )
 end
 
 @inline function _factor_batch_logdensity(::Type{T}, source, samples, scratch, slot, sample_index) where {T}
@@ -913,9 +931,13 @@ end
     logweights,
     failure_storage,
     target,
+    radial_multipliers,
 )
     sample_index = @index(Global, Linear)
-    if !_factor_batch_sample_finite(samples, sample_index)
+    if !(radial_multipliers isa Nothing) && isnan(radial_multipliers[1, sample_index])
+        # Radial exhaustion was already recorded. Preserve that draw failure.
+        nothing
+    elseif !_factor_batch_sample_finite(samples, sample_index)
         _record_native_failure!(
             failure_storage,
             sample_index,
@@ -951,6 +973,56 @@ end
     end
 end
 
+@kernel function _native_factor_radial_kernel!(normals, uniforms, base, failures)
+    sample = @index(Global, Linear)
+    dimension = _gaussian_dimension(base.location)
+    offset = (sample - 1) * _native_normal_stride(base) + 1
+    multiplier, reason = _native_radial_multiplier(base, normals, uniforms, offset, sample)
+    if !iszero(reason)
+        _record_native_failure!(failures, sample, 0, reason)
+        multiplier = oftype(multiplier, NaN)
+    end
+    normals[offset+dimension] = multiplier
+end
+
+function _native_factor_normals!(
+    normals,
+    uniforms,
+    base::_GaussianProposal,
+    count,
+    failures,
+    execution,
+)
+    reshape(normals, _gaussian_dimension(base.location), count)
+end
+
+function _native_factor_normals!(
+    normals,
+    uniforms,
+    base::_StudentTProposal,
+    count,
+    failures,
+    execution,
+)
+    backend = KernelAbstractions.get_backend(normals)
+    # A dense matrix permits BLAS dispatch instead of generic strided GPU matmul.
+    scaled = similar(normals, _gaussian_dimension(base.location), count)
+    kernel = _native_factor_radial_kernel!(backend)
+    kernel(
+        normals,
+        isempty(uniforms) ? nothing : uniforms,
+        base,
+        failures;
+        ndrange = count,
+        workgroupsize = _native_workgroupsize(execution, count),
+    )
+    KernelAbstractions.synchronize(backend)
+    dimension = _gaussian_dimension(base.location)
+    buffered = reshape(normals, _native_normal_stride(base), count)
+    scaled .= view(buffered, 1:dimension, :) .* view(buffered, (dimension+1):(dimension+1), :)
+    return scaled
+end
+
 function _launch_native_factor_batch!(
     samples,
     logweights,
@@ -958,22 +1030,55 @@ function _launch_native_factor_batch!(
     normal_buffer,
     target,
     base,
-    execution,
+    execution;
+    uniform_buffer = nothing,
+    range_exponents = nothing,
 )
     if target isa _NativeBatchTarget
-        _launch_native_factor_batch!(samples, logweights, failure_record, normal_buffer,
-            _deferred_target(target), base, execution)
-        return _finish_batch_weights!(logweights, target.target, samples,
-            failure_record.storage, execution)
+        _launch_native_factor_batch!(
+            samples,
+            logweights,
+            failure_record,
+            normal_buffer,
+            _deferred_target(target),
+            base,
+            execution;
+            uniform_buffer,
+            range_exponents,
+        )
+        return _finish_batch_weights!(
+            logweights,
+            target.target,
+            samples,
+            failure_record.storage,
+            execution,
+        )
     end
     sample_count = length(logweights)
     dimension = _gaussian_dimension(base.location)
-    normals = reshape(normal_buffer, dimension, sample_count)
+    normals = _native_factor_normals!(
+        normal_buffer,
+        uniform_buffer,
+        base,
+        sample_count,
+        failure_record.storage,
+        execution,
+    )
+    radial_multipliers =
+        base isa _StudentTProposal ?
+        view(
+            reshape(normal_buffer, _native_normal_stride(base), sample_count),
+            (dimension+1):(dimension+1),
+            :,
+        ) : nothing
     _factor_batch_draw!(samples, normals, base, 1)
+    exponents =
+        isnothing(range_exponents) ? nothing :
+        view(reshape(range_exponents, _native_normal_stride(base), sample_count), 1:dimension, :)
     fill!(logweights, eltype(logweights)(-Inf))
     _launch_factor_batch_logmixture!(
         logweights,
-        normals,
+        _range_scratch(normals, exponents),
         samples,
         base,
         1,
@@ -990,9 +1095,10 @@ function _launch_native_factor_batch!(
         samples,
         logweights,
         failure_record.storage,
-        target;
-        ndrange=sample_count,
-        workgroupsize=_native_workgroupsize(execution, sample_count),
+        target,
+        radial_multipliers;
+        ndrange = sample_count,
+        workgroupsize = _native_workgroupsize(execution, sample_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -1004,8 +1110,8 @@ function _use_native_factor_batch_path(
     transform,
     factor_execution,
 )
-    return transform isa _NoSampleTransform &&
-           base isa _GaussianProposal &&
+    return transform isa Union{_NoSampleTransform,IdentityTransform} &&
+           base isa _NativeRadialProposal &&
            base.scale isa _FactorGaussianScale &&
            _use_factor_batch_path(device, base, factor_execution)
 end
