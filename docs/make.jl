@@ -20,6 +20,7 @@ makedocs(
         canonical="https://juliabayes.org/ImportanceSamplers.jl/stable/",
         edit_link=:commit,
         repolink="https://github.com/JuliaBayes/ImportanceSamplers.jl",
+        assets=["assets/logo.css"],
     ),
     build=joinpath(@__DIR__, "build"),
     pages=[

@@ -1,8 +1,6 @@
-<img src="assets/logo.svg" alt="ImportanceSamplers.jl logo" width="160" height="160" align="right">
-
 # ImportanceSamplers.jl
 
-[![CI](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml)
+[![CI](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml) <a href="https://juliabayes.org/ImportanceSamplers.jl/stable/"><img src="assets/logo.svg" alt="ImportanceSamplers.jl logo" width="160" height="160" align="right"></a>
 [![Coverage](https://codecov.io/gh/JuliaBayes/ImportanceSamplers.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBayes/ImportanceSamplers.jl)
 [![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliabayes.org/ImportanceSamplers.jl/stable/)
 [![Development docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliabayes.org/ImportanceSamplers.jl/dev/)
