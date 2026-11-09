@@ -13,7 +13,7 @@ The result contains samples and raw log weights.
 
 ## Installation
 
-Install the package with Pkg:
+Requires Julia 1.13 or later. Install the package with Pkg:
 
 ```julia
 using Pkg

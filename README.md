@@ -9,9 +9,9 @@
 Plain, multiple, and adaptive importance sampling in Julia: AMIS, APIS, LAIS,
 CAIS, N-PMC, DM-PMC, and first-order GRAMIS-CAIS. Supports threaded CPU execution,
 native Gaussian and Student-t proposals, constrained parameters, and optional
-CUDA, Metal, and Reactant paths with [documented support limits](https://juliabayes.org/ImportanceSamplers.jl/dev/guide/accelerators/).
+CUDA, Metal, and Reactant paths with [documented support limits](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/accelerators/).
 
-Install the package in your project:
+Requires Julia 1.13 or later. Install the package in your project:
 
 ```julia
 using Pkg
@@ -130,7 +130,7 @@ configuration from the LAIS-RAM rows above, which remain for comparison.
 [Reproducer and recorded environment](benchmark/comparison/README.md) ·
 [Timings, ranges, and accuracy checks](benchmark/comparison/results-2026-09-22-refresh-comparison.md) ·
 [Scalar/batch measurements](benchmark/comparison/README.md#scalar-and-batch-regression-targets) ·
-[Models and methodology](https://juliabayes.org/ImportanceSamplers.jl/dev/guide/benchmarks/)
+[Models and methodology](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/benchmarks/)
 
 [Stable docs](https://juliabayes.org/ImportanceSamplers.jl/stable/) ·
 [Development docs](https://juliabayes.org/ImportanceSamplers.jl/dev/) ·

@@ -1,4 +1,5 @@
 # Run from the package root with:
+# julia --project=validation -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'
 # julia --project=validation examples/cuda_logistic_regression.jl
 
 include(joinpath(@__DIR__, "logistic_regression.jl"))

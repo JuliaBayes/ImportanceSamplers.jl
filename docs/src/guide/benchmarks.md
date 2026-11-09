@@ -5,7 +5,7 @@ Benchmark dependencies remain separate from package and documentation dependenci
 
 ## Model comparison
 
-Run the comparison from the repository root:
+Use Julia 1.13 or later. Run the comparison from the repository root:
 
 ```sh
 julia --project=benchmark/comparison -e 'using Pkg; Pkg.instantiate()'
