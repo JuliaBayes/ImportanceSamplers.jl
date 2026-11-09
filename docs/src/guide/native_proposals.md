@@ -159,6 +159,8 @@ DM-PMC, APIS and LAIS also accept independent Laplace populations. They update
 locations and preserve coordinate scales. APIS uses local weighted means, not
 weighted medians. LAIS moves locations through its upper MCMC transition.
 
+## [Method compatibility](@id proposal-method-support)
+
 | Family | Fixed IS/static MIS | AMIS/N-PMC | DM-PMC/APIS | LAIS | CAIS/FirstOrderGRAMIS |
 |:--|:--|:--|:--|:--|:--|
 | Gaussian, Student-t | Yes | Yes | Yes | Yes | Yes |

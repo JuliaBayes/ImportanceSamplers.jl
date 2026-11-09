@@ -31,7 +31,8 @@ For each round:
 2. Compute raw log weights `logtarget - logproposal`.
 3. Clip fitting weights at the `isqrt(n)`-th largest weight.
 4. Fit proposal moments from that round's clipped weights.
-5. Retain the fitted proposal, with a scale-relative ridge for Gaussian/Student-t covariance.
+5. Retain the fitted proposal, with the [AMIS covariance ridge](@ref moment-ridge)
+   for Gaussian/Student-t fits.
 
 The estimator uses the original raw weights from every round.
 There is no temporal-mixture denominator or resampling step.
@@ -53,8 +54,11 @@ A round with too few nonzero weights can give a zero clipping threshold and fail
 A failed fit preserves the proposal committed before the call.
 
 For a fixed schedule, normalized proposals, support coverage, and integrability,
-the raw linear normalizer estimate avoids clipping bias.
-Its logarithm and self-normalized expectations still have finite-sample bias.
+the underlying raw linear normalizer estimate is unbiased when the run completes almost surely.
+This statement concerns the unconditional sampling law, not estimates selected for successful completion.
+Keeping raw weights avoids substituting clipped ratios into the estimator.
+It does not remove selection bias from discarding failed calls or retrying until success.
+Its logarithm and self-normalized expectations generally have finite-sample bias.
 
 See [Adaptation and reuse](@ref reuse-guide) and [Devices](@ref devices-guide).
 

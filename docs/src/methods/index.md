@@ -3,6 +3,28 @@
 The initial proposal must cover the target.
 Adaptation can improve it but cannot recover regions that the run never visits.
 
+## Choosing a method
+
+The proposal and available model operations determine a useful starting point.
+
+| Situation | Starting point | Main consideration |
+|:--|:--|:--|
+| A fixed proposal already covers the target well | Plain IS | Also useful for production after an independent pilot |
+| Several fixed proposals cover different regions | Static MIS | Full-mixture weighting evaluates every active density |
+| One proposal needs moment fitting | AMIS or N-PMC | AMIS recycles history; N-PMC fits each round using clipped weights |
+| Population locations need to move, but widths are already suitable | DM-PMC or APIS | Neither tunes covariance; resampling and local mean fitting behave differently |
+| MCMC moves can locate useful population centres | LAIS | Upper moves and tuning add work beyond the returned samples |
+| Population widths also need fitting | CAIS | Each proposal needs enough local samples for a viable fit |
+| Reliable target gradients are available | FirstOrderGRAMIS | Gradient and backtracking costs must be worthwhile |
+
+AMIS updates earlier denominators, which adds proposal-density work and history storage.
+N-PMC leaves earlier weights unchanged. A single fitted proposal may still miss separated modes.
+The [DM-PMC example](@ref dmpmc-method) checks an asymmetric two-mode target.
+
+Use an independent fixed-proposal production run when you want the usual independent-draw
+[Monte Carlo error analysis](@ref logistic-mc-error).
+No method dominates for every target, budget, and estimand.
+
 ## Adaptation and weighting
 
 | Method | Adapted state | Weight denominator |
@@ -21,14 +43,6 @@ Adaptation can improve it but cannot recover regions that the run never visits.
 
 GR-PMC and LR-PMC use `DeterministicMixturePMC` with different resampling policies.
 FirstOrderGRAMIS is a first-order hybrid, not the Hessian-based GRAMIS paper algorithm.
-
-Plain IS suits a fixed proposal, including a prior or an independently fitted proposal.
-Static MIS retains several fixed proposals.
-AMIS and N-PMC fit one Gaussian, Student-t, independent Gamma or independent Laplace proposal.
-Population methods retain several proposals, with different rules for moving or fitting them.
-
-No method dominates for every target, dimension, budget, and estimand.
-Compare accuracy as well as weight ESS and elapsed time.
 
 ## Preparation and execution
 
@@ -62,9 +76,26 @@ The other adaptive methods retain each sample's original round weight.
 These are admissibility conditions, not recommended statistical budgets.
 Covariance fitting and tail coverage often need substantially more samples.
 
+## Budgets and checks
+
+For `M` equally allocated population proposals, each generates `round_size / M` draws.
+Proposal-local fits use only their own draws. A larger population leaves fewer draws
+per local fit at a fixed round size.
+Choose initial widths that cover each region; more rounds do not tune fixed widths.
+
+The [logistic tutorial](@ref logistic-tutorial) uses 8,000 pilot draws and 20,000
+independent production draws. Its separate budgets are illustrative, not precision guarantees.
+Time the pilot, inspect its [diagnostics](@ref logistic-diagnostics), then check the
+production estimate across independent streams and larger budgets.
+A high weight ESS does not establish coverage of missed modes or tails.
+Count pilot work, proposal-density evaluations, and LAIS upper moves in total cost.
+
+## Proposal support
+
 All population methods accept native Gaussian or Student-t proposals.
 DM-PMC and APIS also accept independent Gamma and Laplace populations.
 LAIS also accepts independent Laplace lower proposals.
 AMIS and N-PMC support independent Gamma and Laplace moment fits.
-[Proposals](@ref proposals-guide) explains the supported layouts and Student-t covariance convention.
+[Method compatibility](@ref proposal-method-support) lists proposal families;
+[Proposals](@ref proposals-guide) explains layouts and the Student-t covariance convention.
 [Devices](@ref devices-guide) lists backend support.

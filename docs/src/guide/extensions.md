@@ -5,7 +5,8 @@ They retain the public preparation and sampling workflow.
 
 ## Normalized CPU proposals
 
-This example samples a uniform distribution on `(-1, 1)`:
+This example defines a uniform proposal on `(-1, 1)` for a target proportional
+to `exp(-x^2)` on that interval:
 
 ```@example extension
 using ImportanceSamplers, Random, DensityInterface, Statistics

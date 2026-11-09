@@ -49,6 +49,26 @@ or a covariance ridge. Gamma uses `shape = mean^2 / variance` and
 `scale = sqrt(variance / 2)`. These are moment fits, not maximum-likelihood fits.
 Degenerate or unrepresentable independent fits fail without committing new parameters.
 
+## [Covariance stabilization](@id moment-ridge)
+
+Gaussian and Student-t fits add a scale-relative ridge to the weighted covariance:
+
+```math
+\Sigma_{t+1}=\widehat{\operatorname{Cov}}_{w_t}(X)
++\sqrt{\operatorname{eps}(T)}\,
+  \frac{\operatorname{tr}(\Sigma_t)}{d}I_d.
+```
+
+Here `d` is the sampling dimension, `T` is the sample floating-point type, and
+``\Sigma_t`` is the previous proposal's actual covariance. The fitting weights ``w_t``
+are normalized; the covariance uses their fitted mean and no sample-size correction.
+For scalar samples, `d = 1`.
+Student-t fits convert the result to scale only after this update.
+
+The coefficient depends on precision and is not a tuning keyword.
+It reduces degeneracy risk but does not guarantee a finite, valid factorization.
+Independent Gamma and Laplace fits do not use this ridge.
+
 ## Retrospective denominator
 
 After round ``t``, with counts ``N_1,\ldots,N_t``, the denominator is

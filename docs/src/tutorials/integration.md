@@ -30,6 +30,20 @@ The normalized proposal supplies draws over the integration domain.
 For plain IS, the estimate is the average of ``f(x_i)/q(x_i)``.
 The package stores this ratio in log form.
 
+## Monte Carlo error
+
+These plain-IS draws are independent. For finite-variance contributions, use their
+ordinary sample standard error:
+
+```@example integration
+contributions = exp.(samples.logweights)
+(estimate=mean(contributions), monte_carlo_se=std(contributions) / sqrt(length(samples)))
+```
+
+This describes numerical error, not variation under a normalized target.
+It is not a general adaptive/MIS formula and cannot certify missed tails.
+This example has safely scaled contributions. Extreme log weights require rescaling before this calculation.
+
 ## Signed integrands
 
 A signed integrand has no real logarithm everywhere.
@@ -53,6 +67,8 @@ The product equals the ordinary weighted average
 
 This estimate can have either sign. It needs proposal support wherever ``g h`` contributes
 and finite variance for conventional Monte Carlo error estimates.
+The displayed product can overflow if its positive normalizer is too large.
+Large-scale signed integrals need sign/log-absolute accumulation instead of that product.
 
 ## Constrained domains
 

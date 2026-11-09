@@ -52,9 +52,10 @@ No wrapper is required.
 
 ```@example logistic
 initial = SphericalStudentT(5.0, zeros(3), 2.0)
+pilot_rounds, pilot_round_size = 4, 2_000
 pilot = prepare_sampler(
     Xoshiro(31), logposterior, p,
-    AMIS(initial; rounds=4, round_size=2_000),
+    AMIS(initial; rounds=pilot_rounds, round_size=pilot_round_size),
 )
 pilot_samples = importance_sample!(pilot)
 learned = current_proposal(pilot)
@@ -67,6 +68,25 @@ AMIS adapts a location and full covariance. The Student-t degrees of freedom sta
 
 The pilot starts broadly. It may still miss a remote mode.
 A fitted proposal does not remove the need to inspect the final weights.
+
+## [Proposal diagnostics](@id logistic-diagnostics)
+
+Inspect the weight concentration during the pilot:
+
+```@example logistic
+history_draws = pilot_round_size .* (1:pilot_rounds)
+history_ess = pilot_samples.diagnostics.round_ess
+(
+    draws=history_draws,
+    weight_ess=history_ess,
+    ess_fraction=history_ess ./ history_draws,
+)
+```
+
+AMIS reports cumulative history under each round's retrospective weights.
+These are not isolated round estimates, and the ESS fraction need not increase.
+A low fraction suggests checking location, width and tail coverage before adding draws.
+Even a high fraction cannot detect an unvisited mode.
 
 ## Fixed-proposal sampling
 
@@ -86,6 +106,7 @@ samples = importance_sample(
 The final run uses a fresh random stream and a fixed proposal.
 Its budget is independent of the pilot budget.
 Only `samples` supplies the following estimates.
+Check its weight ESS independently of the pilot's diagnostics.
 
 ## Posterior summaries and prediction
 
@@ -105,6 +126,31 @@ The prediction averages the success probability over posterior uncertainty.
 
 More observations can make prior importance sampling inefficient.
 Adapting the proposal helps only when the pilot reaches the posterior mass.
+
+## [Monte Carlo error](@id logistic-mc-error)
+
+The credible intervals above describe parameter uncertainty.
+They do not measure the numerical error in the estimated prediction.
+For these independent production draws, estimate that error with
+
+```@example logistic
+weights = normalized_weights(samples)
+probabilities = [
+    inv(1 + exp(-dot(new_predictors, beta))) for beta in eachcol(samples.samples)
+]
+mcse = sqrt(sum(abs2, weights .* (probabilities .- prediction)))
+(predicted_probability=prediction, monte_carlo_se=mcse)
+```
+
+For normalized weights ``\bar w_i``, this computes
+``\sqrt{\sum_i\bar w_i^2(h_i-\widehat\mu)^2}``.
+It is an asymptotic plug-in standard error, conditional on the frozen proposal,
+under the relevant finite-second-moment assumptions. It is not an exact error bound.
+See [Owen, Section 9.2](https://artowen.su.domains/mc/Ch-var-is.pdf), equation (9.9).
+
+Do not apply this independent-draw formula directly to adaptive or stratified MIS output.
+It also cannot detect missed regions or remove self-normalization bias.
+Compare independent production runs and larger budgets while keeping the proposal fixed.
 
 ## Related examples
 

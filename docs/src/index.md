@@ -36,25 +36,19 @@ proposal = SphericalGaussian(zeros(3), 1.5)
 algorithm = ImportanceSampling(proposal; nsamples=10_000)
 samples = importance_sample(Xoshiro(42), logtarget, algorithm)
 
-size(samples.samples)
+(
+    mean=round.(mean(samples); digits=3),
+    variance=round.(var(samples); digits=3),
+    shape=size(samples.samples),
+)
 ```
 
 The proposal is a Gaussian with mean `zeros(3)` and standard deviation `1.5` in
 each coordinate. The result stores one draw per column, with a matching raw log
 weight in `samples.logweights`.
 
-## Expectations
-
-```@example overview
-(
-    mean=round.(mean(samples); digits=3),
-    variance=round.(var(samples); digits=3),
-    squared_radius=round(mean(x -> sum(abs2, x), samples); digits=3),
-)
-```
-
-The reference mean is `[0, 0, 0]`, the marginal variances are `[1, 1, 1]`, and
-the mean squared radius is `3`. These estimates use the importance weights.
+The reference mean is `[0, 0, 0]` and the marginal variances are `[1, 1, 1]`.
+These estimates use the importance weights.
 `mean(samples.samples; dims=2)` ignores them and describes the proposal instead.
 
 For plain IS, each log weight is `logtarget(x) - logdensityof(proposal, x)`.
@@ -79,7 +73,7 @@ Every tutorial defines its data and runs from top to bottom.
 | Task | Page |
 |:--|:--|
 | Pass data or use an existing density | [Targets and data](@ref targets-guide) |
-| Choose Gaussian or Student-t proposals | [Proposals](@ref proposals-guide) |
+| Choose a proposal family and scale | [Proposals](@ref proposals-guide) |
 | Use positive, bounded, or simplex parameters | [Constraints and named parameters](@ref transforms-guide) |
 | Compute expectations, intervals, or resampled draws | [Weighted samples](@ref results-guide) |
 | Reuse a fitted proposal | [Adaptation and reuse](@ref reuse-guide) |

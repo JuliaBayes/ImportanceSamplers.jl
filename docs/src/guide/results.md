@@ -32,6 +32,8 @@ Compute a scalar function of each sampled parameter vector directly:
 
 `std(f, samples)` follows the same convention.
 The variance describes `f(X)` under the target, not the Monte Carlo error of its estimated mean.
+The [logistic tutorial](@ref logistic-mc-error) estimates that error for independent
+fixed-proposal production draws. Weight ESS is not a substitute for this calculation.
 
 ## Indexing and provenance
 
@@ -55,6 +57,18 @@ Iteration returns the same aligned records.
 Population methods expose `provenance.proposal_id`.
 Adaptive methods expose `provenance.round`.
 These are generating identifiers, not a request to recompute weights.
+
+Interpret method diagnostics according to the samples and weights they summarize:
+
+| Diagnostic | Interpretation |
+|:--|:--|
+| AMIS `round_ess` | Cumulative retained history after retrospective reweighting |
+| N-PMC `round_ess`, `adaptation_ess` | Current-round raw estimator weights versus clipped fitting weights |
+| CAIS `local_ess` | Proposal-local weights used for covariance fitting |
+| LAIS `transition` | Initial, warmup, and production upper-chain work |
+
+The [pilot example](@ref logistic-diagnostics) interprets an AMIS trace.
+Compare concentration with retained counts and independent estimates, not an arbitrary ESS cutoff.
 
 ## Sample subsets
 

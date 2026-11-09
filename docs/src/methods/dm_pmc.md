@@ -8,10 +8,15 @@ It uses a current-population mixture denominator and retains configured widths.
 ```@example dmpmc
 using ImportanceSamplers, Random, Statistics
 
-logtarget(x) = -sum(abs2, x) / 2
+function logtarget(x)
+    a = log(0.3) - (abs2(x[1] + 3) + abs2(x[2])) / 2
+    b = log(0.7) - (abs2(x[1] - 3) + abs2(x[2])) / 2
+    m = max(a, b)
+    return m + log(exp(a - m) + exp(b - m)) - log(2pi)
+end
 bank = ProposalBank([
-    FactorGaussian([-2.0, 0.0], [1.0 0.0; 0.4 0.8]),
-    FactorGaussian([ 2.0, 0.0], [1.0 0.0; 0.4 0.8]),
+    FactorGaussian([-2.0, 0.0], [1.2 0.0; 0.3 1.1]),
+    FactorGaussian([ 2.0, 0.0], [1.2 0.0; 0.3 1.1]),
 ])
 algorithm = DeterministicMixturePMC(
     bank; rounds=4, round_size=2_000,
@@ -20,12 +25,25 @@ algorithm = DeterministicMixturePMC(
 prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
-(mean=mean(samples), count=length(samples))
+(
+    mean=mean(samples),
+    positive_probability=mean(x -> x[1] > 0, samples),
+    count=length(samples),
+)
 ```
+
+The target mixes unit-covariance Gaussians centred at `[-3, 0]` and `[3, 0]`,
+with masses 0.3 and 0.7. Its reference mean is `[1.2, 0]`.
+The probability of a positive first coordinate is
+``0.3\Phi(-3)+0.7\Phi(3)\approx0.6995``, where ``\Phi`` is the standard-normal CDF.
+This functional checks region mass as well as the mean.
+Neither check alone certifies complete tail coverage.
 
 This equal-mass, equal-allocation configuration uses local resampling, the LR-PMC case.
 Replace `LocalResampling()` with `GlobalResampling()` for the GR-PMC case.
 Global resampling is the default.
+Bank masses determine allocation, not the target's mixture masses.
+Generating proposal IDs are not latent target-component assignments.
 
 ## Resampling policies
 
