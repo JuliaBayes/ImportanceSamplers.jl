@@ -143,6 +143,61 @@ AMIS has additional [retrospective-weight caveats](@ref amis-method).
 If every raw log weight is `-Inf`, the plain IS result remains inspectable and
 `lognormalizer` returns `-Inf`. Normalized summaries throw `AllZeroWeightsError`.
 
+## Pareto smoothing
+
+Pareto-smoothed importance sampling (PSIS) replaces the largest importance
+ratios with fitted generalized Pareto quantiles. It can stabilize an estimate
+at the cost of finite-sample bias. It is optional postprocessing, not another
+sampler and not an adaptation rule.
+
+```@example results
+smoothed = psis(samples)
+(
+    raw_mean=mean(samples),
+    smoothed_mean=mean(smoothed),
+    pareto_k=smoothed.diagnostics.pareto_k,
+    status=smoothed.diagnostics.status,
+    reliable=smoothed.diagnostics.reliable,
+)
+```
+
+`smoothed` shares the read-only samples and provenance but contains separate
+log weights. The original result remains unchanged. Weighted statistics,
+functionals, subsets, and resampling work as before, using the smoothed weights.
+Keep `samples` for `lognormalizer(samples)`: smoothing changes the normalizer
+estimator, so `lognormalizer(smoothed)` is unavailable.
+
+For raw log-weight vectors, `psis(logweights)` returns `(; logweights, diagnostics)`.
+Log weights remain unnormalized and preserve their original offset.
+
+The fit uses the largest `floor(min(n/5, 3sqrt(n/reff)))` ratios. The default
+`reff=1` describes independent draws. For MCMC output, `reff` denotes a supplied
+relative MCMC efficiency, not weight ESS divided by sample count. A single
+efficiency value does not account for arbitrary adaptive dependence.
+
+The shape estimate `pareto_k` describes the observed weight tail. The diagnostic
+threshold is `min(1 - 1/log10(n), 0.7)`. A fit below the threshold is not proof
+that the run found every mode or that an unbounded functional has a reliable
+error estimate. A high estimate warns of instability, not proof that a proper
+target has an infinite integral. MIS and adaptive inputs must already contain
+the method's correct final weights. PSIS does not recompute their denominators.
+
+Too-short or degenerate tails and failed fits retain the raw weights. Their
+shape diagnostic is `NaN` and `reliable=false`. An all-zero result cannot be
+normalized and throws `AllZeroWeightsError`.
+
+Equal tail weights receive their block's average smoothed mass. Their order
+therefore cannot change a weighted estimate. If a tie crosses the cutoff, or
+an exact zero ratio enters the selected tail, PSIS retains all raw weights and
+reports a degenerate tail. These conservative rules extend the paper's
+continuous-ratio algorithm and preserve known zero target mass.
+
+Arrays and fitting stay on the selected device. Only scalar diagnostics reach
+the host. `threaded=false` disables CPU worker tasks.
+See [Vehtari et al. (2024)](https://jmlr.org/papers/v25/19-556.html), Algorithm 1
+and Appendices F–H. The tail count follows the paper's floor rule, which differs
+from implementations that round upward.
+
 ## Device results
 
 `normalized_weights`, moments, scalar functionals, slicing, and resampling have device paths.

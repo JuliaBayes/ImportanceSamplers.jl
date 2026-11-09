@@ -27,6 +27,7 @@ test_files = if isempty(ARGS)
         "retarget",
         "threading",
         "results",
+        "psis",
         "resampling",
         "device_results",
         "failures",

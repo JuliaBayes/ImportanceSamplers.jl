@@ -63,6 +63,7 @@ export AbstractImportanceSampler,
     ContinuousTuning,
     MultinomialResampling,
     PartialDeterministicMixture,
+    ParetoSmoothedSamples,
     ProposalBank,
     RandomMixture,
     SamplerAlreadyExecutedError,
@@ -86,6 +87,7 @@ export AbstractImportanceSampler,
     importance_sample!,
     lognormalizer,
     normalized_weights,
+    psis,
     prepare_sampler,
     retarget,
     resample
@@ -134,6 +136,7 @@ include("apis_execution.jl")
 include("lais_execution.jl")
 include("mcmc_transition_kernels.jl")
 include("results.jl")
+include("psis.jl")
 include("resampling.jl")
 include("statistics.jl")
 include("batched_targets.jl")

@@ -7,9 +7,11 @@ See [Weighted samples](@ref results-guide) for weighted estimates, indexing, and
 ```@docs
 WeightedSamples
 WeightedSampleView
+ParetoSmoothedSamples
 UnweightedSamples
 normalized_weights
 lognormalizer
+psis
 ```
 
 ## Statistics

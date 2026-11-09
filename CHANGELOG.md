@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
+
 ## 0.0.1
 
 Initial feature set. Requires Julia 1.13 or later.
