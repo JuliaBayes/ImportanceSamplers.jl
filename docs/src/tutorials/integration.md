@@ -75,6 +75,6 @@ Large-scale signed integrals need sign/log-absolute accumulation instead of that
 A proposal may live directly on the domain, or a transform may map unconstrained draws into it.
 The target must use the same reference measure as the proposal.
 
-[Constraints and named parameters](@ref transforms-guide) explains Jacobian ownership.
+[Constraints and named parameters](@ref transforms-guide) explains Jacobian adjustments.
 The standalone [integration example](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/examples/numerical_integration.jl)
 also treats a one-dimensional integral.

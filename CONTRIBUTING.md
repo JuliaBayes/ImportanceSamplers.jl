@@ -1,8 +1,22 @@
 # Contributing
 
 Keep sampler changes narrow. Preserve the sampling law, log weights, precision,
-sample structure, RNG ownership, and device residency. Use analytic oracles for
+sample structure, random streams, and device residency. Use analytic oracles for
 numerical changes and interleaved BenchmarkTools runs for performance claims.
+
+## Branches
+
+Use `dev` for integration and `main` for tested releases.
+
+- Target feature and fix pull requests at `dev`.
+- Promote changes to `main` only through a pull request from `dev`.
+- Keep `dev` after a promotion.
+- Do not push directly to `main`.
+
+The source-branch rule is a project convention, not an automated merge check.
+
+CI builds and checks documentation on both branches. Development documentation
+deploys from `dev`. Tagged releases supply stable and versioned documentation.
 
 ## Tests
 
@@ -42,7 +56,7 @@ GitHub Pages Actions:
 
 | Source | Documentation |
 | --- | --- |
-| `main` | `/dev/` |
+| `dev` | `/dev/` |
 | A release tag such as `v0.1.0` | `/v0.1.0/` |
 | Latest release | `/stable/` |
 

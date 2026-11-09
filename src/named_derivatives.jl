@@ -63,7 +63,7 @@ end
 _named_gradient_scratch(pool::_GradientWorkerPool, slot) = pool.preparations[slot]
 _named_gradient_scratch(scratch::AbstractMatrix, slot) = view(scratch, :, slot)
 
-# CPU tasks own worker slots. GPU proposals own columns of logical gradient storage.
+# CPU tasks use separate worker slots. GPU proposals use separate logical-gradient columns.
 _gradient!(destination, bound, sample, slot) = _gradient!(destination, bound, sample)
 function _gradient!(destination, bound::_BoundNamedGradient, sample, slot=1)
     target = bound.target

@@ -322,6 +322,59 @@ end
     end
 end
 
+@testset "plain Student-t factor batching preserves draws and densities" begin
+    for dof in (1.0f0, 0.5f0, 8.0f0)
+        proposal = FactorStudentT(dof, Float32[1, -2], Float32[1.25 0; 0.4 0.8])
+        algorithm = ImportanceSampling(proposal; nsamples = 64)
+        target = x -> -Float64(sum(abs2, x)) / 2
+        fused_rng, batched_rng = Random.Xoshiro(42), Random.Xoshiro(42)
+        fused = importance_sample(
+            fused_rng,
+            target,
+            algorithm;
+            factor_execution = FusedFactorExecution(),
+        )
+        batched = importance_sample(
+            batched_rng,
+            target,
+            algorithm;
+            factor_execution = BatchedFactorExecution(),
+        )
+        @test batched.samples ≈ fused.samples rtol=8eps(Float32)
+        expected = map(eachcol(batched.samples)) do x
+            # Two-dimensional Student-t normalization is 1 / (2π * det(L)).
+            radius = sum(
+                abs2,
+                LinearAlgebra.LowerTriangular(Float64.(proposal.scale.factor)) \
+                (Float64.(x) - [1, -2]),
+            )
+            logq =
+                -log(2pi) - log(1.25f0) - log(0.8f0) -
+                (Float64(dof) + 2) / 2 * log1p(radius / Float64(dof))
+            target(x) - logq
+        end
+        @test batched.logweights ≈ expected rtol=32eps(Float32)
+        @test rand(batched_rng, UInt64) == rand(fused_rng, UInt64)
+    end
+
+    proposal = FactorStudentT(1.0, zeros(2), [1.0e-200 0; 1.0e-200 1.0])
+    batch = LogTarget(x -> 0.0; batch = (out, samples) -> fill!(out, 0.0))
+    result = importance_sample(
+        Random.Xoshiro(12),
+        batch,
+        ImportanceSampling(TransformedProposal(proposal, IdentityTransform()); nsamples = 8);
+        factor_execution = BatchedFactorExecution(),
+    )
+    expected = map(eachcol(result.samples)) do point
+        radius = sum(
+            abs2,
+            LinearAlgebra.LowerTriangular(BigFloat.(proposal.scale.factor)) \ BigFloat.(point),
+        )
+        Float64(log(2big(pi)) + log(big"1e-200") + 3big(0.5) * log1p(radius))
+    end
+    @test result.logweights ≈ expected rtol=16eps()
+end
+
 @testset "Student-t range fallback in factor mixtures" begin
     proposals = [FactorStudentT(1f0, zeros(Float32, 2), Matrix{Float32}(1f-20 * LinearAlgebra.I, 2, 2)),
         FactorStudentT(1f0, fill(1f20, 2), Matrix{Float32}(LinearAlgebra.I, 2, 2))]

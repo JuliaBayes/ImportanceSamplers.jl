@@ -24,8 +24,9 @@ otherwise construction rejects the bank instead of making that proposal inert.
 Zero-mass proposals remain in the configuration and retain their stable
 one-based IDs, but are neither assigned nor evaluated. Positive-mass proposals
 must share a sample dimension. Generic CPU execution additionally requires one
-concrete proposal element type. Homogeneous native Gaussian, Student-t, box and
-independent Gamma banks with one scalar/vector layout and floating type may be
+concrete proposal element type. Homogeneous native Gaussian, Student-t,
+[`BoxUniform`](@ref), [`IndependentGamma`](@ref), and [`IndependentLaplace`](@ref)
+banks with one scalar/vector layout and floating type may be
 packed during preparation. Loading Distributions.jl converts supported entries
 to their native forms during construction.
 

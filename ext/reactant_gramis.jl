@@ -253,7 +253,7 @@ IS._gramis_result_samples(plan::_CompiledGRAMISExecution, sampler, samples, tran
 function IS._launch_gramis_gradients!(plan::_CompiledGRAMISExecution, state, target, bound, execution, device, record)
     phase = plan.phases.gradient
     if isnothing(phase.evaluate)
-        # The AD executable owns its preparation. Call it outside the surrounding trace.
+        # The AD executable retains its preparation. Call it outside the surrounding trace.
         IS._batch_value_and_gradient!(state.workspace.frozen_values, state.workspace.gradients, bound, state.run.locations)
         phase.validate(_gramis_inputs(state), record)
     else

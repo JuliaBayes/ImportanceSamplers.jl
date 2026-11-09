@@ -1,4 +1,25 @@
-"""Abstract supertype for batched MCMC transitions used by [`LAIS`](@ref)."""
+"""
+    AbstractMCMCTransition
+
+Abstract supertype for batched MCMC transitions used by [`LAIS`](@ref).
+Built-in transitions are [`RandomWalkMetropolis`](@ref), [`RAM`](@ref),
+and [`SampleMetropolisHastings`](@ref).
+Custom transitions require the following methods, qualified with
+`ImportanceSamplers` except for `Base.copyto!`.
+
+| Method | Required behavior |
+|:--|:--|
+| `prepare_transition(config, centres, target, L)` | Build state without RNG use and retain the supplied centre storage; `L` is the log-density type |
+| `transition_centres(state)` | Return the same centre batch without copying |
+| `transition!(state, target, rng, execution, transfers)` | Advance one upper round and update cumulative work counts |
+| `Base.copyto!(destination, source)` | Copy persistent state for rollback |
+| `transition_diagnostics(state)` | Report initial, warmup, and production target evaluations, warmup and production proposals, and accepted moves |
+| `retarget_transition(config, state, destination)` | Rebuild the configuration from learned parameters for [`retarget`](@ref) |
+
+State must support `deepcopy`. Custom device execution also requires Adapt
+support, preserved centre aliases, and device preflight. See the
+[transition interface](@ref extension-guide) for diagnostic field names and limits.
+"""
 abstract type AbstractMCMCTransition end
 
 """
@@ -269,7 +290,7 @@ end
 _transition_foreach(f, indices, ::_SerialCPUExecution) = foreach(f, indices)
 _transition_foreach(f, indices, ::_ThreadedCPUExecution) = _threaded_foreach(f, indices)
 
-"""Advance the chain batch once, using coordinator-owned bulk random draws."""
+"""Advance the chain batch once, using bulk random draws from the coordinator."""
 transition!(state::_RandomWalkState, target, rng, execution, transfers) =
     _transition_batch!(state, target, rng, execution, transfers, nothing)
 

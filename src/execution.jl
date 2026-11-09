@@ -453,7 +453,9 @@ function _launch_native_batch!(samples, logweights, failure_record, buffers, tar
             buffers.normal,
             target_evaluator,
             base,
-            execution.cpu_execution,
+            execution.cpu_execution;
+            uniform_buffer=buffers.uniform,
+            range_exponents=buffers.range_exponents,
         )
     else
         _launch_native_fused!(

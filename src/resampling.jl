@@ -18,7 +18,7 @@ const _VALIDATED_UNWEIGHTED_SAMPLES_TOKEN = _ValidatedUnweightedSamplesToken()
 """
     UnweightedSamples(samples)
 
-An owned batch of unweighted samples. Logical samples occupy the final array
+Construct a batch of unweighted samples by copying the input arrays. Logical samples occupy the final array
 axis and support scalar indexing and iteration on CPU storage.
 """
 struct UnweightedSamples{R,S}

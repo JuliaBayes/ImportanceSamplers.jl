@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml)
 [![Coverage](https://codecov.io/gh/JuliaBayes/ImportanceSamplers.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaBayes/ImportanceSamplers.jl)
-[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliabayes.org/ImportanceSamplers.jl/dev/)
+[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliabayes.org/ImportanceSamplers.jl/stable/)
+[![Development docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliabayes.org/ImportanceSamplers.jl/dev/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 Plain, multiple, and adaptive importance sampling in Julia: AMIS, APIS, LAIS,
@@ -14,7 +15,7 @@ Install the package in your project:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/JuliaBayes/ImportanceSamplers.jl.git")
+Pkg.add("ImportanceSamplers")
 ```
 
 Sample a three-dimensional standard Gaussian using a broader Gaussian proposal:
@@ -131,6 +132,7 @@ configuration from the LAIS-RAM rows above, which remain for comparison.
 [Scalar/batch measurements](benchmark/comparison/README.md#scalar-and-batch-regression-targets) ·
 [Models and methodology](https://juliabayes.org/ImportanceSamplers.jl/dev/guide/benchmarks/)
 
+[Stable docs](https://juliabayes.org/ImportanceSamplers.jl/stable/) ·
 [Development docs](https://juliabayes.org/ImportanceSamplers.jl/dev/) ·
 [Logistic regression example](examples/logistic_regression.jl) ·
 [Contributing](CONTRIBUTING.md) ·

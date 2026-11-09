@@ -69,7 +69,7 @@ Widths may vary. Empty batches are skipped.
 
 ## Parallelism and memory
 
-The callback owns CPU parallelism.
+The callback controls CPU parallelism.
 `threaded=true` does not divide one callback into concurrent calls.
 Proposal and weighting work retain their normal execution policy.
 

@@ -110,7 +110,7 @@ do not apply the transform again.
 
 ## Proposal transforms
 
-`TransformedProposal` owns the change of variables at the proposal boundary.
+[`TransformedProposal`](@ref) applies the change of variables at the proposal boundary.
 For fixed IS with a constrained proposal:
 
 ```@example transforms

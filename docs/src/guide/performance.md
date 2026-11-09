@@ -15,12 +15,12 @@ Sampling requests Julia's default thread pool unless you pass `threaded=false`.
 With only one default thread, the request executes serially.
 Prepared samplers keep their threading policy for later calls.
 
-The coordinator owns RNG consumption.
+The coordinator consumes random numbers.
 Native workers use prefilled random buffers.
 Generic proposal draws occur before threaded target and density evaluation.
 
 Targets and proposal densities must be thread-safe.
-Explicit [batch callbacks](@ref batch-guide) own their own parallelism.
+Explicit [batch callbacks](@ref batch-guide) control their parallelism.
 Avoid oversubscribing the machine with both outer threads and multithreaded BLAS.
 
 The largest thread count need not be fastest.
@@ -44,14 +44,23 @@ samples.diagnostics.factor_execution_policy
 CPU defaults to fused sample kernels.
 Supported accelerator factor paths default to batched multiplication and triangular solves.
 
-`FusedFactorExecution()` and `BatchedFactorExecution()` request a policy explicitly.
+[`FusedFactorExecution`](@ref) and [`BatchedFactorExecution`](@ref) request a policy explicitly.
 There is no machine-specific sample-count threshold.
 Unsupported batched cases use the fused path without changing the estimator.
 
-Plain factor IS batching requires a Gaussian numerical proposal.
-Packed bank/history paths also support Student-t factors.
+Plain IS supports batching for [`FactorGaussian`](@ref) and [`FactorStudentT`](@ref)
+with no sample transform or [`IdentityTransform`](@ref). Student-t draws use one radial multiplier per sample,
+shared across coordinates. Packed bank/history paths support both families.
 Static MIS batching requires a full-mixture denominator.
 Mixed sample/log-weight precision can require an explicit batched request.
+
+Independent uniform, Gamma, and Laplace proposals have no matrix factor.
+They retain their coordinate-wise kernels; factor execution does not affect them.
+
+Student-t batching uses one extra dimension-by-count workspace on the selected
+device. It packs radially scaled normals into dense columns for BLAS, then reuses
+that workspace for density solves. Fused execution avoids that extra workspace
+and can be faster at modest dimensions. Compare both policies for the workload.
 
 The diagnostic records the resolved policy.
 It does not prove that every phase used a matrix operation.

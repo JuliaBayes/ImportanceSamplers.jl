@@ -12,6 +12,17 @@ and must return a `Float32` or `Float64` unnormalized log density. For CUDA,
 use a device-compatible callable and pass numerical arrays through `p`; opaque
 closure captures cannot be transferred reliably.
 
+| Callable | Without context | With context `p` | Requirement |
+|:--|:--|:--|:--|
+| Log target | `logdensity(sample)` | `logdensity(sample, p)` | Always required, including with `batch` |
+| Batch values | `batch!(values, samples)` | `batch!(values, samples, p)` | Optional; fill every value |
+| In-place gradient | `grad!(g, sample)` | `grad!(g, sample, p)` | Optional explicit derivative |
+| Out-of-place gradient | `grad(sample)` | `grad(sample, p)` | CPU-only alternative to an in-place gradient |
+
+Pass one gradient form through `grad=` or select an automatic backend through
+`adtype`. Only gradient-based methods such as [`FirstOrderGRAMIS`](@ref) need
+derivatives. An explicit gradient takes priority over automatic differentiation.
+
 Pass `batch=batch!` to evaluate independent samples together. The callback is
 `batch!(values, samples)` or `batch!(values, samples, p)` with explicit context.
 Fill every entry of `values` with the corresponding scalar log density. Its
@@ -22,11 +33,11 @@ and the package adds the Jacobian. Batch widths can change, but never equal zero
 
 Inputs are borrowed and read-only. Retain neither inputs nor output buffers.
 Each value must be independent of batch width and other samples. `-Inf` is valid,
-but NaN and +Inf fail the run. The callback owns CPU parallelism. On an accelerator,
+but NaN and +Inf fail the run. The callback controls CPU parallelism. On an accelerator,
 inputs, outputs, and `p` stay resident. Use the current task's device stream or
 complete private-stream work before returning. Failure checks can synchronize
 at batch boundaries, never once per sample. Without `batch`, scalar execution remains
-unchanged. Custom MCMC transitions own how they evaluate their target.
+unchanged. Custom MCMC transitions control how they evaluate their target.
 Reactant supports fixed-width batch phases, including FirstOrderGRAMIS through
 padded backtracking batches. Inactive candidates keep their accepted locations;
 their new target values are discarded and their evaluation cost is recorded.
