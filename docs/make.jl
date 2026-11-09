@@ -35,6 +35,7 @@ makedocs(
             "Proposals" => "guide/native_proposals.md",
             "Constraints and named parameters" => "guide/transforms.md",
             "Weighted samples" => "guide/results.md",
+            "Pareto smoothing" => "guide/psis.md",
             "Adaptation and reuse" => "guide/reuse.md",
         ],
         "Methods" => [
