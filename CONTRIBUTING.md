@@ -74,7 +74,9 @@ See [Documenter's hosting guide](https://documenter.juliadocs.org/stable/man/hos
 
 ## Releases
 
-Set `Project.toml` to the intended release version and merge after CI passes.
+Keep the version in `Project.toml`, `CITATION.cff`, and `CHANGELOG.md` consistent.
+Keep an Unreleased section and reuse the version's changelog entry for GitHub release notes.
+Set the intended release version and merge after CI passes.
 Request registration with `@JuliaRegistrator register` on the release commit.
 After registration merges, TagBot creates the tag and GitHub release; CI then
 publishes its versioned documentation. Verify the release and `/stable/` site.

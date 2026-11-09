@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using this metadata."
+type: software
+title: ImportanceSamplers.jl
+authors:
+  - family-names: Cox
+    given-names: Jessica
+version: "0.0.1"
+license: Apache-2.0
+repository-code: https://github.com/JuliaBayes/ImportanceSamplers.jl
+url: https://juliabayes.org/ImportanceSamplers.jl/

@@ -47,4 +47,5 @@ compare six posterior models, with accuracy checks, timing details, and reproduc
 
 [Documentation](https://juliabayes.org/ImportanceSamplers.jl/stable/) ·
 [Logistic regression example](examples/logistic_regression.jl) ·
+[Changelog](CHANGELOG.md) ·
 [Contributing](CONTRIBUTING.md)
