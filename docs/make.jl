@@ -57,6 +57,7 @@ makedocs(
             "Errors" => "reference/errors.md",
         ],
         "Further information" => [
+            "Changelog" => "changelog.md",
             "Custom proposals and transitions" => "guide/extensions.md",
             "Troubleshooting" => "guide/troubleshooting.md",
             "Validation" => "guide/validation.md",
