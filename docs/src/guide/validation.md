@@ -27,7 +27,13 @@ An optional-backend run reports `rejected` only after checking the expected exce
 [Devices](@ref devices-guide) lists deliberate restrictions, including
 Reactant CPU cooperative kernels and generic accelerator proposals.
 
-Run the same checks on CUDA from the validation environment:
+Use Julia 1.13 or later. From the repository root, prepare the validation environment:
+
+```sh
+julia --project=validation -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'
+```
+
+Run the same checks on CUDA with `julia --project=validation`:
 
 ```julia
 using CUDA, MLDataDevices
@@ -59,14 +65,11 @@ They do not run on the default hosted CPU CI jobs.
 
 ## Equation and backend reproducers
 
-Use the repository's validation environment:
+Use the prepared validation environment:
 
 ```sh
-julia --project=validation -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'
 julia --project=validation validation/reproducers/plain_is.jl
 ```
-
-The validation environment declares its runtime requirements in `validation/Project.toml`.
 
 | Subject | Script under `validation/reproducers/` |
 |:--|:--|
@@ -107,14 +110,14 @@ julia --project=docs -e 'using Pkg; Pkg.develop(path=pwd()); Pkg.instantiate()'
 julia --project=docs docs/make.jl
 ```
 
-Open `docs/build/index.html`.
+Serve `docs/build` with an HTTP server to preview its directory-style URLs.
 The build executes CPU examples and doctests and checks exported docstrings and internal links.
 Check external links separately with `DOCUMENTER_LINKCHECK=true julia --project=docs docs/make.jl`.
 CI reports external-link failures without blocking deployment.
 
 Repository source links are checked against local files to avoid repeated GitHub rate limits.
-That check does not verify the remote branch.
-CI deploys the built manual from `main`.
+Rendered source links use the build's Git commit. Local checks do not verify remote availability.
+CI deploys development documentation from `dev` and versioned documentation from release tags.
 
 ## Validation records
 

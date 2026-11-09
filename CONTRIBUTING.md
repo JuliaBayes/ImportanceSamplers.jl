@@ -26,7 +26,7 @@ From the repository root:
 julia --project -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 ```
 
-CI tests Julia 1.10 on Linux and the latest stable Julia on Linux, macOS, and Windows.
+CI tests Julia 1.13 on Linux and the latest stable Julia on Linux, macOS, and Windows.
 It also runs the Reactant CPU checks. Codecov upload failures do not block CI.
 GPU execution requires separate hardware checks; passing CPU CI does not prove
 GPU support. See the [validation guide](https://juliabayes.org/ImportanceSamplers.jl/dev/guide/validation/).
@@ -61,6 +61,8 @@ GitHub Pages Actions:
 | Latest release | `/stable/` |
 
 The root URL redirects to the latest release, or to `dev` before any release.
+Links between manual pages stay within the selected version. Repository source
+links use the build's Git commit, including links to examples and reproducers.
 Pull requests build an artifact but do not deploy. Keep Pages configured to use
 GitHub Actions. Only the deployment job receives repository write permission.
 

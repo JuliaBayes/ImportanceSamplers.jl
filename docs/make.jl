@@ -3,15 +3,7 @@ using DocumenterCodeBlocks
 using ImportanceSamplers
 using Statistics
 
-# Check repository source links locally instead of repeatedly requesting GitHub.
-for (directory, _, files) in walkdir(joinpath(@__DIR__, "src")), file in files
-    endswith(file, ".md") || continue
-    for link in eachmatch(r"https://github\.com/JuliaBayes/ImportanceSamplers\.jl/blob/main/([^\s#)]+)",
-                          read(joinpath(directory, file), String))
-        isfile(joinpath(@__DIR__, "..", link.captures[1])) ||
-            error("Missing repository link: $(link.match)")
-    end
-end
+include("source_links.jl")
 
 makedocs(
     root=@__DIR__,
@@ -21,7 +13,7 @@ makedocs(
     format=Documenter.HTML(
         prettyurls=true,
         canonical="https://juliabayes.org/ImportanceSamplers.jl/stable/",
-        edit_link="dev",
+        edit_link=:commit,
         repolink="https://github.com/JuliaBayes/ImportanceSamplers.jl",
     ),
     build=joinpath(@__DIR__, "build"),
@@ -76,7 +68,7 @@ makedocs(
     checkdocs=:exports,
     linkcheck=get(ENV, "DOCUMENTER_LINKCHECK", "false") == "true",
     linkcheck_ignore=[
-        r"^https://github\.com/JuliaBayes/ImportanceSamplers\.jl/blob/main/",
+        r"^https://github\.com/JuliaBayes/ImportanceSamplers\.jl/blob/[0-9a-f]{40}/",
     ],
     warnonly=false,
 )
