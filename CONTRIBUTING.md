@@ -1,8 +1,17 @@
 # Contributing
 
 Keep sampler changes narrow. Preserve the sampling law, log weights, precision,
-sample structure, RNG ownership, and device residency. Use analytic oracles for
+sample structure, random streams, and device residency. Use analytic oracles for
 numerical changes and interleaved BenchmarkTools runs for performance claims.
+
+## Branches
+
+Target feature and fix pull requests at `dev`. Promote changes to `main` through
+a pull request from this repository's `dev` branch. The `Main source branch`
+check rejects other source branches, including `dev` branches from forks.
+
+Keep `dev` after a promotion. CI runs on both branches. Documentation deploys
+from `main` and release tags, not from `dev`.
 
 ## Tests
 
