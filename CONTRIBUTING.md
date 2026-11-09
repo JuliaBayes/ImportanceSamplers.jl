@@ -6,12 +6,17 @@ numerical changes and interleaved BenchmarkTools runs for performance claims.
 
 ## Branches
 
-Target feature and fix pull requests at `dev`. Promote changes to `main` through
-a pull request from this repository's `dev` branch. The `Main source branch`
-check rejects other source branches, including `dev` branches from forks.
+Use `dev` for integration and `main` for tested releases.
 
-Keep `dev` after a promotion. CI runs on both branches. Documentation deploys
-from `main` and release tags, not from `dev`.
+- Target feature and fix pull requests at `dev`.
+- Promote changes to `main` only through a pull request from `dev`.
+- Keep `dev` after a promotion.
+- Do not push directly to `main`.
+
+The source-branch rule is a project convention, not an automated merge check.
+
+CI builds and checks documentation on both branches. Development documentation
+deploys from `dev`. Tagged releases supply stable and versioned documentation.
 
 ## Tests
 
@@ -51,7 +56,7 @@ GitHub Pages Actions:
 
 | Source | Documentation |
 | --- | --- |
-| `main` | `/dev/` |
+| `dev` | `/dev/` |
 | A release tag such as `v0.1.0` | `/v0.1.0/` |
 | Latest release | `/stable/` |
 

@@ -21,7 +21,7 @@ makedocs(
     format=Documenter.HTML(
         prettyurls=true,
         canonical="https://juliabayes.org/ImportanceSamplers.jl/stable/",
-        edit_link="main",
+        edit_link="dev",
         repolink="https://github.com/JuliaBayes/ImportanceSamplers.jl",
     ),
     build=joinpath(@__DIR__, "build"),

@@ -17,7 +17,7 @@ Install the package with Pkg:
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/JuliaBayes/ImportanceSamplers.jl.git")
+Pkg.add("ImportanceSamplers")
 ```
 
 Accelerator and automatic-differentiation packages are optional.
@@ -85,6 +85,6 @@ Every tutorial defines its data and runs from top to bottom.
 
 ## Documentation versions
 
-`dev` documents the current `main` branch. Tagged releases retain their own
+`dev` documents the current `dev` branch. Tagged releases retain their own
 documentation. `stable` points to the latest release. The site's version selector
 provides documentation for each release.
