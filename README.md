@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" alt="ImportanceSamplers.jl logo" width="160" height="160" align="right">
+
 # ImportanceSamplers.jl
 
 [![CI](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaBayes/ImportanceSamplers.jl/actions/workflows/CI.yml)

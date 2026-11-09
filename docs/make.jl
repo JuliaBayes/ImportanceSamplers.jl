@@ -5,6 +5,11 @@ using Statistics
 
 include("source_links.jl")
 
+# Documenter discovers the shared logo in its source assets directory.
+mkpath(joinpath(@__DIR__, "src", "assets"))
+cp(joinpath(@__DIR__, "..", "assets", "logo.svg"),
+   joinpath(@__DIR__, "src", "assets", "logo.svg"); force=true)
+
 makedocs(
     root=@__DIR__,
     repo=Documenter.Remotes.GitHub("JuliaBayes", "ImportanceSamplers.jl"),
