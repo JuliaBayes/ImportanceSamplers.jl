@@ -1,5 +1,6 @@
 /validation/reproducers/cuda_static_mis_results.tsv
 /docs/build/
+/docs/src/assets/logo.svg
 *.cov
 /lcov.info
 /benchmark/comparison/results.toml

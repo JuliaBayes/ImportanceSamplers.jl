@@ -21,5 +21,6 @@ Initial feature set. Requires Julia 1.13 or later.
 - Serial and threaded CPU execution, with explicit device transfer through MLDataDevices.
 - Optional CUDA, Metal, and Reactant execution. Supported methods, precision, and gradient routes vary by backend.
 - Tutorials, method guides, equation reproducers, and CPU/CUDA model comparisons with recorded environments and accuracy checks.
+- A density-ratio logo in SVG and PNG formats, used in the README and documentation.
 
 The API is experimental. Backend and method restrictions are documented in the manual.
