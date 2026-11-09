@@ -42,7 +42,7 @@ accelerator execution.
 
 ## Benchmarks
 
-[CPU and CUDA results](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/benchmarks/#benchmark-results)
+[CPU and CUDA results](docs/src/guide/benchmarks.md)
 compare six posterior models, with accuracy checks, timing details, and reproducible scripts.
 
 [Documentation](https://juliabayes.org/ImportanceSamplers.jl/stable/) ·
