@@ -1,6 +1,6 @@
 name = "ImportanceSamplers"
 uuid = "f51d20bd-8e2c-46f0-bdaa-6990265b9f1c"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Jessica Cox <bcox@mpp.mpg.de>"]
 
 [deps]

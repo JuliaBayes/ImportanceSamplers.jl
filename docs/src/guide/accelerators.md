@@ -153,6 +153,12 @@ Do not infer bank support from a standalone transformed proposal.
 
 ## Residency and transfers
 
+[`psis`](@ref) has native CPU and CUDA checks in `Float32` and `Float64`.
+Its weights, sorting, and Pareto fit stay on the selected device. Only scalar
+diagnostics reach the host. Metal, AMDGPU, and Reactant PSIS paths are not yet
+validated or claimed. Transfer a result explicitly to ordinary CPU before
+smoothing on an unvalidated backend.
+
 Samples, log weights, proposal state, and numerical workspaces remain on the device.
 Bounded failure and round summaries can synchronize with the host.
 A batch callback can also require synchronization.

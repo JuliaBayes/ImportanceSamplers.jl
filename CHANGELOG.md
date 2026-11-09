@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## Unreleased (0.0.2)
+
+- Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 
 ## 0.0.1
 

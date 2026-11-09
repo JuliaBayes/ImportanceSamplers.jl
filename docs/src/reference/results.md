@@ -1,15 +1,18 @@
 # [Results and statistics](@id result-reference)
 
 See [Weighted samples](@ref results-guide) for weighted estimates, indexing, and device rules.
+See [Pareto smoothing](@ref psis-guide) for a raw-IS comparison and tail diagnostics.
 
 ## Containers and weights
 
 ```@docs
 WeightedSamples
 WeightedSampleView
+ParetoSmoothedSamples
 UnweightedSamples
 normalized_weights
 lognormalizer
+psis
 ```
 
 ## Statistics

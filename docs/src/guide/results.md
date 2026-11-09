@@ -143,6 +143,12 @@ AMIS has additional [retrospective-weight caveats](@ref amis-method).
 If every raw log weight is `-Inf`, the plain IS result remains inspectable and
 `lognormalizer` returns `-Inf`. Normalized summaries throw `AllZeroWeightsError`.
 
+## Pareto smoothing
+
+[`psis(samples)`](@ref psis) creates a separate result with smoothed weights.
+The [Pareto smoothing guide](@ref psis-guide) compares it with raw IS on the same
+draws and explains diagnostics, bias, normalizers, and device support.
+
 ## Device results
 
 `normalized_weights`, moments, scalar functionals, slicing, and resampling have device paths.
