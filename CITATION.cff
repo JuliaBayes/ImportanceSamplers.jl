@@ -5,7 +5,7 @@ title: ImportanceSamplers.jl
 authors:
   - family-names: Cox
     given-names: Jessica
-version: "0.0.1"
+version: "0.0.2"
 license: Apache-2.0
 repository-code: https://github.com/JuliaBayes/ImportanceSamplers.jl
 url: https://juliabayes.org/ImportanceSamplers.jl/
