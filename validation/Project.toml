@@ -19,7 +19,7 @@ ImportanceSamplers = {path = ".."}
 BenchmarkTools = "1.8.0"
 CUDA = "6.2"
 DensityInterface = "0.4"
-ImportanceSamplers = "0.0.1"
+ImportanceSamplers = "0.0.2"
 LogExpFunctions = "1.0.1"
 MLDataDevices = "1.17.10"
 Test = "1.11.0"
