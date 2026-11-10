@@ -2,6 +2,8 @@
 
 ## Unreleased (0.0.2)
 
+- Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
+
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 - Fitted pairwise quadratic transport with weighted moment or cached-score fitting.
 - Pilot-fitted score control variates for scalar weighted expectations.

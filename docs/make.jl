@@ -50,6 +50,7 @@ makedocs(
             "APIS" => "methods/apis.md",
             "CAIS" => "methods/cais.md",
             "LAIS" => "methods/lais.md",
+            "Hamiltonian IS" => "methods/hais.md",
             "First-order GRAMIS-CAIS" => "methods/first_order_gramis.md",
         ],
         "Execution" => [

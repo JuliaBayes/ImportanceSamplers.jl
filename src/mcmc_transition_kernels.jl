@@ -270,7 +270,7 @@ function _preflight_transition(device, state::_RandomWalkState, target, update=n
     return nothing
 end
 
-function _preflight_accelerator_method(device, target, ::LAIS, state::_PreparedLAIS,
+function _preflight_accelerator_method(device, target, ::Union{LAIS,HAIS}, state::Union{_PreparedLAIS,_PreparedHAIS},
     buffers::_PopulationNormalBuffers, factor_execution)
     bank = state.bank
     bound = _bind_resolved_target(target, _population_binding_sample(bank))

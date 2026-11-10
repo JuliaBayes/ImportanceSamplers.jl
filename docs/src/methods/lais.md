@@ -4,6 +4,10 @@ LAIS uses an upper MCMC process to move proposal centres.
 It then draws lower importance samples around those centres.
 Only the lower samples enter the returned weighted result.
 
+For gradient-based upper moves, select [`HamiltonianMonteCarlo`](@ref).
+The [Hamiltonian IS guide](@ref hais-method) compares this LAIS transition with
+the distinct HAIS method, which adds cooperative centre selection.
+
 ## Random-walk Metropolis
 
 ```@example lais

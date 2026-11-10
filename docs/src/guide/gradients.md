@@ -1,6 +1,6 @@
 # [Gradients](@id gradients-guide)
 
-Only `FirstOrderGRAMIS` needs target gradients among the implemented samplers.
+`FirstOrderGRAMIS`, `HAIS`, and HMC-driven `LAIS` need target gradients.
 Value-only operations still use the log target without requesting a gradient.
 
 ## Explicit gradients

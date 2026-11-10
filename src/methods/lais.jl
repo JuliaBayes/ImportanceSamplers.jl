@@ -28,11 +28,14 @@ struct LAIS{B<:ProposalBank,K<:AbstractMCMCTransition,S} <: _FixedPopulationSamp
         all(>(zero(eltype(masses))), masses) && all(==(first(masses)), masses) ||
             throw(ArgumentError("LAIS requires equal positive proposal masses"))
         count = length(bank.proposals)
+        _validate_lais_transition(transition, bank, rounds, validated)
         all(n -> n % count == 0, _resolve_adaptive_schedule(rounds, validated)) ||
             throw(ArgumentError("LAIS round sizes must divide equally across proposals"))
         return new{B,K,typeof(validated)}(bank, transition, rounds, validated)
     end
 end
+
+_validate_lais_transition(transition, bank, rounds, schedule) = nothing
 
 _algorithm_proposal(algorithm::LAIS) = algorithm.bank
 _algorithm_sample_budget(algorithm::LAIS) =
@@ -74,12 +77,15 @@ function _prepare_method_state(algorithm::LAIS, prepared_target)
         round_proposal_ids=similar(prototype, Int, capacity),
         solve_scratch=_allocate_mis_solve_scratch(prototype, bank, capacity),
     )
-    committed = prepare_transition(algorithm.transition, _lais_centres(bank), target, L)
+    committed = _prepare_lais_transition(algorithm.transition, _lais_centres(bank), target, prepared_target, L)
     run = deepcopy(committed)
     run_bank = _population_with_locations(bank,
         reshape(transition_centres(run), size(bank.locations)))
     return _PreparedLAIS(bank, run_bank, plan, workspace, committed, run)
 end
+
+_prepare_lais_transition(config, centres, target, original, L) =
+    prepare_transition(config, centres, target, L)
 
 function _allocate_random_buffers(::MLDataDevices.AbstractDevice, ::ProposalBank, state::_PreparedLAIS, sample_budget)
     normals = similar(state.bank.locations, eltype(state.bank.locations),
@@ -109,8 +115,7 @@ end
 _copy_accelerator_algorithm(device, algorithm::LAIS, ::_PreparedLAIS) = deepcopy(algorithm)
 
 function _prepare_transferred_method_state(device, algorithm::LAIS, state::_PreparedLAIS, target)
-    committed = Adapt.adapt(device, state.transition)
-    run = Adapt.adapt(device, state.run_transition)
+    committed, run = _transfer_transition_pair(device, state.transition, state.run_transition, target)
     shape = size(state.bank.locations)
     bank = _copy_packed_bank(device, state.bank;
         locations=reshape(transition_centres(committed), shape))
@@ -119,6 +124,9 @@ function _prepare_transferred_method_state(device, algorithm::LAIS, state::_Prep
     return _PreparedLAIS(bank, run_bank, _transfer_population_plan(device, state.plan),
         workspace, committed, run)
 end
+
+_transfer_transition_pair(device, committed, running, target) =
+    (Adapt.adapt(device, committed), Adapt.adapt(device, running))
 
 _transferred_backend_state(algorithm, state::_PreparedLAIS, target, random_buffers) =
     (state, target, random_buffers)

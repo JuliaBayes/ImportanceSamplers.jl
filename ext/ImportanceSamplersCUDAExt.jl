@@ -10,6 +10,7 @@ ImportanceSamplers._backend_functional(::MLDataDevices.CUDADevice) =
     CUDA.functional()
 
 ImportanceSamplers._factor_batch_supported(::MLDataDevices.CUDADevice) = true
+ImportanceSamplers._hmc_device_supported(::MLDataDevices.CUDADevice) = true
 function ImportanceSamplers._with_backend_device(
     f,
     device::MLDataDevices.CUDADevice,
@@ -33,6 +34,9 @@ _cuda_state_resident(
     device,
     ImportanceSamplers._first_order_gramis_resident_state(state),
 )
+
+_cuda_state_resident(device, state::ImportanceSamplers._HamiltonianState) =
+    _cuda_state_resident(device, ImportanceSamplers._hmc_resident_state(state))
 
 _cuda_state_resident(device, array::CUDA.AnyCuArray) =
     CUDA.device(array) == device

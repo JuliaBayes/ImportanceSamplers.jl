@@ -1,5 +1,14 @@
 abstract type _BoundGradient end
 
+# HMC needs the primal at each score point. Preserve combined backend results
+# rather than evaluating an expensive target twice.
+function _value_and_gradient!(destination, bound::_BoundGradient, sample, slot=1)
+    target = bound.target
+    value = _batch_target_value(target.logdensity, sample, target.context)
+    isfinite(value) && _gradient!(destination, bound, sample, slot)
+    return value
+end
+
 _record_gradient_transfers!(transfers, bound::_BoundGradient) = nothing
 
 struct _BoundInPlaceGradient{T} <: _BoundGradient
@@ -33,6 +42,35 @@ struct _BoundDIBatchGradient{T,P,S,C} <: _BoundBatchGradient
     preparation::P
     seeds::S
     context::C
+end
+
+function _value_and_gradient!(destination, bound::_BoundDIGradient, sample, slot=1)
+    target = bound.target
+    contexts = target.context isa _NoTargetContext ? () :
+        (DifferentiationInterface.Constant(target.context),)
+    value, _ = DifferentiationInterface.value_and_gradient!(target.logdensity,
+        destination, bound.preparation.preparations[slot], bound.backend, sample, contexts...)
+    return value
+end
+
+function _value_and_gradient!(destination, bound::_BoundLDPGradient, sample, slot=1)
+    value, gradient = LogDensityProblems.logdensity_and_gradient(bound.target.target, sample)
+    if isfinite(value)
+        axes(destination) == axes(gradient) || throw(DimensionMismatch("target gradient must match the sample"))
+        copyto!(destination, gradient)
+    end
+    return value
+end
+
+function _value_and_gradient!(destination, bound::_BoundOutOfPlaceGradient, sample, slot=1)
+    target = bound.target
+    value = _batch_target_value(target.logdensity, sample, target.context)
+    if isfinite(value)
+        gradient = _batch_target_value(target.gradient, sample, target.context)
+        axes(destination) == axes(gradient) || throw(DimensionMismatch("target gradient must match the sample"))
+        copyto!(destination, gradient)
+    end
+    return value
 end
 
 function _prepare_accelerator_gradient(target, locations, values)

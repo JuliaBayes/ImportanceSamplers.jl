@@ -13,6 +13,7 @@ DeterministicMixturePMC
 APIS
 CAIS
 LAIS
+HAIS
 FirstOrderGRAMIS
 ```
 
@@ -39,6 +40,7 @@ LocalResampling
 ```@docs
 AbstractMCMCTransition
 RandomWalkMetropolis
+HamiltonianMonteCarlo
 RAM
 WarmupTuning
 ContinuousTuning

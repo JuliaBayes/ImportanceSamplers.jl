@@ -748,7 +748,7 @@ function _retarget_algorithm(sampler::_PreparedImportanceSampler)
     throw(
         ArgumentError(
             "retarget supports DeterministicMixturePMC, APIS, CAIS, NPMC, " *
-            "LAIS, AMIS, and FirstOrderGRAMIS prepared samplers",
+            "LAIS, HAIS, AMIS, and FirstOrderGRAMIS prepared samplers",
         ),
     )
 end
