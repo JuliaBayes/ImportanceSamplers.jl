@@ -145,4 +145,6 @@ is not part of this interface.
 
 Compare complete fitting and production cost against the same workflow without
 the map. Use errors of the functions of interest, not weight ESS alone.
+Fitting can add cost without improving an already adequate proposal. The curved
+example is a positive control, not a general performance comparison.
 [`psis`](@ref) remains an optional, separate smoothing step on production weights.
