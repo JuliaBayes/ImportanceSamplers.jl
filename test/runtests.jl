@@ -29,6 +29,7 @@ test_files = if isempty(ARGS)
         "results",
         "psis",
         "fitted_transport",
+        "control_variates",
         "resampling",
         "device_results",
         "failures",

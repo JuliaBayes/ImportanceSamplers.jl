@@ -149,6 +149,13 @@ If every raw log weight is `-Inf`, the plain IS result remains inspectable and
 The [Pareto smoothing guide](@ref psis-guide) compares it with raw IS on the same
 draws and explains diagnostics, bias, normalizers, and device support.
 
+## Score control variates
+
+[`fit_control_variate`](@ref) fits a correction for one functional from a pilot.
+[`control_variate_mean`](@ref) applies it to independent production samples.
+The [control-variate guide](@ref control-variates-guide) gives an example and
+the required target-score and boundary conditions. Samples and weights stay unchanged.
+
 ## Device results
 
 `normalized_weights`, moments, scalar functionals, slicing, and resampling have device paths.

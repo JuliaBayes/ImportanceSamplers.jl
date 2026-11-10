@@ -4,6 +4,7 @@
 
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 - Fitted pairwise quadratic transport with weighted moment or cached-score fitting.
+- Pilot-fitted score control variates for scalar weighted expectations.
 
 ## 0.0.1
 

@@ -37,6 +37,7 @@ makedocs(
             "Weighted samples" => "guide/results.md",
             "Pareto smoothing" => "guide/psis.md",
             "Fitted transport" => "guide/transport.md",
+            "Score control variates" => "guide/control_variates.md",
             "Adaptation and reuse" => "guide/reuse.md",
         ],
         "Methods" => [
