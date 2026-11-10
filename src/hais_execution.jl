@@ -26,6 +26,7 @@ function _population_round_views(state::_PreparedHAIS, round)
 end
 
 function _reset_population_run!(state::_PreparedHAIS, run, committed)
+    _reset_lower_widths!(run, committed, state.workspace.widths)
     copyto!(run.locations, committed.locations)
     copyto!(state.run_transition, state.transition)
     _reset_hmc_diagnostics!(state.run_transition)
@@ -114,6 +115,10 @@ function _advance_prepared_population!(::Nothing, sampler, state::_PreparedHAIS,
     _capture_population_round(sampler.algorithm, round, :cooperation_resampling,
                               views.round_size, completed) do
         _hais_cooperation_resample!(state, sampler.rng, execution)
+    end
+    _capture_population_round(sampler.algorithm, round, :width_adaptation,
+                              views.round_size, completed) do
+        _adapt_lower_widths!(state.workspace.widths, state, views, round, execution)
     end
     return summary
 end

@@ -1,5 +1,5 @@
 """
-    HAIS(bank; transition, rounds, round_size)
+    HAIS(bank; transition, rounds, round_size, adapt_scales=false)
 
 Configure Hamiltonian adaptive importance sampling with a fixed native Gaussian,
 Student-t, or independent Laplace population and a [`HamiltonianMonteCarlo`](@ref)
@@ -10,7 +10,10 @@ Lower samples use the normalized current-round deterministic mixture. Cooperatio
 uses pointwise target-to-old-mixture ratios only as adaptation scores: HMC
 endpoints need not follow that mixture, and cooperation is not target invariant.
 The final adapted bank is retained even though it generated no returned draw.
-Scales, Student-t degrees of freedom, and destination proposal IDs remain fixed.
+Student-t degrees of freedom and destination proposal IDs remain fixed. Scales
+remain fixed unless `adapt_scales=true` enables the marginal-width extension
+described under [Width adaptation](@ref lower-width-adaptation). Widths update
+after cooperation, using each destination's generating group, not its ancestor.
 
 `round_size` is a positive `Int` or one positive entry per round in a `Vector{Int}`.
 Every round allocates equally across equal, positive-mass proposals. Optional HMC
@@ -21,9 +24,10 @@ struct HAIS{B<:ProposalBank,K<:HamiltonianMonteCarlo,S} <: _FixedPopulationSampl
     transition::K
     rounds::Int
     round_size::S
+    adapt_scales::Bool
 
     function HAIS(bank::B; transition::K, rounds,
-                  round_size) where {B<:ProposalBank,K<:HamiltonianMonteCarlo}
+                  round_size, adapt_scales::Bool=false) where {B<:ProposalBank,K<:HamiltonianMonteCarlo}
         schedule = _validate_adaptive_schedule(rounds, round_size)
         masses = bank.masses
         all(>(zero(eltype(masses))), masses) && all(==(first(masses)), masses) ||
@@ -33,7 +37,8 @@ struct HAIS{B<:ProposalBank,K<:HamiltonianMonteCarlo,S} <: _FixedPopulationSampl
         all(n -> n % count == 0, sizes) ||
             throw(ArgumentError("HAIS round sizes must divide equally across proposals"))
         _validate_hais_workcounts(count, rounds, schedule, transition)
-        return new{B,K,typeof(schedule)}(bank, transition, rounds, schedule)
+        _validate_lower_widths(bank, adapt_scales)
+        return new{B,K,typeof(schedule)}(bank, transition, rounds, schedule, adapt_scales)
     end
 end
 
@@ -104,12 +109,14 @@ function _prepare_method_state(algorithm::HAIS, prepared_target)
                  cooperation_uniforms=similar(prototype, L, count),
                  ancestors=similar(prototype, Int, count),
                  cooperation_solve_scratch=_allocate_mis_solve_scratch(prototype, bank,
-                                                                       count))
+                                                                       count),
+                 widths=_allocate_lower_widths(algorithm.adapt_scales, bank, plan, L))
     # Unlike LAIS, the scoring bank must not alias the moving HMC endpoints.
     committed = _prepare_hmc_transition(algorithm.transition, copy(bank.locations),
                                         prepared_target, L)
     run = deepcopy(committed)
-    return _PreparedHAIS(bank, _population_run_bank(bank), plan, workspace, committed, run)
+    running_bank = _population_run_bank(_lower_width_bank(bank, workspace.widths))
+    return _PreparedHAIS(bank, running_bank, plan, workspace, committed, run)
 end
 
 function _prepare_method_state(algorithm::HAIS{<:ProposalBank{<:AbstractVector{<:_GammaProposal}}},
@@ -150,14 +157,15 @@ function _retarget_algorithm(sampler::_PreparedImportanceSampler{R,B,T,A}) where
                             destination)
     end
     return HAIS(current_proposal(destination, sampler);
-                transition, rounds=algorithm.rounds, round_size=algorithm.round_size)
+                transition, rounds=algorithm.rounds, round_size=algorithm.round_size,
+                adapt_scales=algorithm.adapt_scales)
 end
 
 _copy_algorithm(::MLDataDevices.CPUDevice{Missing}, algorithm::HAIS) = deepcopy(algorithm)
 function _copy_algorithm(device, algorithm::HAIS)
     return HAIS(_copy_population_bank(device, algorithm.bank);
                 transition=deepcopy(algorithm.transition), rounds=algorithm.rounds,
-                round_size=algorithm.round_size)
+                round_size=algorithm.round_size, adapt_scales=algorithm.adapt_scales)
 end
 
 _copy_accelerator_algorithm(device, algorithm::HAIS, ::_PreparedHAIS) = deepcopy(algorithm)
@@ -169,7 +177,7 @@ function _prepare_transferred_method_state(device, algorithm::HAIS, state::_Prep
     committed, run = _transfer_transition_pair(device, state.transition,
                                                state.run_transition, target)
     bank = _copy_packed_bank(device, state.bank)
-    run_bank = _population_run_bank(bank)
+    run_bank = _population_run_bank(_lower_width_bank(bank, state.workspace.widths))
     copyto!(run_bank.locations, state.run_bank.locations)
     workspace = map(value -> _copy_to_device(device, value), state.workspace)
     return _PreparedHAIS(bank, run_bank, _transfer_population_plan(device, state.plan),

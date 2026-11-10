@@ -28,6 +28,7 @@ function _population_round_views(state::_PreparedLAIS, round)
 end
 
 function _reset_population_run!(state::_PreparedLAIS, run, committed)
+    _reset_lower_widths!(run, committed, state.workspace.widths)
     copyto!(state.run_transition, state.transition)
     _reset_transition_diagnostics!(state.run_transition)
     return nothing
@@ -40,7 +41,10 @@ function _before_population_round!(sampler, state::_PreparedLAIS, target, round,
     return nothing
 end
 
-_advance_population!(sampler, state::_PreparedLAIS, views, round, execution, transfers) = nothing
+function _advance_population!(sampler, state::_PreparedLAIS, views, round, execution, transfers)
+    _adapt_lower_widths!(state.workspace.widths, state, views, round, execution)
+    return nothing
+end
 _commit_population_round!(::_PreparedLAIS, bank) = nothing
 _population_transition_diagnostics(::Nothing, state, transfers) = transition_diagnostics(state, transfers)
 

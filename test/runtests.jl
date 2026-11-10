@@ -18,6 +18,7 @@ test_files = if isempty(ARGS)
         "apis",
         "lais",
         "hamiltonian",
+        "lower_widths",
         "cais",
         "first_order_gramis",
         "first_order_gramis_kernel",

@@ -4,7 +4,7 @@ Native HMC moves proposal centres using target gradients and a Metropolis correc
 The returned observations remain importance samples drawn from normalized lower proposals.
 HMC trajectory points are not additional output samples.
 
-Centre exploration does not fit lower widths. When moments exist, mixture covariance
+Centre exploration alone does not fit lower widths. When moments exist, mixture covariance
 includes both component covariance and the spread of component centres. Wide lower
 proposals can therefore become overdispersed as centres explore the target, especially
 in many dimensions. Cooperation can also remove centres from a minor mode.
@@ -71,7 +71,7 @@ Warmup moves add cost and return no importance samples. Successful reuse does no
 `mass` is the momentum covariance, not the lower proposal covariance.
 It accepts an isotropic scalar, `I`, `Diagonal`, an SPD matrix, or its Cholesky factorization.
 Dense operations use factors and solves, not matrix inversion.
-Mass and lower scales do not adapt.
+Mass does not adapt. Lower scales adapt only with `adapt_scales=true`.
 
 Every positive vector dimension is supported. A one-dimensional problem uses `[x]`, not scalar-layout proposals.
 Named constraint transforms retain their existing score pullback and Jacobian conventions.
@@ -88,12 +88,59 @@ mean(independent_samples)
 
 | Method | Round order | Retained final bank |
 |:--|:--|:--|
-| HMC-driven LAIS | HMC, then lower draws and weights | Bank that generated the final draws |
+| HMC-driven LAIS | HMC, then lower draws and weights | Final centres and next-round widths |
 | HAIS | Lower draws and weights, then HMC and cooperation | Adapted bank for the next round |
 
 Both require equal positive masses and a round size divisible by the proposal count.
-Gaussian, Student-t, and independent Laplace lower scales stay fixed.
+Gaussian, Student-t, and independent Laplace lower scales stay fixed by default.
 All lower rounds enter the result with their original current-mixture weights.
+
+## [Width adaptation](@id lower-width-adaptation)
+
+Enable marginal-width fitting independently of the upper transition:
+
+```@example hais
+adaptive = HAIS(bank; transition=upper, rounds=5, round_size=2_000,
+                adapt_scales=true)
+fitted = prepare_sampler(Xoshiro(46), target, adaptive)
+adaptive_samples = importance_sample!(fitted)
+snapshot = current_proposal(fitted)
+mean(adaptive_samples)
+```
+
+The same keyword works with any LAIS transition. This is a package extension,
+not a covariance update specified by the HAIS paper. It changes neither HMC mass
+nor the centre update.
+
+For each generating group, normalize its current-round DM weights. Compute its
+weighted coordinate means and centred variances, without a Bessel correction.
+Each new marginal variance is half the previous variance plus half the fitted
+variance. Gaussian scale squared equals variance. Student-t scale squared is
+variance times `(nu - 2) / nu`, requiring `nu > 2`. Laplace scale squared is
+half the variance. Every Student-t component retains its degrees of freedom.
+
+These local moments estimate a density proportional to `π(x)qⱼ(x)/ψ(x)`,
+not the entire target independently for each proposal. Diagonal proposals fit
+each marginal width. Factor proposals scale their factor rows, preserving
+correlations. New correlations are not fitted. Spherical inputs can become
+diagonal proposals in `current_proposal`.
+
+All-zero groups, computed local weight ESS below two, zero or nonfinite fitted variances,
+and unrepresentable updated parameters retain that component's previous widths.
+An invalid coordinate rejects the complete component update. No estimator
+weights are clipped, tempered, or recomputed.
+
+Widths change only after a lower round. HAIS first completes cooperation against
+the unchanged generating bank. Each destination then uses its own generating
+group's width fit, regardless of the selected ancestor. The final fitted widths
+remain available for reuse, snapshots, and `retarget`. Failed calls preserve the
+pre-call widths. Native CUDA fits remain on-device without additional numerical
+host reads. Reactant width adaptation is not enabled.
+
+Width adaptation can reduce overdispersion, but cannot guarantee adequate local
+ESS or preserve a minor mode lost through centre cooperation. Inspect weight and
+coverage diagnostics across independent runs. Narrow Gaussian proposals can
+leave heavy target tails poorly covered despite plausible fitted variances.
 
 ## Cooperation and weights
 

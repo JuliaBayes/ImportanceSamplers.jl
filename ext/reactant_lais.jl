@@ -1,6 +1,9 @@
-_prepare_execution(sampler, state::IS._PreparedLAIS{B,P,W,<:Union{
-    IS._RandomWalkState,IS._RAMState,IS._SampleMetropolisHastingsState}}) where {B,P,W} =
-    _prepare_population_execution(sampler, state)
+function _prepare_execution(sampler, state::IS._PreparedLAIS{B,P,W,<:Union{
+    IS._RandomWalkState,IS._RAMState,IS._SampleMetropolisHastingsState}}) where {B,P,W}
+    sampler.algorithm.adapt_scales &&
+        throw(IS.SamplerDeviceError(sampler.device, :reactant_lower_width_adaptation))
+    return _prepare_population_execution(sampler, state)
+end
 
 _population_trace_state(state::IS._PreparedLAIS) = IS._PreparedLAIS(state.bank,
     state.run_bank, _population_trace_plan(state.plan), state.workspace,

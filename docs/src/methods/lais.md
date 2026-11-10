@@ -56,8 +56,9 @@ Later calls do not repeat completed warmup.
 Its tuning index continues across successful calls.
 
 RAM uses acceptance probabilities, including rejected moves.
-It does not fit the lower proposal scales.
-Those scales require separate specification or an independent pilot fit.
+It does not itself fit the lower proposal scales. Set `adapt_scales=true` on
+`LAIS` for the separate [lower-width update](@ref lower-width-adaptation).
+The default retains the supplied lower scales.
 
 Upper covariance inputs may be an isotropic variance, SPD matrix, `Cholesky` factorization,
 or a vector with one covariance specification per chain.
