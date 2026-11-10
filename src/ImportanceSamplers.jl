@@ -75,6 +75,7 @@ export AbstractImportanceSampler,
     SphericalGaussian,
     SphericalStudentT,
     StandardMIS,
+    SteinControlVariate,
     StratifiedMixture,
     PositiveTransform,
     ProductProposal,
@@ -84,6 +85,8 @@ export AbstractImportanceSampler,
     WeightedSamples,
     WeightedSampleView,
     current_proposal,
+    control_variate_mean,
+    fit_control_variate,
     fit_transport,
     importance_sample,
     importance_sample!,
@@ -143,5 +146,6 @@ include("resampling.jl")
 include("statistics.jl")
 include("batched_targets.jl")
 include("fitted_transport.jl")
+include("control_variates.jl")
 
 end # module ImportanceSamplers

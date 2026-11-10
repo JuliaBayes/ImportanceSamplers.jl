@@ -26,6 +26,14 @@ Statistics.quantile
 Statistics.median
 ```
 
+## Control variates
+
+```@docs
+SteinControlVariate
+fit_control_variate
+control_variate_mean
+```
+
 ## Resampling
 
 ```@docs
