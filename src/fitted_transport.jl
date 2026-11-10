@@ -188,8 +188,9 @@ production = importance_sample(rng, logtarget,
     ImportanceSampling(fit.proposal; nsamples=100_000); transform=fit.transform)
 ```
 
-The default fits weighted slopes of `x_even` on `x_odd^2-1`, with an intercept.
-Optional `scores` fits a Gaussian conditional-score surrogate. Supply finite
+The default fits weighted quadratic slopes with an intercept and a linear
+`x_odd` nuisance term. Linear dependence stays in the latent covariance.
+Optional `scores` fits the corresponding conditional-score surrogate. Supply finite
 `∇logtarget(x)` values at the stored physical samples, matching their matrix
 shape, device, and precision. Scores need no Hessian and do not guarantee improvement.
 
@@ -255,22 +256,31 @@ function fit_transport(
     end
 end
 
-function _coupling_statistics!(terms, samples, weights, scores, centers, tasks)
+function _coupling_statistics!(terms, samples, weights, scores, centers, linear, tasks)
     z = zero(eltype(samples))
     AcceleratedKernels.foreachindex(weights; max_tasks = tasks, min_elems = 512) do j
         for pair = 1:(size(samples, 1)÷2)
             offset = 5(pair - 1)
             w = weights[j]
-            phi = iszero(w) ? z : abs2(samples[2pair-1, j]) - one(z)
+            x = iszero(w) ? z : samples[2pair-1, j]
             y = iszero(w) ? z : samples[2pair, j]
             s = scores === nothing || iszero(w) ? z : scores[2pair, j]
             if centers !== nothing && !iszero(w)
-                phi -= centers[offset+1]
+                x -= centers[offset+1]
                 y -= centers[offset+2]
                 s -= centers[offset+3]
             end
+            if linear !== nothing && !iszero(w)
+                variance = linear[offset+1]
+                phi = x^2 - variance - (linear[offset+2] / variance) * x
+                y -= (linear[offset+3] / variance) * x
+                s -= (linear[offset+4] / variance) * x
+            else
+                phi = z
+            end
             statistics =
-                centers === nothing ? (w * phi, w * y, w * s, z, z) :
+                centers === nothing ? (w * x, w * y, w * s, z, z) :
+                linear === nothing ? (w * x^2, w * x^3, w * x * y, w * x * s, z) :
                 (w * phi^2, w * phi * y, w * y^2, w * phi * s, w * y * s)
             terms[offset+1, j] = statistics[1]
             terms[offset+2, j] = statistics[2]
@@ -287,16 +297,22 @@ function _fit_coupling_coefficients(samples, weights, scores, threaded)
     iszero(pairs) && return similar(weights, eltype(samples), 0)
     terms = similar(samples, 5pairs, n)
     tasks = threaded ? Threads.nthreads(:default) : 1
-    centers = _coupling_statistics!(terms, samples, weights, scores, nothing, tasks)
-    totals = _coupling_statistics!(terms, samples, weights, scores, centers, tasks)
+    centers =
+        _coupling_statistics!(terms, samples, weights, scores, nothing, nothing, tasks)
+    linear = _coupling_statistics!(terms, samples, weights, scores, centers, nothing, tasks)
+    totals = _coupling_statistics!(terms, samples, weights, scores, centers, linear, tasks)
     coefficients = similar(weights, eltype(samples), pairs)
     AcceleratedKernels.foreachindex(coefficients; max_tasks = 1) do pair
         offset = 5(pair - 1)
         a, b, c, u, v = (totals[offset+i] for i = 1:5)
         T = eltype(totals)
         coefficient = oftype(a, NaN)
-        # Resolve predictor variation above the rounding error in its weighted center.
-        if isfinite(a) && sqrt(a) > 8eps(T) * max(abs(centers[offset+1]), one(T))
+        variance = linear[offset+1]
+        # Separate coordinate resolution from residual quadratic variation (units x²).
+        if isfinite(variance) &&
+           sqrt(variance) > 8eps(T) * abs(centers[offset+1]) &&
+           isfinite(a) &&
+           sqrt(a) > 8eps(T) * variance
             if scores === nothing
                 coefficient = b / a
             elseif isfinite(c) && c > zero(T)

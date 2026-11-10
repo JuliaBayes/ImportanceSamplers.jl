@@ -37,6 +37,17 @@ end
 
 batch!(values, samples) = (values .= logtarget.(eachcol(samples)); nothing)
 
+function gaussian_null(; device = MLDataDevices.cpu_device(), T = Float64)
+    nodes, mass = T[-sqrt(3), 0, sqrt(3)], T[1/6, 2/3, 1/6]
+    points = stack(T[3+2u, -4+5u+T(0.7)*v] for u in nodes for v in nodes)
+    scores = stack(T[-u/2+5v/(2T(0.7)), -v/T(0.7)] for u in nodes for v in nodes)
+    pilot = device(WeightedSamples(points, [log(a * b) for a in mass for b in mass]))
+    for cached in (nothing, device(scores))
+        fit = fit_transport(pilot; scores = cached)
+        @test abs(only(fit.transform.coefficients)) <= 64eps(T) * T(5) / 4
+    end
+end
+
 function main(; device = MLDataDevices.cpu_device(), T = Float64, d = 2)
     tolerance = T(200) * eps(T)
     points = randn(Xoshiro(7129), T, d, 512)

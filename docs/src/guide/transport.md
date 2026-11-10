@@ -55,7 +55,10 @@ It is not a neural flow or a general geometry-learning algorithm.
 ## Fitting
 
 Moment fitting regresses each even coordinate on the paired odd coordinate's
-square, with an intercept. The latent Student-t then fits the inverse-mapped
+square, with an intercept and a linear nuisance term. Score fitting removes
+the same linear trend. A translated Gaussian pair then has zero population
+curvature. Finite pilots can still fit spurious curvature. Ordinary linear
+dependence stays in the latent covariance. The latent Student-t fits the inverse-mapped
 pilot's full weighted covariance, including correlations between pairs.
 
 Optional cached scores fit a Gaussian conditional-score surrogate instead:

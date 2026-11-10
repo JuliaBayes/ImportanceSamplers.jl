@@ -65,13 +65,16 @@ end
 
 @testset "Weighted pilot fits preserve covariance convention" begin
     for T in (Float32, Float64)
-        # A translated exact quadratic relation checks the regression intercept.
+        # Translation and a linear nuisance term must not change the curvature fit.
         rng = Xoshiro(7129)
         samples = randn(rng, T, 2, 256)
         samples[1, :] .+= T(2)
-        samples[2, :] .+= T(1.25) .* (samples[1, :] .^ 2 .- one(T)) .+ T(4)
+        samples[2, :] .+=
+            T(1.25) .* (samples[1, :] .^ 2 .- one(T)) .+ T(1.75) .* samples[1, :] .+ T(4)
         scores = similar(samples)
-        scores[2, :] .= -samples[2, :] .+ T(1.25) .* (samples[1, :] .^ 2 .- one(T)) .+ T(4)
+        scores[2, :] .=
+            -samples[2, :] .+ T(1.25) .* (samples[1, :] .^ 2 .- one(T)) .+
+            T(1.75) .* samples[1, :] .+ T(4)
         scores[1, :] .= zero(T) # The fit uses only even-coordinate scores.
         logweights = collect(range(T(-2), zero(T); length = 256))
         pilot = WeightedSamples(samples, logweights)
@@ -91,13 +94,9 @@ end
         @test DensityInterface.logdensityof(fit.proposal, T[0.3, 4.5]) ≈
               DensityInterface.logdensityof(reference, T[0.3, 4.5])
         moment = fit_transport(pilot; threaded = false)
-        phi = samples[1, :] .^ 2 .- one(T)
-        centered_phi = phi .- sum(weights .* phi)
-        centered_value = samples[2, :] .- sum(weights .* samples[2, :])
-        slope =
-            sum(weights .* centered_phi .* centered_value) /
-            sum(weights .* centered_phi .^ 2)
-        @test moment.transform.coefficients ≈ T[slope] rtol = 100eps(T)
+        design = hcat(ones(T, 256), samples[1, :], samples[1, :] .^ 2)
+        beta = (sqrt.(weights) .* design) \ (sqrt.(weights) .* samples[2, :])
+        @test moment.transform.coefficients ≈ T[beta[3]] rtol = 100eps(T)
         shifted = fit_transport(
             WeightedSamples(samples, logweights .+ T(100));
             scores,
@@ -131,6 +130,12 @@ end
             @test DensityInterface.logdensityof(extended.proposal, T[0.3, 4.5]) ≈
                   DensityInterface.logdensityof(fit.proposal, T[0.3, 4.5])
         end
+    end
+end
+
+@testset "Gaussian linear dependence is not curvature" begin
+    for T in (Float32, Float64)
+        FittedTransportValidation.gaussian_null(; T)
     end
 end
 
@@ -176,6 +181,8 @@ end
 @testset "Undefined coupling fits do not produce a proposal" begin
     constant = WeightedSamples([fill(2.0, 5)'; collect(1.0:5.0)'], zeros(5))
     @test_throws ArgumentError fit_transport(constant)
+    binary = WeightedSamples([-1.0 1 -1 1; 0 1 2 3], zeros(4))
+    @test_throws ArgumentError fit_transport(binary)
     rng = Xoshiro(43)
     samples = randn(rng, 2, 32)
     pilot = WeightedSamples(samples, zeros(32))
