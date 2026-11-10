@@ -118,7 +118,7 @@ end
     logical, jacobian, reason, block = _coordinate_to_logical(layout, _native_sample_at(samples, index))
     jacobians[index] = jacobian
     if iszero(reason)
-        _store_named_result_values!(outputs, values(logical), index)
+        _store_named_result_values!(outputs, _result_blocks(logical), index)
     else
         jacobians[index] = eltype(jacobians)(NaN)
         failure_storage === nothing || _record_native_failure!(failure_storage, index, block, reason)
@@ -136,7 +136,7 @@ function _invoke_batch_target!(target::_BoundNamedTarget, logs, samples, failure
         mapping_failures = _allocate_failure_storage(backend, logs, length(logs))
         fill!(mapping_failures, zero(eltype(mapping_failures)))
     end
-    _map_named_batch_kernel!(backend)(values(mapped), jacobians, samples, target.layout, mapping_failures;
+    _map_named_batch_kernel!(backend)(_result_blocks(mapped), jacobians, samples, target.layout, mapping_failures;
         ndrange=length(logs), workgroupsize=_native_workgroupsize(execution, length(logs)))
     KernelAbstractions.synchronize(backend)
     _check_batch_mapping!(target, mapping_failures, failure_storage !== nothing)

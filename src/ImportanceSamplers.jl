@@ -65,6 +65,7 @@ export AbstractImportanceSampler,
     PartialDeterministicMixture,
     ParetoSmoothedSamples,
     ProposalBank,
+    QuadraticCoupling,
     RandomMixture,
     SamplerAlreadyExecutedError,
     SamplerBusyError,
@@ -83,6 +84,7 @@ export AbstractImportanceSampler,
     WeightedSamples,
     WeightedSampleView,
     current_proposal,
+    fit_transport,
     importance_sample,
     importance_sample!,
     lognormalizer,
@@ -140,5 +142,6 @@ include("psis.jl")
 include("resampling.jl")
 include("statistics.jl")
 include("batched_targets.jl")
+include("fitted_transport.jl")
 
 end # module ImportanceSamplers

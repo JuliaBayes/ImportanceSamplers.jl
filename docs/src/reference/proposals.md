@@ -37,4 +37,6 @@ PositiveTransform
 SoftplusTransform
 IntervalTransform
 SimplexTransform
+QuadraticCoupling
+fit_transport
 ```

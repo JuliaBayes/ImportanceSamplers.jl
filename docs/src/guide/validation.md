@@ -85,6 +85,7 @@ julia --project=validation validation/reproducers/plain_is.jl
 | CUDA GRAMIS | `cuda_first_order_gramis.jl` |
 | Student-t devices | `cuda_student_t.jl`, `metal_student_t.jl` |
 | Batch callbacks | `batch_targets.jl` |
+| Fitted quadratic transport | `fitted_transport.jl` |
 | Reactant execution | `reactant_execution.jl` |
 
 Read each script's setup before running optional-backend cases.

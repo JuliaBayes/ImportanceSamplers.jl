@@ -28,6 +28,7 @@ test_files = if isempty(ARGS)
         "threading",
         "results",
         "psis",
+        "fitted_transport",
         "resampling",
         "device_results",
         "failures",

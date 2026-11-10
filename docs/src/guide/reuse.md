@@ -66,8 +66,8 @@ This separates a pilot from production.
 The new algorithm controls its own count and method.
 `current_proposal` returns an independent snapshot, not a mutable view into the sampler.
 
-For a named transform layout, the snapshot uses numerical sampling coordinates.
-Pass the same layout to the new prepared sampler.
+For a named layout or [`QuadraticCoupling`](@ref), the snapshot uses latent sampling
+coordinates. Pass the same transform to the new prepared sampler.
 
 For an accelerator sampler, request an explicit CPU snapshot with
 `current_proposal(MLDataDevices.CPUDevice(), prepared)`.
