@@ -63,6 +63,18 @@ function support_cases()
             target=LogTarget(vector_target; grad=gradient!), limits=cooperative),
         case("LAIS: RWM", "factor Gaussian bank", LAIS(bank;
             transition=RandomWalkMetropolis(0.25f0), rounds=2, round_size=128)),
+        case("LAIS: HMC", "factor Gaussian bank; supplied gradient", LAIS(bank;
+            transition=HamiltonianMonteCarlo(; step_size=0.1f0, leapfrog_steps=3),
+            rounds=2, round_size=128); target=LogTarget(vector_target; grad=gradient!),
+            limits=(metal=:hamiltonian_backend_unsupported,
+                reactant_cpu=:hamiltonian_backend_unsupported,
+                reactant_gpu=:hamiltonian_backend_unsupported)),
+        case("HAIS", "factor Gaussian bank; supplied gradient", HAIS(bank;
+            transition=HamiltonianMonteCarlo(; step_size=0.1f0, leapfrog_steps=3),
+            rounds=2, round_size=128); target=LogTarget(vector_target; grad=gradient!),
+            limits=(metal=:hamiltonian_backend_unsupported,
+                reactant_cpu=:hamiltonian_backend_unsupported,
+                reactant_gpu=:hamiltonian_backend_unsupported)),
         case("LAIS: RAM", "factor Gaussian bank; four warmup moves", LAIS(bank;
             transition=RAM(0.25f0; tuning=WarmupTuning(4)), rounds=2, round_size=128);
             limits=(reactant_cpu=:reactant_cpu_transition_tuning,)),

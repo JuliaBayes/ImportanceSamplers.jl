@@ -28,5 +28,6 @@ DMPMCRoundError
 APISRoundError
 CAISRoundError
 LAISRoundError
+HAISRoundError
 FirstOrderGRAMISRoundError
 ```

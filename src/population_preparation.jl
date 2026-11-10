@@ -102,6 +102,18 @@ function _current_population_proposal(
 end
 
 function _population_proposal_snapshot(locations, proposal_ids, sampler)
+    proposals = _population_snapshot_proposals(locations, proposal_ids, sampler)
+    configured_masses = sampler.algorithm.bank.masses
+    snapshot = ProposalBank(proposals, configured_masses)
+    # Preserve already normalized configured masses exactly.
+    copyto!(snapshot.masses, configured_masses)
+    return snapshot
+end
+
+_population_snapshot_proposals(locations, proposal_ids, sampler) =
+    _fixed_population_snapshot_proposals(locations, proposal_ids, sampler)
+
+function _fixed_population_snapshot_proposals(locations, proposal_ids, sampler)
     proposals = deepcopy(sampler.algorithm.bank.proposals)
     for (slot, proposal_id) in pairs(proposal_ids)
         proposal = proposals[proposal_id]
@@ -112,12 +124,7 @@ function _population_proposal_snapshot(locations, proposal_ids, sampler)
         )
         proposals[proposal_id] = _population_snapshot_proposal(proposal, location)
     end
-    configured_masses = sampler.algorithm.bank.masses
-    snapshot = ProposalBank(proposals, configured_masses)
-    # The configured masses are already validated and normalized. Restore their
-    # exact values after constructor validation instead of normalizing twice.
-    copyto!(snapshot.masses, configured_masses)
-    return snapshot
+    return proposals
 end
 
 _population_snapshot_proposal(proposal::_NativeRadialProposal, location) =

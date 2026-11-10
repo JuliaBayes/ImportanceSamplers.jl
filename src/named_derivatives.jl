@@ -5,6 +5,22 @@ end
 
 Adapt.@adapt_structure _BoundNamedGradient
 
+function _value_and_gradient!(destination, bound::_BoundNamedGradient, sample, slot=1)
+    target = bound.target
+    logical, logjac, reason, block = _coordinate_to_logical(target.layout, sample)
+    iszero(reason) || _throw_named_transform_failure(target.layout, reason, block)
+    inner = target.target
+    value = _batch_target_value(inner.logdensity, logical, inner.context) + logjac
+    if isfinite(value)
+        scratch = _named_gradient_scratch(bound.scratch, slot)
+        fill!(scratch, eltype(scratch)(NaN))
+        gradient = _logical_gradient(target.layout, scratch)
+        _explicit_inplace_gradient!(gradient, inner, inner.context, logical)
+        _pullback_layout!(destination, target.layout, sample, logical, gradient)
+    end
+    return value
+end
+
 _logical_gradient_view(scratch, block::_LocatedTransform{Int}, offset) = view(scratch, offset)
 _logical_gradient_view(scratch, block::_LocatedTransform{<:UnitRange}, offset) =
     view(scratch, offset:(offset + _logical_block_length(block) - 1))

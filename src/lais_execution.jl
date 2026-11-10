@@ -28,16 +28,23 @@ function _population_round_views(state::_PreparedLAIS, round)
 end
 
 function _reset_population_run!(state::_PreparedLAIS, run, committed)
+    _reset_lower_widths!(run, committed, state.workspace.widths)
     copyto!(state.run_transition, state.transition)
+    _reset_transition_diagnostics!(state.run_transition)
     return nothing
 end
+
+_reset_transition_diagnostics!(state) = nothing
 
 function _before_population_round!(sampler, state::_PreparedLAIS, target, round, execution, transfers)
     transition!(state.run_transition, target, sampler.rng, execution, transfers)
     return nothing
 end
 
-_advance_population!(sampler, state::_PreparedLAIS, views, round, execution, transfers) = nothing
+function _advance_population!(sampler, state::_PreparedLAIS, views, round, execution, transfers)
+    _adapt_lower_widths!(state.workspace.widths, state, views, round, execution)
+    return nothing
+end
 _commit_population_round!(::_PreparedLAIS, bank) = nothing
 _population_transition_diagnostics(::Nothing, state, transfers) = transition_diagnostics(state, transfers)
 
@@ -49,13 +56,10 @@ end
 
 function _population_diagnostics(sampler, state::_PreparedLAIS, execution, schedule,
     round_ess, round_lognormalizers, transfers)
-    names = (:initial_target_evaluations, :warmup_target_evaluations,
-        :production_target_evaluations, :warmup_proposals, :production_proposals, :accepted)
-    after = _population_transition_diagnostics(sampler.backend_execution, state.run_transition, transfers)
-    before = _population_transition_diagnostics(sampler.backend_execution, state.transition, transfers)
-    transition = NamedTuple{names}(map(name -> getproperty(after, name) - getproperty(before, name), names))
+    transition = _transition_call_diagnostics(sampler.backend_execution,
+        state.run_transition, state.transition, transfers)
     lower_count = sum(schedule)
-    return (
+    return merge((
         method=:lais, execution=_execution_name(execution), threaded=sampler.threaded,
         factor_execution_policy=_use_factor_batch_mis_path(
             sampler.device, state.run_bank,
@@ -68,7 +72,17 @@ function _population_diagnostics(sampler, state::_PreparedLAIS, execution, sched
             transition.warmup_target_evaluations + transition.production_target_evaluations,
         proposal_evaluations=length(sampler.algorithm.bank.proposals) * lower_count,
         transition=transition, failures=0, transfers=transfers,
-    )
+    ), _transition_run_extras(state.run_transition, transition))
+end
+
+_transition_run_extras(state, counts) = NamedTuple()
+
+function _transition_call_diagnostics(backend, after_state, before_state, transfers)
+    names = (:initial_target_evaluations, :warmup_target_evaluations,
+        :production_target_evaluations, :warmup_proposals, :production_proposals, :accepted)
+    after = _population_transition_diagnostics(backend, after_state, transfers)
+    before = _population_transition_diagnostics(backend, before_state, transfers)
+    return NamedTuple{names}(map(name -> getproperty(after, name) - getproperty(before, name), names))
 end
 
 _importance_sample_cpu!(sampler, state::_PreparedLAIS, threaded) =

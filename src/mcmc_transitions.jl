@@ -3,7 +3,7 @@
 
 Abstract supertype for batched MCMC transitions used by [`LAIS`](@ref).
 Built-in transitions are [`RandomWalkMetropolis`](@ref), [`RAM`](@ref),
-and [`SampleMetropolisHastings`](@ref).
+[`SampleMetropolisHastings`](@ref), and [`HamiltonianMonteCarlo`](@ref).
 Custom transitions require the following methods, qualified with
 `ImportanceSamplers` except for `Base.copyto!`.
 

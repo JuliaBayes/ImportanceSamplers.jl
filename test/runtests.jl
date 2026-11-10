@@ -17,6 +17,8 @@ test_files = if isempty(ARGS)
         "dm_pmc_kernel",
         "apis",
         "lais",
+        "hamiltonian",
+        "lower_widths",
         "cais",
         "first_order_gramis",
         "first_order_gramis_kernel",

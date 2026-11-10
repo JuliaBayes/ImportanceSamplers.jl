@@ -49,6 +49,8 @@ Construct another algorithm to change its budget.
 Population methods have additional [allocation requirements](@ref choosing-method).
 A prepared call restarts round-indexed schedules at round one.
 LAIS transition state follows its separate tuning rules.
+HAIS retains its final post-sampling HMC/cooperation update for the next call.
+HMC warmup completes once and its production step size stays fixed during reuse.
 
 ## Proposal snapshots
 

@@ -45,6 +45,9 @@ export AbstractImportanceSampler,
     FirstOrderGRAMIS,
     FirstOrderGRAMISRoundError,
     FusedFactorExecution,
+    HamiltonianMonteCarlo,
+    HAIS,
+    HAISRoundError,
     ImportanceSampling,
     IndependentGamma,
     IndependentLaplace,
@@ -115,6 +118,8 @@ include("population_preparation.jl")
 include("methods/dm_pmc.jl")
 include("mcmc_transitions.jl")
 include("methods/lais.jl")
+include("hamiltonian.jl")
+include("methods/hais.jl")
 include("methods/apis.jl")
 include("methods/cais.jl")
 include("adaptive_gaussian.jl")
@@ -139,6 +144,10 @@ include("cais_execution.jl")
 include("dm_pmc_execution.jl")
 include("apis_execution.jl")
 include("lais_execution.jl")
+include("hais_execution.jl")
+include("lower_width_adaptation.jl")
+include("hamiltonian_integration.jl")
+include("hamiltonian_device.jl")
 include("mcmc_transition_kernels.jl")
 include("results.jl")
 include("psis.jl")

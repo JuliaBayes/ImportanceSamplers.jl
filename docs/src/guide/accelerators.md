@@ -116,6 +116,8 @@ They do not imply that every user target compiles on every backend.
 | AMDGPU | Not validated or claimed | A KernelAbstractions backend alone does not supply full package support |
 
 Gaussian and Student-t proposals support every method, subject to backend limits.
+HMC-driven LAIS and HAIS require vector layouts and currently support ordinary
+CPU and native CUDA. Metal and Reactant HMC paths reject explicitly during setup.
 Boxes support fixed IS/static MIS. Independent Gamma and Laplace also support
 AMIS/N-PMC marginal moment adaptation and DM-PMC/APIS mean adaptation.
 Laplace also supports LAIS lower proposals. Gamma retains coordinate variance;
