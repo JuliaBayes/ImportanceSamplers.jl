@@ -36,6 +36,7 @@ makedocs(
             "Constraints and named parameters" => "guide/transforms.md",
             "Weighted samples" => "guide/results.md",
             "Pareto smoothing" => "guide/psis.md",
+            "Fitted transport" => "guide/transport.md",
             "Adaptation and reuse" => "guide/reuse.md",
         ],
         "Methods" => [

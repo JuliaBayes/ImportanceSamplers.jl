@@ -148,7 +148,7 @@ function _map_samples!(samples, layout, record)
     mapped = IS._allocate_flat_samples(samples, eltype(samples), layout, count)
     fill!(record.storage, zero(UInt64))
     IS._map_named_result_kernel!(KA.get_backend(samples))(
-        values(mapped), samples, layout, record.storage; ndrange=count)
+        IS._result_blocks(mapped), samples, layout, record.storage; ndrange=count)
     return mapped
 end
 

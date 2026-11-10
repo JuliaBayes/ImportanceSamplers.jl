@@ -21,6 +21,9 @@ function _logical_gradient(layout, scratch)
         _logical_gradient_views(scratch, values(layout.blocks), 1))
 end
 
+_logical_dimension(layout::_FlatTransformLayout, sampling_dimension) =
+    sum(_logical_block_length, values(layout.blocks))
+
 function _prepare_bound_gradient(target::_NamedPreparedTarget, sample, worker_count)
     target = _scalar_target(target)
     _validate_gradient_worker_count(worker_count)
@@ -29,7 +32,7 @@ function _prepare_bound_gradient(target::_NamedPreparedTarget, sample, worker_co
     if isnothing(inner.gradient)
         return _prepare_bound_gradient(_named_ad_target(target), sample, worker_count)
     end
-    dimension = sum(_logical_block_length, values(target.layout.blocks))
+    dimension = _logical_dimension(target.layout, length(sample))
     scratch = _prepare_gradient_pool(worker_count) do
         similar(sample, dimension)
     end
@@ -54,7 +57,7 @@ function _prepare_accelerator_gradient(target::_NamedPreparedTarget, locations, 
     inner isa _PreparedLogTarget || return _prepare_accelerator_gradient(inner, locations, values)
     isnothing(inner.gradient) && return _prepare_accelerator_gradient(
         _named_ad_target(target; materialized=false), locations, values)
-    dimension = sum(_logical_block_length, Base.values(target.layout.blocks))
+    dimension = _logical_dimension(target.layout, size(locations, 1))
     scratch = similar(locations, dimension, size(locations, 2))
     _validate_named_gradient(target, view(locations, :, 1), view(scratch, :, 1))
     return _BoundNamedGradient(target, scratch)
@@ -72,10 +75,13 @@ function _gradient!(destination, bound::_BoundNamedGradient, sample, slot=1)
     scratch = _named_gradient_scratch(bound.scratch, slot)
     gradient = _logical_gradient(target.layout, scratch)
     _explicit_inplace_gradient!(gradient, target.target, target.target.context, logical)
-    _pullback_named_blocks!(destination, sample, values(target.layout.blocks),
-        values(logical), values(gradient))
+    _pullback_layout!(destination, target.layout, sample, logical, gradient)
     return destination
 end
+
+_pullback_layout!(destination, layout::_FlatTransformLayout, sample, logical, gradient) =
+    _pullback_named_blocks!(destination, sample, values(layout.blocks),
+        values(logical), values(gradient))
 
 _pullback_named_blocks!(destination, sample, ::Tuple{}, ::Tuple{}, ::Tuple{}) = nothing
 function _pullback_named_blocks!(destination, sample, blocks::Tuple, logical::Tuple, gradients::Tuple)

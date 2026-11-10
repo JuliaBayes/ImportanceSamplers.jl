@@ -299,6 +299,9 @@ end
 
 @inline _store_named_result_values!(::Tuple{}, ::Tuple{}, sample_index) = nothing
 
+_result_blocks(value::NamedTuple) = values(value)
+_result_blocks(value::AbstractArray) = (value,)
+
 @inline function _store_named_result_values!(outputs, values, sample_index)
     _store_named_result_value!(first(outputs), first(values), sample_index)
     return _store_named_result_values!(
@@ -318,7 +321,7 @@ end
     coordinate = _native_sample_at(samples, sample_index)
     logical, _, reason, block = _coordinate_to_logical(layout, coordinate)
     if iszero(reason)
-        _store_named_result_values!(outputs, values(logical), sample_index)
+        _store_named_result_values!(outputs, _result_blocks(logical), sample_index)
     else
         _record_native_failure!(
             failure_storage,
@@ -342,13 +345,13 @@ function _map_result_samples(target::_NamedPreparedTarget, samples, failure_scra
         iterate(1:count) do sample_index
             logical, _, reason, block = _coordinate_to_logical(layout, _sample_at(samples, sample_index))
             iszero(reason) || _throw_named_result_failure(layout, reason, sample_index, block)
-            _store_named_result_values!(values(mapped), values(logical), sample_index)
+            _store_named_result_values!(_result_blocks(mapped), _result_blocks(logical), sample_index)
         end
     else
         record = failure_scratch.record
         fill!(record.storage, zero(UInt64))
         kernel = _map_named_result_kernel!(backend)
-        kernel(values(mapped), samples, layout, record.storage; ndrange=count)
+        kernel(_result_blocks(mapped), samples, layout, record.storage; ndrange=count)
         KernelAbstractions.synchronize(backend)
         snapshot = _device_failure_snapshot(record)
         failure = snapshot.failure

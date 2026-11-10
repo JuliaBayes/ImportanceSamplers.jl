@@ -305,10 +305,11 @@ _prepare_backend_execution(sampler) = sampler
 Bind a target, optional context `p`, algorithm, CPU execution policy, and RNG
 into a reusable prepared sampler.
 
-An optional named `transform` uses complete, disjoint flat selectors such as
+An optional [`QuadraticCoupling`](@ref) maps latent vectors to physical vectors.
+A named `transform` uses complete, disjoint flat selectors such as
 `(weights=(1:2=>SimplexTransform(3)), scale=(3=>PositiveTransform()))`.
 A bare index or range, such as `offset=4`, means an identity transform.
-The target receives named logical parameters. The sampler keeps numerical
+Named layouts give the target named logical parameters. The sampler keeps numerical
 coordinates internally and includes the forward log Jacobian in raw weights.
 Returned named arrays retain the original weights and provenance. Names do not
 impose proposal independence. Existing behavior is unchanged when omitted.

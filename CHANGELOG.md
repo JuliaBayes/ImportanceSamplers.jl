@@ -3,6 +3,7 @@
 ## Unreleased (0.0.2)
 
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
+- Fitted pairwise quadratic transport with weighted moment or cached-score fitting.
 
 ## 0.0.1
 
