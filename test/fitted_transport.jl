@@ -1,6 +1,7 @@
 using Test, ImportanceSamplers, Random, Statistics, LinearAlgebra
 import DensityInterface
 import ADTypes, ForwardDiff
+include("../validation/reproducers/fitted_transport.jl")
 
 transport_target(x) = -(x[1]^2 + (x[2] - 1.25 * (x[1]^2 - 1))^2) / 2 - log(2pi)
 transport_latent(x) = -sum(abs2, x) / 2 - log(2pi)
@@ -9,6 +10,22 @@ function transport_gradient!(g, x)
     g[1] = -x[1] + 2.5 * x[1] * residual
     g[2] = -residual
     return g
+end
+
+@testset "Unpaired coordinates retain their value and gradient" begin
+    FittedTransportValidation.main(; d = 1)
+    FittedTransportValidation.main(; d = 3)
+    algorithm = ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples = 32)
+    target(x) = -abs2(x) / 2
+    plain = importance_sample(Xoshiro(19), target, algorithm)
+    identity = importance_sample(
+        Xoshiro(19),
+        target,
+        algorithm;
+        transform = QuadraticCoupling(Float64[]),
+    )
+    @test identity.samples == plain.samples
+    @test identity.logweights == plain.logweights
 end
 function transport_batch!(logs, samples)
     logs .= transport_target.(eachcol(samples))

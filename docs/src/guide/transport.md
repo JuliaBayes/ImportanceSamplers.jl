@@ -43,6 +43,10 @@ The inverse subtracts the shift. The Jacobian determinant is one, so
 ``\log q_x(x)=\log q_z(T^{-1}(x))``. The target receives physical coordinates,
 the sampler operates in latent coordinates, and returned samples contain
 physical coordinates. Do not apply another Jacobian correction.
+An unpaired final coordinate is unchanged. A one-dimensional map is the identity.
+Supply `floor(d/2)` coefficients. For example, `QuadraticCoupling([0.75])`
+maps the first pair of a three-dimensional vector and leaves its third entry
+unchanged. `QuadraticCoupling(Float64[])` leaves a one-dimensional vector unchanged.
 
 This is an additive coupling, following
 [Dinh et al., Section 3.2](https://arxiv.org/abs/1410.8516).
@@ -130,7 +134,7 @@ rather than placing a transformed proposal inside a population bank.
 
 ## Limits
 
-The initial family requires flat, unconstrained vectors of even dimension.
+The family accepts nonempty flat, unconstrained vectors of any dimension.
 It leaves odd coordinates unchanged and models only paired quadratic shifts.
 It cannot remove arbitrary conditional scale changes, identify unseen modes,
 or guarantee finite importance-weight variance. Named constraint-map composition

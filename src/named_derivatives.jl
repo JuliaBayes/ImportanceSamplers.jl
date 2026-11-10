@@ -21,7 +21,7 @@ function _logical_gradient(layout, scratch)
         _logical_gradient_views(scratch, values(layout.blocks), 1))
 end
 
-_logical_dimension(layout::_FlatTransformLayout) =
+_logical_dimension(layout::_FlatTransformLayout, sampling_dimension) =
     sum(_logical_block_length, values(layout.blocks))
 
 function _prepare_bound_gradient(target::_NamedPreparedTarget, sample, worker_count)
@@ -32,7 +32,7 @@ function _prepare_bound_gradient(target::_NamedPreparedTarget, sample, worker_co
     if isnothing(inner.gradient)
         return _prepare_bound_gradient(_named_ad_target(target), sample, worker_count)
     end
-    dimension = _logical_dimension(target.layout)
+    dimension = _logical_dimension(target.layout, length(sample))
     scratch = _prepare_gradient_pool(worker_count) do
         similar(sample, dimension)
     end
@@ -57,7 +57,7 @@ function _prepare_accelerator_gradient(target::_NamedPreparedTarget, locations, 
     inner isa _PreparedLogTarget || return _prepare_accelerator_gradient(inner, locations, values)
     isnothing(inner.gradient) && return _prepare_accelerator_gradient(
         _named_ad_target(target; materialized=false), locations, values)
-    dimension = _logical_dimension(target.layout)
+    dimension = _logical_dimension(target.layout, size(locations, 1))
     scratch = similar(locations, dimension, size(locations, 2))
     _validate_named_gradient(target, view(locations, :, 1), view(scratch, :, 1))
     return _BoundNamedGradient(target, scratch)

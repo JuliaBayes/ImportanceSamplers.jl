@@ -5,6 +5,8 @@ Map pairs by `x[2j-1] = z[2j-1]` and
 `x[2j] = z[2j] + coefficients[j] * (z[2j-1]^2 - 1)`. The inverse subtracts
 the shift. The log absolute Jacobian determinant is zero. Coefficients are
 copied, must remain read-only, and must match the proposal precision.
+An unpaired final coordinate stays unchanged. Empty coefficients give the 1D identity.
+Supply `floor(d/2)` coefficients for an input vector of dimension `d`.
 
 Pass `transform=` to [`prepare_sampler`](@ref) or [`importance_sample`](@ref).
 Native samplers adapt in latent coordinates and return physical coordinates.
@@ -24,8 +26,8 @@ end
 
 function QuadraticCoupling(coefficients::AbstractVector{T}) where {T<:_TransformFloat}
     Base.require_one_based_indexing(coefficients)
-    !isempty(coefficients) && all(isfinite, coefficients) ||
-        throw(ArgumentError("coupling coefficients must be nonempty and finite"))
+    all(isfinite, coefficients) ||
+        throw(ArgumentError("coupling coefficients must be finite"))
     return QuadraticCoupling(copy(coefficients), _PreparedProposalToken())
 end
 
@@ -51,19 +53,38 @@ end
 
 function _validate_known_transform_input(transform::QuadraticCoupling, input)
     input === nothing && return nothing
-    input isa AbstractVector && length(input) == _logical_dimension(transform) ||
-        throw(DimensionMismatch("coupling requires two coordinates per coefficient"))
+    input isa AbstractVector &&
+        !isempty(input) &&
+        length(input) ÷ 2 == length(transform.coefficients) || throw(
+        DimensionMismatch("coupling requires one coefficient per complete coordinate pair"),
+    )
     eltype(input) === eltype(transform.coefficients) ||
         throw(ArgumentError("coupling and coordinate precision must match"))
     return nothing
 end
 
 function _named_target_layout(proposal, transform::QuadraticCoupling)
-    _proposal_dimension(proposal) == _logical_dimension(transform) ||
-        throw(DimensionMismatch("coupling requires two coordinates per coefficient"))
+    dimension = _proposal_dimension(proposal)
+    dimension isa Int && dimension > 0 && dimension ÷ 2 == length(transform.coefficients) ||
+        throw(
+            DimensionMismatch(
+                "coupling requires one coefficient per complete coordinate pair",
+            ),
+        )
     _coupling_precision_matches(transform, proposal) ||
         throw(ArgumentError("coupling and proposal precision must match"))
     return transform
+end
+
+function _resolve_prepared_target(
+    target::_PreparedLogTarget,
+    proposal,
+    transform::QuadraticCoupling,
+)
+    resolved = _resolve_prepared_target(target, proposal)
+    _named_target_layout(proposal, transform)
+    isempty(transform.coefficients) && return resolved
+    return _prepare_named_target(resolved, proposal, transform)
 end
 
 _coupling_precision_matches(transform, proposal) =
@@ -71,13 +92,14 @@ _coupling_precision_matches(transform, proposal) =
 _coupling_precision_matches(transform, bank::ProposalBank) =
     all(proposal -> _coupling_precision_matches(transform, proposal), bank.proposals)
 
-_logical_dimension(transform::QuadraticCoupling) = 2length(transform.coefficients)
+_logical_dimension(::QuadraticCoupling, sampling_dimension) = sampling_dimension
 _logical_binding_sample(transform::QuadraticCoupling, coordinate) =
     _CoupledPoint(coordinate, transform.coefficients)
 _logical_gradient(::QuadraticCoupling, scratch) = scratch
 _allocate_flat_samples(prototype, ::Type{T}, ::QuadraticCoupling, count) where {T} =
     similar(prototype, T, size(prototype, 1), count)
-_native_failure_location(::QuadraticCoupling, block) = (2block-1):2block
+_native_failure_location(transform::QuadraticCoupling, block) =
+    block > length(transform.coefficients) ? 2block - 1 : (2block-1):2block
 _throw_named_transform_failure(transform::QuadraticCoupling, reason, block) = throw(
     InvalidTransformError(
         _native_transform_failure_reason(reason),
@@ -128,6 +150,7 @@ function _pullback_layout!(
             gradient[odd] + coefficient * (2sample[odd] * gradient[even])
         destination[even] = gradient[even]
     end
+    isodd(length(sample)) && (destination[end] = gradient[end])
     return destination
 end
 
@@ -155,7 +178,8 @@ end
 
 Return a fitted `(; proposal, transform)` containing a latent [`FactorStudentT`](@ref)
 and a [`QuadraticCoupling`](@ref), with CPU parameters. The weighted pilot must
-contain flat Float32/Float64 vectors of even dimension. Inputs remain unchanged.
+contain nonempty flat Float32/Float64 vectors. Inputs remain unchanged.
+Complete coordinate pairs are fitted and an unpaired final coordinate stays unchanged.
 Use a separate RNG and production sampler:
 
 ```julia
@@ -191,8 +215,7 @@ function fit_transport(
         ArgumentError("transport fitting requires a flat Float32 or Float64 sample matrix"),
     )
     d, n = size(samples)
-    d >= 2 && iseven(d) ||
-        throw(ArgumentError("transport fitting requires even dimension >= 2"))
+    d > 0 || throw(ArgumentError("transport fitting requires a positive dimension"))
     T = eltype(samples)
     nu, regularization = T(dof), T(ridge)
     isfinite(nu) && nu > T(2) || throw(ArgumentError("dof must be finite and > 2"))
@@ -261,6 +284,7 @@ end
 
 function _fit_coupling_coefficients(samples, weights, scores, threaded)
     pairs, n = size(samples, 1) ÷ 2, size(samples, 2)
+    iszero(pairs) && return similar(weights, eltype(samples), 0)
     terms = similar(samples, 5pairs, n)
     tasks = threaded ? Threads.nthreads(:default) : 1
     centers = _coupling_statistics!(terms, samples, weights, scores, nothing, tasks)
