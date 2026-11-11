@@ -42,6 +42,8 @@ the four complete assignment/denominator contracts described by
 result stores canonical raw log weights and stable one-based generating
 proposal IDs in `result.provenance.proposal_id`. Bank capabilities are validated
 during preparation, before the supplied RNG is consumed.
+With a batch target, callback sample order matches `result.samples`, including
+when sampling from a proposal bank.
 """
 struct ImportanceSampling{P,S} <: AbstractImportanceSampler
     proposal::P

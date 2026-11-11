@@ -2,6 +2,7 @@
 
 ## Unreleased (0.0.2)
 
+- Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
 - Optional local marginal-width adaptation for LAIS and HAIS.
 - Fix cold CUDA HMC execution with reduction-based target functions.
