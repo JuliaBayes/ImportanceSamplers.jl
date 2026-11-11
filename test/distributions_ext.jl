@@ -2,6 +2,43 @@ import Distributions
 import DensityInterface
 import LinearAlgebra: Symmetric, cholesky
 import Random
+import Statistics: mean, var, cov
+
+@testset "native Gaussians convert to Distributions and prepare again" begin
+    native = SphericalGaussian(1.0f0, 2.0f0)
+    converted = Distributions.Normal(native)
+    @test (mean(converted), var(converted)) === (1.0f0, 4.0f0)
+    @test Distributions.logpdf(converted, 2.0f0) ≈ DensityInterface.logdensityof(native, 2.0f0)
+    cases = (
+        SphericalGaussian(Float32[1, -1], 2.0f0),
+        DiagonalGaussian(Float32[1, -1], Float32[2, 3]),
+        FactorGaussian(Float32[1, -1], Float32[2 0; 1 3]),
+    )
+    for proposal in cases
+        distribution = Distributions.MvNormal(proposal)
+        @test mean(distribution) == mean(proposal) && eltype(distribution) === Float32
+        @test cov(distribution) ≈ cov(proposal)
+        point = Float32[2, 1]
+        @test Distributions.logpdf(distribution, point) ≈ DensityInterface.logdensityof(proposal, point)
+        prepared = prepare_sampler(Random.Xoshiro(0x52), distribution,
+            AMIS(distribution; rounds=1, round_size=16))
+        snapshot = current_proposal(prepared)
+        @test mean(snapshot) == mean(proposal) && cov(snapshot) ≈ cov(proposal)
+        @test maximum(abs, importance_sample!(prepared).logweights) <= 32eps(Float32)
+    end
+    # This factor represents an SPD law whose rounded covariance loses definiteness.
+    # Reusing the factor allows conversion without a failing covariance factorization.
+    illconditioned = FactorGaussian(zeros(Float32, 2), Float32[1 0; 1 1e-4])
+    distribution = Distributions.MvNormal(illconditioned)
+    @test Distributions.logpdf(distribution, Float32[0, 1e-4]) ≈
+          DensityInterface.logdensityof(illconditioned, Float32[0, 1e-4])
+    roundtrip = current_proposal(prepare_sampler(Random.Xoshiro(0x53), distribution,
+        AMIS(distribution; rounds=1, round_size=16)))
+    @test proposal_scale_factor(roundtrip) == proposal_scale_factor(illconditioned)
+    # Covariance-based ecosystem representations must not silently change the law.
+    @test_throws ArgumentError Distributions.MvNormal(SphericalGaussian(zeros(Float32, 1), 1.0f-30))
+    @test_throws ArgumentError Distributions.MvNormal(DiagonalGaussian(zeros(Float32, 1), Float32[1e30]))
+end
 
 @testset "Distributions normals configure adaptive sampling" begin
     for T in (Float32, Float64)

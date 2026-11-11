@@ -96,6 +96,7 @@ export AbstractImportanceSampler,
     lognormalizer,
     normalized_weights,
     psis,
+    proposal_scale_factor,
     prepare_sampler,
     retarget,
     resample
@@ -104,6 +105,7 @@ include("proposals.jl")
 include("transforms.jl")
 include("independent_proposals.jl")
 include("laplace_proposals.jl")
+include("proposal_statistics.jl")
 include("proposal_composition.jl")
 include("proposal_banks.jl")
 include("targets.jl")

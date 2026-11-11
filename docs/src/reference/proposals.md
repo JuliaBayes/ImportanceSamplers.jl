@@ -17,6 +17,7 @@ FactorStudentT
 BoxUniform
 IndependentGamma
 IndependentLaplace
+proposal_scale_factor
 ```
 
 ## Composition and populations

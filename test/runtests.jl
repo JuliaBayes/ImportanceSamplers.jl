@@ -38,6 +38,7 @@ test_files = if isempty(ARGS)
         "failures",
         "kernel_execution",
         "native_proposals",
+        "proposal_statistics",
         "independent_proposals",
         "laplace_proposals",
         "independent_adaptation",
