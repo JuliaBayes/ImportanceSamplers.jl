@@ -87,7 +87,8 @@ The package adds the Jacobian. Do not add it in the callback.
 
 `grad=` and AD selectors remain independent of `batch=`.
 Automatic differentiation uses the scalar target, not this callback.
-There is no separate batch-gradient callback.
+Use `batch_grad=` for [combined batched values and gradients](@ref batched-gradients).
+It remains separate so value-only phases do not compute unnecessary gradients.
 
 A device callback receives resident inputs, outputs, and context.
 Use the current task's stream or complete private-stream work before returning.

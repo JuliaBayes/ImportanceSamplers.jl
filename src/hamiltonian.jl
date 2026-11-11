@@ -158,7 +158,7 @@ function _prepare_hmc_transition(config::HamiltonianMonteCarlo, centres::Abstrac
         throw(ArgumentError("HMC divergence threshold is invalid in energy precision"))
     root = _hmc_mass_root(config.mass, T, dimension)
     bound = _prepare_bound_gradient(prepared_target, view(centres, :, 1),
-                                    max(1, Threads.nthreads(:default)))
+                                    max(1, Threads.nthreads(:default)), D)
     return _HamiltonianState(centres, zeros(D, count), similar(centres),
                              similar(centres), Vector{D}(undef, count), similar(centres),
                              similar(centres), similar(centres), similar(centres),

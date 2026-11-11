@@ -375,6 +375,7 @@ end
 end
 
 function _hmc_device_summary!(state, backend, transfers; warmup=false)
+    _record_gradient_transfers!(transfers, state.bound_gradient)
     workspace = state.device_workspace
     tuned = warmup ? Base.Checked.checked_add(state.n_tuned, 1) : state.n_tuned
     _hmc_device_summary_kernel!(backend)(workspace.summary, workspace.scalars,

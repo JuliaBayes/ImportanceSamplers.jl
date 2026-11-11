@@ -84,6 +84,7 @@ julia --project=validation validation/reproducers/plain_is.jl
 | CUDA population methods | `cuda_apis.jl`, `cuda_cais.jl`, `cuda_npmc.jl`, `cuda_lais.jl` |
 | CUDA HMC and HAIS | `cuda_hamiltonian.jl`, `cuda_lower_widths.jl` |
 | Cold CUDA HMC | `cuda_hmc_cold.jl` (separate fresh process) |
+| Batched gradients and transformed scores | `cuda_batch_gradients.jl` |
 | CUDA GRAMIS | `cuda_first_order_gramis.jl` |
 | Student-t devices | `cuda_student_t.jl`, `metal_student_t.jl` |
 | Batch callbacks | `batch_targets.jl` |

@@ -617,12 +617,13 @@ function _prepare_method_state(algorithm::FirstOrderGRAMIS, prepared_target)
         packed,
         typeof(binding_sample),
     )
-    serial_gradient = _prepare_bound_gradient(prepared_target, binding_sample, 1)
+    serial_gradient = _prepare_bound_gradient(prepared_target, binding_sample, 1, log_type)
     worker_count = max(1, length(Threads.threadpooltids(:default)))
     threaded_gradient = _prepare_bound_gradient(
         prepared_target,
         binding_sample,
         worker_count,
+        log_type,
     )
     return _prepare_first_order_gramis_state(
         algorithm,

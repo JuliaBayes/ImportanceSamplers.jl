@@ -24,6 +24,7 @@ test_files = if isempty(ARGS)
         "first_order_gramis_kernel",
         "device_api",
         "target_derivatives",
+        "batched_gradients",
         "plain_is",
         "batched_targets",
         "retarget",

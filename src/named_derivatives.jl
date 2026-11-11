@@ -68,6 +68,8 @@ function _validate_named_gradient(target, sample, scratch)
 end
 
 function _prepare_accelerator_gradient(target::_NamedPreparedTarget, locations, values)
+    _has_batch_gradient(target) &&
+        return _prepare_explicit_batch_gradient(target, locations, values)
     target = _scalar_target(target)
     inner = target.target
     inner isa _PreparedLogTarget || return _prepare_accelerator_gradient(inner, locations, values)
