@@ -43,9 +43,13 @@ end
 
 function _check_batch_mapping!(target, storage, capture)
     failure = _batch_failure_snapshot(target, storage).failure
+    return _throw_batch_mapping_failure(target.layout, failure, capture)
+end
+
+function _throw_batch_mapping_failure(layout, failure, capture)
     iszero(failure.count) && return nothing
     cause = InvalidTransformError(_native_transform_failure_reason(failure.reason_bits),
-        _native_failure_location(target.layout, failure.first_block))
+        _native_failure_location(layout, failure.first_block))
     capture || throw(cause)
     throw(SamplerExecutionError(:target, failure.first_logical_index,
         CapturedException(cause, backtrace())))
@@ -59,8 +63,11 @@ Adapt.@adapt_structure _NativeBatchTarget
 # Derivative kernels borrow the same scalar callable and context, without
 # retaining an unused host batch callback in their device arguments.
 _scalar_target(target) = target
-_scalar_target(target::_PreparedLogTarget) = isnothing(target.batch) ? target :
-    _PreparedLogTarget(target.logdensity, target.context, target.adtype, target.gradient)
+function _scalar_target(target::_PreparedLogTarget)
+    gradient = _scalar_gradient(target.gradient)
+    isnothing(target.batch) && gradient === target.gradient && return target
+    return _PreparedLogTarget(target.logdensity, target.context, target.adtype, gradient)
+end
 _scalar_target(target::_NamedPreparedTarget) =
     _NamedPreparedTarget(_scalar_target(target.target), target.layout)
 _scalar_target(target::_BoundBatchTarget) = target.scalar

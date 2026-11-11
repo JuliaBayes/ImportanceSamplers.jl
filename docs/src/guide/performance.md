@@ -65,6 +65,22 @@ and can be faster at modest dimensions. Compare both policies for the workload.
 The diagnostic records the resolved policy.
 It does not prove that every phase used a matrix operation.
 
+## Gradient batches
+
+HMC may have far fewer upper chains than retained lower samples. A scalar GPU
+gradient assigns work to chains; serial loops inside the user callback do not
+become parallel observation reductions. Larger lower budgets do not fix that
+upper bottleneck.
+
+Use [`LogTarget`](@ref)'s `batch_grad=` callback for matrix-batched values and
+gradients. HMC and first-order GRAMIS share this derivative interface. Model
+data, score buffers and retained samples stay on the device. Pair it with
+`batch=` when lower value evaluation also benefits from batching.
+
+See [Batched values and gradients](@ref batched-gradients) for the interface.
+Measure complete runs, including configured warmup. Speed alone does not
+establish adequate weight ESS or target coverage.
+
 ## Named product storage
 
 Diagonal Gaussian products can use native CPU execution. Correlated products

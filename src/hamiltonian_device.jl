@@ -14,12 +14,14 @@ end
 
 _hmc_device_supported(device) = device isa MLDataDevices.AbstractCPUDevice
 
+_hmc_trajectory_kernel(backend) = _hmc_device_trajectory_kernel!(backend)
+
 function _preflight_transition(device, state::_HamiltonianState, target)
     _hmc_device_supported(device) ||
         throw(SamplerDeviceError(device, :hamiltonian_backend_unsupported))
     backend = KernelAbstractions.get_backend(state.centres)
     kernel = state.bound_gradient isa _BoundBatchGradient ?
-             _hmc_device_start_kernel!(backend) : _hmc_device_trajectory_kernel!(backend)
+             _hmc_device_start_kernel!(backend) : _hmc_trajectory_kernel(backend)
     _preflight_kernel_argument(device, kernel, _hmc_device_arrays(state))
     if !(state.bound_gradient isa _BoundBatchGradient)
         _preflight_kernel_argument(device, kernel, state.bound_gradient)
@@ -295,11 +297,14 @@ end
 # Cheap explicit scores reuse the phase arithmetic in one resident trajectory;
 # batched AD retains dependent launches across centres at each leapfrog step.
 function _launch_hmc_device_sweep!(state, bound, backend)
-    _hmc_device_trajectory_kernel!(backend)(_hmc_device_arrays(state), bound,
-                                            state.leapfrog_steps,
-                                            state.divergence_threshold;
-                                            ndrange=length(state.logtargets),
-                                            workgroupsize=64)
+    _hmc_trajectory_kernel(backend)(
+        _hmc_device_arrays(state),
+        bound,
+        state.leapfrog_steps,
+        state.divergence_threshold;
+        ndrange = length(state.logtargets),
+        workgroupsize = 64,
+    )
     return nothing
 end
 
@@ -370,6 +375,7 @@ end
 end
 
 function _hmc_device_summary!(state, backend, transfers; warmup=false)
+    _record_gradient_transfers!(transfers, state.bound_gradient)
     workspace = state.device_workspace
     tuned = warmup ? Base.Checked.checked_add(state.n_tuned, 1) : state.n_tuned
     _hmc_device_summary_kernel!(backend)(workspace.summary, workspace.scalars,

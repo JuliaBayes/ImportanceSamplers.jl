@@ -1179,9 +1179,9 @@ function _evaluate_frozen_gradients!(
 )
     workspace = method_state.workspace
     bound_gradient = _first_order_gramis_bound_gradient(method_state, execution)
-    transfers === nothing || _record_gradient_transfers!(transfers, bound_gradient)
     _launch_gramis_gradients!(backend_execution, method_state, target, bound_gradient,
         execution, device, failure_record)
+    transfers === nothing || _record_gradient_transfers!(transfers, bound_gradient)
     device === nothing && return nothing
     return _throw_first_order_gramis_device_derivative_failure(
         device, failure_record, workspace.candidate_values, transfers)

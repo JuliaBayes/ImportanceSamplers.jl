@@ -4,6 +4,8 @@
 
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
 - Optional local marginal-width adaptation for LAIS and HAIS.
+- Fix cold CUDA HMC execution with reduction-based target functions.
+- Batched value/gradient callbacks for HMC and first-order GRAMIS accelerator execution.
 
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 - Fitted pairwise quadratic transport with weighted moment or cached-score fitting.
