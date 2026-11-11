@@ -6,6 +6,7 @@
 - Optional local marginal-width adaptation for LAIS and HAIS.
 - Fix cold CUDA HMC execution with reduction-based target functions.
 - Batched value/gradient callbacks for HMC and first-order GRAMIS accelerator execution.
+- Native proposal moments and scale-factor access, with optional Gaussian conversion to Distributions.jl.
 
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 - Fitted pairwise quadratic transport with weighted moment or cached-score fitting.

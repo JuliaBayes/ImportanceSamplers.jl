@@ -3,6 +3,51 @@
 A proposal supplies normalized draws and their log density.
 Its support must cover the regions that contribute to the target integral.
 
+## Reading native proposal parameters
+
+Native Gaussian, Student-t, Gamma, Laplace, and box proposals support
+`Statistics.mean`, `var`, `std`, and `cov`. Scalar proposals return scalar
+moments; vector proposals return marginal means, variances and standard
+deviations, and a covariance matrix. Independent and spherical covariances
+retain a `Diagonal` representation; correlated covariances are materialized.
+Array results preserve precision and device placement without implicit host
+transfers. Means and diagonal standard deviations can borrow proposal storage;
+treat returned parameters as read-only or explicitly `copy` them before mutation.
+Moments are computed at the proposal's precision. Unrepresentable covariance
+matrices can contain `Inf` or `NaN` from overflow; `std` or the stored scale
+factor can remain usable when a variance or covariance cannot be represented.
+
+```@example proposals
+using ImportanceSamplers, Statistics
+
+q = DiagonalGaussian(Float32[1, -1], Float32[2, 3])
+(mean(q), var(q), cov(q), proposal_scale_factor(q))
+```
+
+[`proposal_scale_factor`](@ref) reads a Gaussian or Student-t proposal's stored
+scale: a scalar for spherical proposals, a `Diagonal` wrapper for diagonal
+proposals, or the stored lower-triangular matrix for factor proposals. The result
+borrows storage without copying or transferring parameters. For Student-t
+proposals this is an elliptical scale factor, not a covariance factor.
+
+[`current_proposal`](@ref) still returns an independent native snapshot, so its
+parameters remain unchanged when the prepared sampler runs again. No methods
+for `ProductProposal` or `TransformedProposal` are supplied: named block layouts
+need an explicit covariance convention, and nonlinear transformed moments are
+not the moments of the base proposal. Individual product blocks or an explicit
+transformed proposal's `.base` can be inspected in their own coordinates.
+
+With Distributions.jl loaded, `Normal(q)` converts a scalar native Gaussian and
+`MvNormal(q)` converts a vector native Gaussian. These constructors require CPU
+parameters: transfer accelerator proposals explicitly first. Spherical and
+diagonal Gaussian representations are retained. Factor conversion copies the
+stored lower factor and materializes the covariance required by Distributions,
+without refactorization or inversion. Vector means may share storage with the
+native proposal and must be treated as read-only.
+Spherical and diagonal conversion rejects coordinate variances that underflow
+to zero or overflow, since their ecosystem representation requires positive
+finite covariance values.
+
 ## Gaussian proposals
 
 ```@example proposals
@@ -60,6 +105,13 @@ To obtain a desired covariance factor `Lcov`, use
 
 A multivariate Student-t draw uses one shared random radial scale.
 A diagonal scale therefore does not make its coordinates independent.
+
+`mean` is the location when `nu > 1` and otherwise returns shape-preserving
+`NaN` values. Finite covariance exists only for `nu > 2`. Following
+Distributions.jl conventions, scalar `var` and `std` are `Inf` for
+`1 < nu <= 2` and `NaN` for `nu <= 1`; multivariate `var`, `std`, and `cov`
+return shape-preserving `NaN` values whenever `nu <= 2`. These values retain
+the proposal's floating-point precision.
 
 The adaptive methods keep `nu` fixed.
 AMIS, NPMC, CAIS, and FirstOrderGRAMIS require `nu > 2` because they fit covariance.
