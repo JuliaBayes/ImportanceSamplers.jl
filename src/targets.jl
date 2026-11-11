@@ -41,6 +41,11 @@ return value is ignored. Samples are a vector for scalar parameters, a
 dimension-by-count matrix for vector parameters, or a named tuple of batch
 leaves for named parameters. With `transform=`, leaves contain logical values
 and the package adds the Jacobian. Batch widths can change, but never equal zero.
+`values[j]` corresponds to sample `j` (column `j` for vector parameters).
+Retained sampling batches preserve this order in the result, including with a
+[`ProposalBank`](@ref). [`AMIS`](@ref) concatenates these batches in round order.
+Do not concatenate every callback invocation: adaptation trials, upper MCMC
+evaluations, and padded candidates need not appear in the result.
 
 Inputs are borrowed and read-only. Retain neither inputs nor output buffers.
 Each value must be independent of batch width and other samples. `-Inf` is valid,
