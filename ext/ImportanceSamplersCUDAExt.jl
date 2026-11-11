@@ -11,6 +11,17 @@ ImportanceSamplers._backend_functional(::MLDataDevices.CUDADevice) =
 
 ImportanceSamplers._factor_batch_supported(::MLDataDevices.CUDADevice) = true
 ImportanceSamplers._hmc_device_supported(::MLDataDevices.CUDADevice) = true
+
+function ImportanceSamplers._hmc_trajectory_kernel(backend::CUDA.CUDABackend)
+    # Nested score reductions can overflow CUDA's cold, default device stack.
+    options = map(
+        name -> name === :always_inline ? true : getfield(backend, name),
+        fieldnames(typeof(backend)),
+    )
+    inline_backend = CUDA.CUDABackend(options...)
+    return ImportanceSamplers._hmc_device_trajectory_kernel!(inline_backend)
+end
+
 function ImportanceSamplers._with_backend_device(
     f,
     device::MLDataDevices.CUDADevice,

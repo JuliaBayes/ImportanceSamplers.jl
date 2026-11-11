@@ -82,6 +82,8 @@ julia --project=validation validation/reproducers/plain_is.jl
 | First-order GRAMIS equations | `first_order_gramis.jl` |
 | CUDA samplers | `cuda_plain_is.jl`, `cuda_static_mis.jl`, `cuda_amis.jl`, `cuda_dm_pmc.jl` |
 | CUDA population methods | `cuda_apis.jl`, `cuda_cais.jl`, `cuda_npmc.jl`, `cuda_lais.jl` |
+| CUDA HMC and HAIS | `cuda_hamiltonian.jl`, `cuda_lower_widths.jl` |
+| Cold CUDA HMC | `cuda_hmc_cold.jl` (separate fresh process) |
 | CUDA GRAMIS | `cuda_first_order_gramis.jl` |
 | Student-t devices | `cuda_student_t.jl`, `metal_student_t.jl` |
 | Batch callbacks | `batch_targets.jl` |
@@ -89,6 +91,8 @@ julia --project=validation validation/reproducers/plain_is.jl
 | Reactant execution | `reactant_execution.jl` |
 
 Read each script's setup before running optional-backend cases.
+Run `cuda_hmc_cold.jl` in a fresh Julia process before other CUDA samplers.
+Earlier kernel launches can increase the device stack and hide cold-start failures.
 Metal and Reactant checks need their respective packages and hardware.
 CPU LAIS recurrence checks are in
 [`test/lais.jl`](https://github.com/JuliaBayes/ImportanceSamplers.jl/blob/main/test/lais.jl).
