@@ -7,10 +7,17 @@ import ForwardDiff
 import KernelAbstractions
 import LinearAlgebra
 import MLDataDevices
+import PureRNGs
 import Random
 import Random: rand, randn
 
 const IS = ImportanceSamplers
+
+function device_test_rng(seed)
+    # Exercise transfer from a nonzero cursor, not just a fresh seed.
+    _, rng = PureRNGs.rand_next(PureRNGs.Threefry4x32(seed), Float32, 3)
+    return rng
+end
 
 struct TransferProposal{A<:AbstractVector}
     location::A
@@ -244,9 +251,9 @@ function Base.Array(
     return Array(view(parent(array).storage, parentindices(array)...))
 end
 
-struct LateFailAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
-MLDataDevices.functional(::LateFailAccelerator) = true
-Adapt.adapt_storage(::LateFailAccelerator, array::Array) =
+struct FactorizationUnsupportedAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
+MLDataDevices.functional(::FactorizationUnsupportedAccelerator) = true
+Adapt.adapt_storage(::FactorizationUnsupportedAccelerator, array::Array) =
     KernelArgumentTestArray(copy(array))
 
 struct AMISExecutionTestAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
@@ -270,11 +277,7 @@ KernelAbstractions.get_backend(::AMISPublicationSyncArray) =
 KernelAbstractions.synchronize(::AMISPublicationSyncBackend) =
     error("intentional AMIS publication synchronization failure")
 
-mutable struct AMISExecutionTestRNG <: Random.AbstractRNG
-    draws::Int
-end
-
-mutable struct AMISExecutionPrefilledRNG{T} <: Random.AbstractRNG
+struct AMISExecutionPrefilledRNG{T} <: PureRNGs.AbstractPureRNG
     batches::Vector{Vector{T}}
     index::Int
 end
@@ -289,16 +292,10 @@ function (::AMISZeroSampleFailureTarget{T})(sample)::T where {T}
     return iszero(value) ? T(NaN) : zero(T)
 end
 
-function Random.randn!(rng::AMISExecutionTestRNG, destination::AbstractArray)
-    fill!(destination, zero(eltype(destination)))
-    rng.draws += 1
-    return destination
-end
-
-function Random.randn!(rng::AMISExecutionPrefilledRNG, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::AMISExecutionPrefilledRNG, destination::AbstractArray;
+    threaded=false)
     copyto!(destination, rng.batches[rng.index])
-    rng.index += 1
-    return destination
+    return destination, AMISExecutionPrefilledRNG(rng.batches, rng.index + 1)
 end
 
 function Adapt.adapt_storage(::AMISExecutionTestAccelerator, array::Array)
@@ -317,8 +314,9 @@ end
         end
     end
 
-    _owned_backend_rng(::Main.KernelArgumentTestAccelerator, seed::UInt64) =
-        Random.Xoshiro(seed)
+    _validate_transfer_rng(::Main.KernelArgumentTestAccelerator,
+        ::PureRNGs.AbstractPureRNG) = nothing
+    _transfer_rng(::Main.KernelArgumentTestAccelerator, rng::PureRNGs.AbstractPureRNG) = rng
 
     _factor_batch_supported(::Main.KernelArgumentTestAccelerator) =
         Main.KERNEL_ARGUMENT_TEST_FACTOR_BATCH_SUPPORTED[]
@@ -335,9 +333,6 @@ end
         random_buffers::_RandomBuffers,
     ) = nothing
 
-    _owned_backend_rng(::Main.LateFailAccelerator, seed::UInt64) =
-        iszero(seed) ? Random.Xoshiro(seed) : error("late RNG construction failure")
-
     function _with_backend_device(f, ::Main.AMISExecutionTestAccelerator)
         previous = Main.AMIS_EXECUTION_TEST_CURRENT[]
         Main.AMIS_EXECUTION_TEST_CURRENT[] = :selected
@@ -349,8 +344,9 @@ end
     end
 
     _backend_state_resident(::Main.AMISExecutionTestAccelerator, state) = true
-    _owned_backend_rng(::Main.AMISExecutionTestAccelerator, seed::UInt64) =
-        Main.AMISExecutionTestRNG(0)
+    _validate_transfer_rng(::Main.AMISExecutionTestAccelerator,
+        ::PureRNGs.AbstractPureRNG) = nothing
+    _transfer_rng(::Main.AMISExecutionTestAccelerator, rng::PureRNGs.AbstractPureRNG) = rng
 
     function _gaussian_potrf!(
         ::Main.AMISExecutionTestAccelerator,
@@ -414,7 +410,9 @@ end
     end
 
     _backend_state_resident(device::Main.HookAccelerator, state) = device.resident
-    _owned_backend_rng(::Main.HookAccelerator, seed::UInt64) = Random.Xoshiro(seed)
+    _validate_transfer_rng(::Main.HookAccelerator,
+        ::PureRNGs.AbstractPureRNG) = nothing
+    _transfer_rng(::Main.HookAccelerator, rng::PureRNGs.AbstractPureRNG) = rng
 end
 
 struct UnadaptedKernelContext{A}
@@ -472,7 +470,7 @@ function prepared_parts(prepared)
 end
 
 function make_transfer_sampler(
-    rng::Random.AbstractRNG;
+    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG};
     factor_execution=FusedFactorExecution(),
     threaded=true,
     target=TransferTarget([0.25]),
@@ -550,7 +548,7 @@ end
     @test prepared_parts(cpu_destination).callable === ordinary
 
     accelerator_source = make_transfer_sampler(
-        0x2101;
+        device_test_rng(0x2101);
         threaded=true,
         target=ordinary,
     )
@@ -636,34 +634,34 @@ end
     )
     for (seed, target, reason) in cases
         source = prepare_sampler(
-            Random.Xoshiro(seed),
+            device_test_rng(seed),
             target,
             context,
             algorithm;
             threaded=true,
         )
-        expected_rng = copy(source.rng)
+        expected_rng = source.rng
         error = caught_device_error(() -> device(source))
         @test error isa SamplerDeviceError
         @test error.reason === reason
-        @test rand(source.rng, UInt64) == rand(expected_rng, UInt64)
+        @test source.rng == expected_rng
     end
 
     opaque_gradient = let scale = [1.0]
         (destination, sample, p) -> (destination .= -scale[1] .* sample)
     end
     opaque_source = prepare_sampler(
-        Random.Xoshiro(0x4752414d495305),
+        device_test_rng(0x4752414d495305),
         LogTarget(GRAMISTransferValue([0.0]); grad=opaque_gradient),
         context,
         algorithm;
         threaded=true,
     )
-    expected_opaque_rng = copy(opaque_source.rng)
+    expected_opaque_rng = opaque_source.rng
     opaque_error = caught_device_error(() -> device(opaque_source))
     @test opaque_error isa SamplerDeviceError
     @test opaque_error.reason === :opaque_host_closure
-    @test rand(opaque_source.rng, UInt64) == rand(expected_opaque_rng, UInt64)
+    @test opaque_source.rng == expected_opaque_rng
 end
 
 @testset "explicit prepared device transfer" begin
@@ -824,7 +822,7 @@ end
         (sample, p) -> p.shift[1] + captured[1] - abs2(sample) / 2
     end
     value_source = prepare_sampler(
-        Random.Xoshiro(0x2111),
+        device_test_rng(0x2111),
         LogTarget(opaque_value; grad=DerivativeTransferGradient([1.0])),
         context,
         proposal;
@@ -838,7 +836,7 @@ end
         (destination, sample, p) -> (destination .= -captured[1] .* sample)
     end
     gradient_source = prepare_sampler(
-        Random.Xoshiro(0x2112),
+        device_test_rng(0x2112),
         LogTarget(DerivativeTransferValue([0.25]); grad=opaque_gradient),
         context,
         proposal;
@@ -856,19 +854,18 @@ end
     @test Base.eltype(default_cuda) === Missing
 
     scalar_policy_source = prepare_sampler(
-        Random.Xoshiro(0x2200),
+        device_test_rng(0x2200),
         product_transfer_target,
         ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples=4);
         threaded=true,
     )
-    expected_scalar_policy_rng = copy(getfield(scalar_policy_source, :rng))
+    expected_scalar_policy_rng = getfield(scalar_policy_source, :rng)
     scalar_policy_error = caught_device_error(
         () -> default_cuda(scalar_policy_source),
     )
     @test scalar_policy_error isa SamplerDeviceError
     @test scalar_policy_error.reason === :scalar_policy_unspecified
-    @test rand(getfield(scalar_policy_source, :rng), UInt64) ==
-          rand(expected_scalar_policy_rng, UInt64)
+    @test getfield(scalar_policy_source, :rng) == expected_scalar_policy_rng
     @test sprint(showerror, scalar_policy_error) ==
           "prepared-sampler device transfer failed for " *
           "$(typeof(default_cuda)): the accelerator scalar policy is " *
@@ -893,7 +890,7 @@ end
 
     unavailable = NonfunctionalAccelerator()
     unavailable_error = caught_device_error(
-        () -> unavailable(make_transfer_sampler(2202; threaded=true)),
+        () -> unavailable(make_transfer_sampler(device_test_rng(2202); threaded=true)),
     )
     @test unavailable_error isa SamplerDeviceError
     @test unavailable_error.reason === :backend_unavailable
@@ -909,7 +906,7 @@ end
     end
     closure_error = caught_device_error(
         () -> unavailable(
-            make_transfer_sampler(2204; threaded=true, target=captured_target),
+            make_transfer_sampler(device_test_rng(2204); threaded=true, target=captured_target),
         ),
     )
     @test closure_error isa SamplerDeviceError
@@ -920,7 +917,7 @@ end
     end
     nested_target = NestedClosureDensityTarget(nested_closure)
     nested_sampler = prepare_sampler(
-        Random.Xoshiro(2206),
+        device_test_rng(2206),
         nested_target,
         ImportanceSampling(TestScalarProposal(0.0); nsamples=1);
         threaded=true,
@@ -937,7 +934,7 @@ end
     collection_target = FunctionCollectionTarget(Function[collection_closure])
     @test (@inferred IS._has_opaque_host_closure(collection_target)) === true
     collection_sampler = make_transfer_sampler(
-        2209;
+        device_test_rng(2209);
         threaded=true,
         target=collection_target,
     )
@@ -978,7 +975,7 @@ end
         right=SphericalGaussian(0.0, 1.0),
     ))
     product_sampler = prepare_sampler(
-        Random.Xoshiro(2210),
+        device_test_rng(2210),
         product_transfer_target,
         ImportanceSampling(product; nsamples=1);
         threaded=true,
@@ -1001,7 +998,7 @@ end
     proposal = SphericalGaussian(0.0, 1.0)
     algorithm = ImportanceSampling(proposal; nsamples=16)
     context_sampler(seed, context) = prepare_sampler(
-        Random.Xoshiro(seed),
+        device_test_rng(seed),
         kernel_context_target,
         context,
         algorithm;
@@ -1012,12 +1009,11 @@ end
         0x2211,
         UnadaptedKernelContext([0.25]),
     )
-    expected_unadapted_rng = copy(getfield(unadapted, :rng))
+    expected_unadapted_rng = getfield(unadapted, :rng)
     unadapted_error = caught_device_error(() -> device(unadapted))
     @test unadapted_error isa SamplerDeviceError
     @test unadapted_error.reason === :kernel_argument_unsupported
-    @test rand(getfield(unadapted, :rng), UInt64) ==
-          rand(expected_unadapted_rng, UInt64)
+    @test getfield(unadapted, :rng) == expected_unadapted_rng
 
     for (seed, context) in (
         (0x2212, AdaptedKernelContext([0.25])),
@@ -1028,17 +1024,17 @@ end
     end
 
     generic = prepare_sampler(
-        Random.Xoshiro(0x2214),
+        device_test_rng(0x2214),
         top_level_transfer_target,
         (shift=[0.25],),
         ImportanceSampling(TransferProposal([0.0]); nsamples=16);
         threaded=true,
     )
-    expected_generic_rng = copy(getfield(generic, :rng))
+    expected_generic_rng = getfield(generic, :rng)
     generic_error = caught_device_error(() -> device(generic))
     @test generic_error isa SamplerDeviceError
     @test generic_error.reason === :generic_proposal_cpu_only
-    @test rand(getfield(generic, :rng), UInt64) == rand(expected_generic_rng, UInt64)
+    @test getfield(generic, :rng) == expected_generic_rng
 
     accelerator = device(
         context_sampler(0x2215, (shift=[0.25],)),
@@ -1048,12 +1044,11 @@ end
         device,
         UnsupportedTestDevice(),
     )
-        expected_accelerator_rng = copy(getfield(accelerator, :rng))
+        expected_accelerator_rng = getfield(accelerator, :rng)
         migration_error = caught_device_error(() -> destination(accelerator))
         @test migration_error isa SamplerDeviceError
         @test migration_error.reason === :prepared_migration_unsupported
-        @test rand(getfield(accelerator, :rng), UInt64) ==
-              rand(expected_accelerator_rng, UInt64)
+        @test getfield(accelerator, :rng) == expected_accelerator_rng
     end
 end
 
@@ -1071,13 +1066,13 @@ end
         mis_scheme=PartialDeterministicMixture(((1, 3), (2,))),
     )
     source = prepare_sampler(
-        Random.Xoshiro(0x2218),
+        device_test_rng(0x2218),
         static_mis_device_target,
         (shift=[0.25],),
         algorithm;
         threaded=true,
     )
-    expected_source_rng = copy(getfield(source, :rng))
+    expected_source_rng = getfield(source, :rng)
 
     @test IS._accelerator_proposal_limit(bank) === nothing
     destination = @inferred device(source)
@@ -1105,12 +1100,11 @@ end
             buffers.failure_scratch.record.storage,
         ),
     )
-    rand(expected_source_rng, UInt64)
-    @test rand(getfield(source, :rng), UInt64) ==
-          rand(expected_source_rng, UInt64)
+    @test getfield(source, :rng) == expected_source_rng
+    @test getfield(destination, :rng) == expected_source_rng
 
     full_source = prepare_sampler(
-        Random.Xoshiro(0x221d),
+        device_test_rng(0x221d),
         static_mis_device_target,
         (shift=[0.25],),
         ImportanceSampling(bank; nsamples=17, mis_scheme=StratifiedMixture());
@@ -1126,51 +1120,18 @@ end
         BigFloat[1, 3],
     )
     bigfloat_source = prepare_sampler(
-        Random.Xoshiro(0x2221),
+        device_test_rng(0x2221),
         static_mis_device_target,
         (shift=[0.25],),
         ImportanceSampling(bigfloat_bank; nsamples=17);
         threaded=true,
     )
-    expected_bigfloat_rng = copy(getfield(bigfloat_source, :rng))
+    expected_bigfloat_rng = getfield(bigfloat_source, :rng)
     @test bigfloat_source.method_state.bank isa IS._ActiveProposalBank
     bigfloat_error = caught_device_error(() -> device(bigfloat_source))
-    @test bigfloat_error isa SamplerDeviceError
+        @test bigfloat_error isa SamplerDeviceError
     @test bigfloat_error.reason === :generic_proposal_cpu_only
-    @test rand(getfield(bigfloat_source, :rng), UInt64) ==
-          rand(expected_bigfloat_rng, UInt64)
-
-    late_source = prepare_sampler(
-        Random.Xoshiro(0x221e),
-        static_mis_device_target,
-        (shift=[0.25],),
-        algorithm;
-        threaded=true,
-    )
-    expected_late_rng = copy(getfield(late_source, :rng))
-    late_error = caught_device_error(() -> LateFailAccelerator()(late_source))
-    @test late_error isa SamplerDeviceError
-    @test late_error.reason === :accelerator_rng_unavailable
-    @test rand(getfield(late_source, :rng), UInt64) ==
-          rand(expected_late_rng, UInt64)
-
-    product_source = prepare_sampler(Random.Xoshiro(0x221f),
-        x -> -sum(abs2, x.position), ImportanceSampling(ProductProposal((
-            position=FactorGaussian(zeros(2), [1.0 0; 0.3 1.0]),)); nsamples=8))
-    product_rng = copy(product_source.rng)
-    @test caught_device_error(() -> LateFailAccelerator()(product_source)) isa SamplerDeviceError
-    @test rand(product_source.rng, UInt64) == rand(product_rng, UInt64)
-
-    fetch(@async begin
-        Random.seed!(0x221e)
-        task_rng = Random.default_rng()
-        expected_rng = copy(task_rng)
-        source = prepare_sampler(task_rng, static_mis_device_target, (shift=[0.25],),
-            algorithm)
-        caught_device_error(() -> LateFailAccelerator()(source))
-        @test importance_sample!(source).samples == importance_sample(
-            expected_rng, static_mis_device_target, (shift=[0.25],), algorithm).samples
-    end)
+    @test getfield(bigfloat_source, :rng) == expected_bigfloat_rng
 
     generic = ProposalBank([TransferProposal([0.0]), TransferProposal([1.0])])
     factor = ProposalBank([
@@ -1201,21 +1162,21 @@ end
         (0x221c, product, :product_proposal_cpu_only),
     )
         rejected = prepare_sampler(
-            Random.Xoshiro(seed),
+            device_test_rng(seed),
             static_mis_device_target,
             (shift=[0.25],),
             ImportanceSampling(rejected_bank; nsamples=17);
             threaded=true,
         )
-        expected_rng = copy(getfield(rejected, :rng))
+        expected_rng = getfield(rejected, :rng)
         error = caught_device_error(() -> device(rejected))
         @test error isa SamplerDeviceError
         @test error.reason === reason
-        @test rand(getfield(rejected, :rng), UInt64) == rand(expected_rng, UInt64)
+        @test getfield(rejected, :rng) == expected_rng
     end
 
     factor_source = prepare_sampler(
-        Random.Xoshiro(0x221a),
+        device_test_rng(0x221a),
         static_mis_device_target,
         (shift=[0.25],),
         ImportanceSampling(factor; nsamples=17);
@@ -1399,18 +1360,18 @@ end
             round_size=[5, 7],
         )
         source = prepare_sampler(
-            Random.Xoshiro(seed),
+            device_test_rng(seed),
             static_mis_device_target,
             (shift=[0.25],),
             algorithm;
             threaded=true,
         )
-        expected_source_rng = copy(getfield(source, :rng))
+        expected_source_rng = getfield(source, :rng)
         destination = assert_dm_pmc_transfer(source, bank_type)
         destinations[label] = destination
         @test getfield(destination, :device) === device
-        rand(expected_source_rng, UInt64)
-        @test rand(getfield(source, :rng), UInt64) == rand(expected_source_rng, UInt64)
+        @test getfield(source, :rng) == expected_source_rng
+        @test getfield(destination, :rng) == expected_source_rng
     end
 
     destination = destinations[:diagonal]
@@ -1449,7 +1410,7 @@ end
     @test KERNEL_ARGUMENT_TEST_CURRENT[] === :caller
 
     rejected_source = prepare_sampler(
-        Random.Xoshiro(0x2224),
+        device_test_rng(0x2224),
         static_mis_device_target,
         UnadaptedKernelContext([0.25]),
         DeterministicMixturePMC(
@@ -1459,16 +1420,15 @@ end
         );
         threaded=true,
     )
-    expected_rejected_rng = copy(getfield(rejected_source, :rng))
+    expected_rejected_rng = getfield(rejected_source, :rng)
     rejected_error = caught_device_error(() -> device(rejected_source))
     @test rejected_error isa SamplerDeviceError
     @test rejected_error.reason === :kernel_argument_unsupported
-    @test rand(getfield(rejected_source, :rng), UInt64) ==
-          rand(expected_rejected_rng, UInt64)
+    @test getfield(rejected_source, :rng) == expected_rejected_rng
     @test length(importance_sample!(rejected_source)) == 12
 
     serial_source = prepare_sampler(
-        Random.Xoshiro(0x2225),
+        device_test_rng(0x2225),
         static_mis_device_target,
         (shift=[0.25],),
         DeterministicMixturePMC(
@@ -1478,16 +1438,15 @@ end
         );
         threaded=false,
     )
-    expected_serial_rng = copy(getfield(serial_source, :rng))
+    expected_serial_rng = getfield(serial_source, :rng)
     serial_error = caught_device_error(() -> device(serial_source))
     @test serial_error isa SamplerDeviceError
     @test serial_error.reason === :serial_accelerator
-    @test rand(getfield(serial_source, :rng), UInt64) ==
-          rand(expected_serial_rng, UInt64)
+    @test getfield(serial_source, :rng) == expected_serial_rng
 
     empty!(KERNEL_ARGUMENT_TEST_ARGUMENTS)
     local_source = prepare_sampler(
-        Random.Xoshiro(0x2226),
+        device_test_rng(0x2226),
         static_mis_device_target,
         (shift=[0.25],),
         DeterministicMixturePMC(
@@ -1546,7 +1505,7 @@ end
 
     function make_amis_source(seed, proposal)
         return prepare_sampler(
-            Random.Xoshiro(seed),
+            device_test_rng(seed),
             static_mis_device_target,
             (shift=[0.25],),
             AMIS(proposal; rounds=3, round_size=schedule);
@@ -1565,7 +1524,7 @@ end
         empty!(KERNEL_ARGUMENT_TEST_ARGUMENTS)
         empty!(KERNEL_ARGUMENT_TEST_INT_SIMILAR_LENGTHS)
         source = make_amis_source(seed, proposal)
-        expected_rng = copy(getfield(source, :rng))
+        expected_rng = getfield(source, :rng)
         destination = device(source)
         state = destination.method_state
         history = state.history
@@ -1599,8 +1558,8 @@ end
         @test destination.device === device
         @test KERNEL_ARGUMENT_TEST_CURRENT[] === :caller
         @test KERNEL_ARGUMENT_TEST_INT_SIMILAR_LENGTHS == [1]
-        rand(expected_rng, UInt64)
-        @test rand(getfield(source, :rng), UInt64) == rand(expected_rng, UInt64)
+        @test getfield(source, :rng) == expected_rng
+        @test getfield(destination, :rng) == expected_rng
 
         representative_round = findmax(state.schedule)[2]
         first_sample = state.offsets[representative_round]
@@ -1800,11 +1759,11 @@ end
         0x2228,
         FactorGaussian([0.0, 0.0], [1.0 0.0; 0.25 0.75]),
     )
-    expected_unsupported_rng = copy(unsupported.rng)
-    unsupported_error = caught_device_error(() -> LateFailAccelerator()(unsupported))
+    expected_unsupported_rng = unsupported.rng
+    unsupported_error = caught_device_error(() -> FactorizationUnsupportedAccelerator()(unsupported))
     @test unsupported_error isa SamplerDeviceError
     @test unsupported_error.reason === :accelerator_factorization_unavailable
-    @test rand(unsupported.rng, UInt64) == rand(expected_unsupported_rng, UInt64)
+    @test unsupported.rng == expected_unsupported_rng
 end
 
 @testset "AMIS normalization returns the reusable round summary" begin
@@ -1860,7 +1819,7 @@ end
     target = AMISZeroFloat32Target()
 
     cpu = prepare_sampler(
-        AMISExecutionTestRNG(0),
+        device_test_rng(0x2229),
         target,
         algorithm;
         threaded=false,
@@ -1876,11 +1835,12 @@ end
         maximum_absolute_entry=zero(T),
     )
     @test iszero(cpu_failure.diagnostics.transfers.count)
-    @test cpu.rng.draws == 1
+    _, expected_rng = PureRNGs.randn_next!(device_test_rng(0x2229), zeros(T, 1))
+    @test current_rng(cpu) == expected_rng
     @test current_proposal(cpu) == cpu_before
 
     source = prepare_sampler(
-        Random.Xoshiro(0x2229),
+        device_test_rng(0x2229),
         target,
         algorithm;
         threaded=true,
@@ -1901,7 +1861,7 @@ end
             @test failure.cause.info == cpu_failure.cause.info == 1
         end
     end
-    @test prepared.rng.draws == 1
+    @test prepared.rng == expected_rng
     failure_storage = prepared.random_buffers.failure_scratch.record.storage
     failure_snapshot = IS._decode_native_failure(
         failure_storage[1],
@@ -1929,7 +1889,7 @@ end
     )
     device = AMISExecutionTestAccelerator()
     base = device(prepare_sampler(
-        Random.Xoshiro(0x2231),
+        device_test_rng(0x2231),
         AMISZeroFloat32Target(),
         algorithm;
         threaded=true,
@@ -1992,7 +1952,7 @@ end
     )
     device = AMISExecutionTestAccelerator()
     prepared = device(prepare_sampler(
-        Random.Xoshiro(0x2232),
+        device_test_rng(0x2232),
         AMISZeroFloat32Target(),
         algorithm;
         threaded=true,
@@ -2064,7 +2024,7 @@ end
     )
     device = AMISExecutionTestAccelerator()
     base = device(prepare_sampler(
-        Random.Xoshiro(0x2230),
+        device_test_rng(0x2230),
         AMISZeroSampleFailureTarget{T}(),
         algorithm;
         threaded=true,
@@ -2117,18 +2077,20 @@ end
     @test after.location == before.location
     @test after.scale.factor == before.scale.factor
     @test after.lognormalizer == before.lognormalizer
-    @test rng.index == 2
+    @test prepared.rng.index == 2
+    @test rng.index == 1
     @test !prepared.running
 
     @test importance_sample!(prepared) isa WeightedSamples
-    @test rng.index == 3
+    @test prepared.rng.index == 3
+    @test rng.index == 1
     @test !prepared.running
 end
 
 @testset "backend hooks own device scope and validate residency" begin
     algorithm = ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples=16)
     make_hook_sampler(seed) = prepare_sampler(
-        Random.Xoshiro(seed),
+        device_test_rng(seed),
         hook_accelerator_target,
         (shift=(0.25,),),
         algorithm;
@@ -2144,10 +2106,10 @@ end
     @test length(result) == 16
 
     source = make_hook_sampler(0x2217)
-    expected_rng = copy(getfield(source, :rng))
+    expected_rng = getfield(source, :rng)
     residency_error = caught_device_error(() -> HookAccelerator(false)(source))
     @test residency_error isa SamplerDeviceError
     @test residency_error.reason === :device_residency_mismatch
     @test HOOK_ACCELERATOR_CURRENT[] === :caller
-    @test rand(getfield(source, :rng), UInt64) == rand(expected_rng, UInt64)
+    @test getfield(source, :rng) == expected_rng
 end

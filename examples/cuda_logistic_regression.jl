@@ -6,6 +6,7 @@ include(joinpath(@__DIR__, "logistic_regression.jl"))
 
 using CUDA
 using MLDataDevices
+using PureRNGs
 
 function cuda_device()
     CUDA.functional() || error("CUDA is not functional")
@@ -34,7 +35,7 @@ function main_cuda(; pilot_samples=20_000, nsamples=100_000)
 
     # Each round transfers its complete prepared sampler, including the data.
     pilot = sample_on_cuda(
-        Xoshiro(0x50494c4f54495331),
+        Threefry4x32(0x50494c4f54495331),
         logistic_logtarget,
         context,
         ImportanceSampling(prior; nsamples=pilot_samples),
@@ -45,7 +46,7 @@ function main_cuda(; pilot_samples=20_000, nsamples=100_000)
     host_pilot = pilot |> cpu_device()
     proposal = fit_gaussian_proposal(host_pilot)
     result = sample_on_cuda(
-        Xoshiro(0x49534c4f47495431),
+        Threefry4x32(0x49534c4f47495431),
         logistic_logtarget,
         context,
         ImportanceSampling(proposal; nsamples),

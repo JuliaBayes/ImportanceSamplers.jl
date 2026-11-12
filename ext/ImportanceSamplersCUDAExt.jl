@@ -24,24 +24,21 @@ end
 
 function ImportanceSamplers._with_backend_device(
     f,
-    device::MLDataDevices.CUDADevice,
-)
+    device::MLDataDevices.CUDADevice)
     requested = device.device
     return requested === nothing ? f() : CUDA.device!(f, requested)
 end
 
 function ImportanceSamplers._backend_state_resident(
     device::MLDataDevices.CUDADevice,
-    state,
-)
+    state)
     requested = something(device.device, CUDA.device())
     return _cuda_state_resident(requested, state)
 end
 
 _cuda_state_resident(
     device,
-    state::ImportanceSamplers._PreparedFirstOrderGRAMIS,
-) = _cuda_state_resident(
+    state::ImportanceSamplers._PreparedFirstOrderGRAMIS) = _cuda_state_resident(
     device,
     ImportanceSamplers._first_order_gramis_resident_state(state),
 )
@@ -72,11 +69,6 @@ _cuda_fields_resident(device, state, ::Val{0}) = true
            _cuda_state_resident(device, getfield(state, N)) &&
            _cuda_fields_resident(device, state, Val(N - 1))
 end
-
-ImportanceSamplers._owned_backend_rng(
-    ::MLDataDevices.CUDADevice,
-    seed::UInt64,
-) = CUDA.RNG(seed)
 
 function ImportanceSamplers._gaussian_potrf!(
     ::MLDataDevices.CUDADevice,

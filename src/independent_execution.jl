@@ -31,9 +31,10 @@ _copy_dm_pmc_active_proposal(device, proposal::_NativeIndependentProposal) =
 
 _native_buffer_strategy(::_BoxUniform) = _BoxFamily()
 
-function _fill_random_buffers!(rng, buffers::_RandomBuffers{U,N,F,_BoxFamily}) where {U,N,F}
-    Random.rand!(rng, buffers.uniform)
-    return buffers
+function _fill_random_buffers!(rng, buffers::_RandomBuffers{U,N,F,_BoxFamily};
+    threaded = false
+) where {U,N,F}
+    return _rand_uniform!(rng, buffers.uniform; threaded)
 end
 
 function _allocate_native_samples(prototype, base::_NativeIndependentProposal, count)
@@ -135,11 +136,11 @@ _prepare_mis_normals!(normals, ::_BoxFamily, bank, assignments, failures, execut
 
 function _fill_random_buffers!(
     rng,
-    buffers::_PackedStaticMISRandomBuffers{U,N,A,S,F,_BoxFamily},
+    buffers::_PackedStaticMISRandomBuffers{U,N,A,S,F,_BoxFamily};
+    threaded = false,
 ) where {U,N,A,S,F}
-    Random.rand!(rng, buffers.uniform)
-    Random.rand!(rng, buffers.normal)
-    return buffers
+    rng = _rand_uniform!(rng, buffers.uniform; threaded)
+    return _rand_uniform!(rng, buffers.normal; threaded)
 end
 
 _supports_native_fused_cpu(::_GammaProposal) = true
@@ -150,7 +151,7 @@ _native_normal_stride(proposal::_GammaProposal) =
     _GAMMA_DRAW_ATTEMPTS * _proposal_dimension(proposal)
 _native_uniform_stride(proposal::_GammaProposal) =
     (_GAMMA_DRAW_ATTEMPTS + 1) * _proposal_dimension(proposal)
-_fill_radial_buffers!(rng, ::_GammaFamily) = nothing
+_fill_radial_buffers!(rng, ::_GammaFamily; threaded = false) = rng
 
 @inline function _native_draw_inputs(base::_GammaProposal, normals, uniforms, offset, slot)
     dimension = _proposal_dimension(base)
@@ -181,10 +182,9 @@ struct _GammaDrawBuffers{A}
 end
 Adapt.@adapt_structure _GammaDrawBuffers
 
-function _fill_radial_buffers!(rng, buffers::_GammaDrawBuffers)
-    Random.randn!(rng, buffers.normal)
-    Random.rand!(rng, buffers.uniform)
-    return nothing
+function _fill_radial_buffers!(rng, buffers::_GammaDrawBuffers; threaded = false)
+    rng = _rand_normal!(rng, buffers.normal; threaded)
+    return _rand_uniform!(rng, buffers.uniform; threaded)
 end
 
 function _allocate_static_draw_buffers(prototype, bank::_PackedIndependentBank{_GammaFamily}, count)
@@ -202,11 +202,11 @@ end
 
 function _fill_random_buffers!(
     rng,
-    buffers::_PackedStaticMISRandomBuffers{U,N,A,S,F,<:_GammaDrawBuffers},
+    buffers::_PackedStaticMISRandomBuffers{U,N,A,S,F,<:_GammaDrawBuffers};
+    threaded = false,
 ) where {U,N,A,S,F}
-    Random.rand!(rng, buffers.uniform)
-    _fill_radial_buffers!(rng, buffers.radial)
-    return buffers
+    rng = _rand_uniform!(rng, buffers.uniform; threaded)
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
 end
 
 @kernel function _independent_gamma_draws!(values, normals, uniforms, bank, assignments, failures)

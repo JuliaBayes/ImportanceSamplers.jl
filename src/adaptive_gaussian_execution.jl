@@ -54,7 +54,7 @@ end
     proposal_slot,
 )
     value = @inbounds history.means[coordinate, proposal_slot]
-    for column in 1:coordinate
+    for column = 1:coordinate
         value += @inbounds(
             history.factors[coordinate, column, proposal_slot] *
             normals[offset + column - 1]
@@ -73,8 +73,7 @@ end
 ) where {T}
     return convert(
         T,
-        _packed_gaussian_logdensity(history, sample, proposal_slot),
-    )
+        _packed_gaussian_logdensity(history, sample, proposal_slot))
 end
 
 @inline function _mis_proposal_logdensity(
@@ -123,8 +122,7 @@ end
     else
         target_log, reason, failed = target(
             _native_sample_at(samples, sample_index),
-            sample_index,
-        )
+            sample_index)
         if failed
             iszero(reason) ||
                 _record_native_failure!(failure_storage, sample_index, 0, reason)
@@ -163,8 +161,7 @@ function _preflight_moment_fit_kernels(device, method_state, buffers)
             workspace.covariance,
             history.factors,
             history.family,
-            representative_round,
-        )
+            representative_round)
             _preflight_kernel_argument(device, ridge_kernel, argument)
         end
         finish_kernel = _finish_gaussian_factor_candidate_kernel!(backend)
@@ -188,17 +185,16 @@ function _normalize_moment_weights!(normalized_weights, logweights, sample_count
     maximum_logweight = maximum(view(logweights, 1:sample_count))
     maximum_logweight == -Inf && throw(AllZeroWeightsError())
     total = zero(T)
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         weight = convert(
             T,
-            exp(logweights[sample_index] - maximum_logweight),
-        )
+            exp(logweights[sample_index] - maximum_logweight))
         normalized_weights[sample_index] = weight
         total += weight
     end
     isfinite(total) && total > zero(T) || throw(AllZeroWeightsError())
     inverse_total = inv(total)
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         normalized_weights[sample_index] *= inverse_total
     end
     return nothing
@@ -242,8 +238,7 @@ function _normalize_moment_weights!(
         maximum_logweight,
         total,
         scaled_square_sum,
-        sample_count,
-    )
+        sample_count)
 end
 
 @inline function _gaussian_factor_candidate_valid(
@@ -257,7 +252,7 @@ end
     end
     T = eltype(candidate_factor)
     dimension = size(candidate_factor, 1)
-    @inbounds for column in 1:dimension, row in column:dimension
+    @inbounds for column = 1:dimension, row = column:dimension
         factor_entry = candidate_factor[row, column]
         valid &= isfinite(factor_entry)
         valid &= row != column || factor_entry > zero(T)
@@ -283,7 +278,7 @@ end
 @inline function _factor_scale_aware_ridge(factors, slot, family, regularization::T) where {T}
     dimension = size(factors, 1)
     previous_trace = zero(T)
-    for column in 1:dimension, row in column:dimension
+    for column = 1:dimension, row = column:dimension
         previous_trace += abs2(factors[row, column, slot])
     end
     multiplier = _covariance_multiplier(family, T)
@@ -294,7 +289,7 @@ end
     # Apply the ridge coefficient before squaring when the unscaled trace overflows.
     scale = sqrt(regularization) * sqrt(multiplier / T(dimension))
     ridge = zero(T)
-    for column in 1:dimension, row in column:dimension
+    for column = 1:dimension, row = column:dimension
         ridge += abs2(factors[row, column, slot] * scale)
     end
     return ridge
@@ -315,11 +310,11 @@ function _fit_moment_proposal!(
 
     T = eltype(samples)
     mean = zero(T)
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         mean += weights[sample_index] * samples[sample_index]
     end
     variance = zero(T)
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         centered = (samples[sample_index] - mean) * sqrt(weights[sample_index])
         centered_scaled[sample_index] = centered
         variance += abs2(centered)
@@ -333,8 +328,7 @@ function _fit_moment_proposal!(
 
     phase = :factorization
     isfinite(variance) && variance > zero(T) || throw(
-        LinearAlgebra.PosDefException(1),
-    )
+        LinearAlgebra.PosDefException(1))
     scale = sqrt(variance / _covariance_multiplier(history.family, T))
     lognormalizer = _radial_lognormalizer(history.family, T, 1, log(scale))
     scale > zero(T) && isfinite(lognormalizer) || throw(LinearAlgebra.PosDefException(1))
@@ -364,16 +358,16 @@ function _fit_moment_proposal!(
     _normalize_moment_weights!(weights, workspace.logweights, sample_count)
 
     fill!(candidate_mean, zero(T))
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         weight = weights[sample_index]
-        for coordinate in 1:dimension
+        for coordinate = 1:dimension
             candidate_mean[coordinate] +=
                 weight * samples[coordinate, sample_index]
         end
     end
-    @inbounds for sample_index in 1:sample_count
+    @inbounds for sample_index = 1:sample_count
         scale = sqrt(weights[sample_index])
-        for coordinate in 1:dimension
+        for coordinate = 1:dimension
             centered_scaled[coordinate, sample_index] =
                 (samples[coordinate, sample_index] - candidate_mean[coordinate]) *
                 scale
@@ -388,7 +382,7 @@ function _fit_moment_proposal!(
         history.family,
         sqrt(eps(T)),
     )
-    @inbounds for coordinate in 1:dimension
+    @inbounds for coordinate = 1:dimension
         covariance[coordinate, coordinate] += ridge
     end
 
@@ -396,12 +390,12 @@ function _fit_moment_proposal!(
     copyto!(candidate_factor, covariance)
     _gaussian_potrf!(MLDataDevices.CPUDevice(), candidate_factor)
     _scale_covariance_factor!(candidate_factor, history.family)
-    @inbounds for column in 1:dimension, row in 1:(column - 1)
+    @inbounds for column = 1:dimension, row = 1:(column - 1)
         candidate_factor[row, column] = zero(T)
     end
 
     logabsdet = zero(T)
-    @inbounds for coordinate in 1:dimension
+    @inbounds for coordinate = 1:dimension
         logabsdet += log(abs(candidate_factor[coordinate, coordinate]))
     end
     candidate_lognormalizer =
@@ -438,8 +432,7 @@ end
     covariance[1] += _scalar_scale_aware_ridge(
         scales[previous_slot],
         family,
-        sqrt(eps(T)),
-    )
+        sqrt(eps(T)))
 end
 
 @kernel function _add_gaussian_factor_ridge_kernel!(
@@ -454,9 +447,8 @@ end
         factors,
         previous_slot,
         family,
-        sqrt(eps(T)),
-    )
-    for coordinate in 1:dimension
+        sqrt(eps(T)))
+    for coordinate = 1:dimension
         covariance[coordinate, coordinate] += ridge
     end
 end
@@ -485,8 +477,7 @@ end
             failure_storage,
             failure_index,
             0,
-            _MOMENT_FIT_INVALID,
-        )
+            _MOMENT_FIT_INVALID)
     end
 end
 
@@ -507,7 +498,7 @@ end
     if index == 1
         T = eltype(candidate_factor)
         logabsdet = zero(T)
-        for coordinate in 1:dimension
+        for coordinate = 1:dimension
             logabsdet += log(abs(candidate_factor[coordinate, coordinate]))
         end
         lognormalizer =
@@ -517,13 +508,11 @@ end
         _gaussian_factor_candidate_valid(
             candidate_mean,
             candidate_factor,
-            lognormalizer,
-        ) || _record_native_failure!(
+            lognormalizer) || _record_native_failure!(
             failure_storage,
             failure_index,
             0,
-            _MOMENT_FIT_INVALID,
-        )
+            _MOMENT_FIT_INVALID)
     end
 end
 
@@ -541,8 +530,7 @@ function _fit_moment_proposal!(
     centered = view(
         reshape(workspace.centered_scaled, 1, :),
         :,
-        1:sample_count,
-    )
+        1:sample_count)
     backend = KernelAbstractions.get_backend(workspace.covariance)
     phase = :moment
     try
@@ -647,8 +635,7 @@ function _store_moment_candidate!(
     copyto!(view(history.scales, slot:slot), workspace.candidate_scale)
     copyto!(
         view(history.lognormalizers, slot:slot),
-        workspace.candidate_lognormalizer,
-    )
+        workspace.candidate_lognormalizer)
     return nothing
 end
 
@@ -661,8 +648,7 @@ function _store_moment_candidate!(
     copyto!(view(history.factors, :, :, slot), workspace.candidate_scale)
     copyto!(
         view(history.lognormalizers, slot:slot),
-        workspace.candidate_lognormalizer,
-    )
+        workspace.candidate_lognormalizer)
     _copy_exponent_bounds!(_exponent_bounds_view(history.exponent_bounds, slot:slot),
         workspace.candidate_exponent_bound)
     return nothing
@@ -705,8 +691,7 @@ function _reset_moment_history!(history::_ScalarProposalHistory, rounds)
     fill!(view(history.scales, slots), zero(eltype(history.scales)))
     fill!(
         view(history.lognormalizers, slots),
-        zero(eltype(history.lognormalizers)),
-    )
+        zero(eltype(history.lognormalizers)))
     return nothing
 end
 
@@ -716,12 +701,10 @@ function _reset_moment_history!(history::_FactorProposalHistory, rounds)
     fill!(view(history.means, :, slots), zero(eltype(history.means)))
     fill!(
         view(history.factors, :, :, slots),
-        zero(eltype(history.factors)),
-    )
+        zero(eltype(history.factors)))
     fill!(
         view(history.lognormalizers, slots),
-        zero(eltype(history.lognormalizers)),
-    )
+        zero(eltype(history.lognormalizers)))
     isnothing(history.exponent_bounds) || fill!(view(history.exponent_bounds, slots), 0)
     return nothing
 end
@@ -768,14 +751,12 @@ function _gaussian_covariance_diagnostics(covariance, transfers)
         transfers,
         covariance,
         T,
-        Val(:covariance_diagnostic),
-    )
+        Val(:covariance_diagnostic))
     _record_device_scalar_transfer!(
         transfers,
         covariance,
         T,
-        Val(:covariance_diagnostic),
-    )
+        Val(:covariance_diagnostic))
     return (; minimum_diagonal, maximum_absolute_entry)
 end
 
@@ -798,8 +779,7 @@ function _capture_moment_round(
         covariance_diagnostics = failure_phase === :factorization ?
                                  _gaussian_covariance_diagnostics(
             covariance,
-            transfers,
-        ) : nothing
+            transfers) : nothing
         throw(
             _moment_round_error(algorithm)(
                 round,
@@ -868,15 +848,16 @@ _moment_result_samples(::Nothing, sampler, workspace, transfers) =
 
 function _draw_moment_round!(sampler, ::Nothing, state, round_ids, target, round, execution)
     buffers = sampler.random_buffers
-    _fill_moment_random_buffers!(sampler.rng, buffers, state.history)
+    sampler.rng = _fill_moment_random_buffers!(sampler.rng, buffers, state.history;
+        threaded = sampler.threaded
+    )
     _launch_moment_round!(sampler.algorithm, state, buffers, target, round_ids,
         round, execution, sampler.device, sampler.factor_execution)
 end
 
-function _fill_moment_random_buffers!(rng, buffers, history)
-    Random.randn!(rng, buffers.normal)
-    _fill_radial_buffers!(rng, buffers.radial)
-    return nothing
+function _fill_moment_random_buffers!(rng, buffers, history; threaded = false)
+    rng = _rand_normal!(rng, buffers.normal; threaded)
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
 end
 
 function _launch_moment_round!(algorithm, state, buffers, target, round_ids,
@@ -933,8 +914,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
         _bind_resolved_target(sampler.target, binding_sample, transfers)
     end
     target_evaluator, target_failures = _capture_moment_round(
-        algorithm, method_state, transfers, 1, :target, 0,
-    ) do
+        algorithm, method_state, transfers, 1, :target, 0) do
         _native_target_evaluator(
             KernelAbstractions.get_backend(buffers.normal),
             target,
@@ -952,8 +932,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
             if !deferred_accelerator_snapshot
                 snapshot = _moment_failure_snapshot!(
                     transfers,
-                    buffers.failure_scratch.record,
-                )
+                    buffers.failure_scratch.record)
                 _throw_native_failures(
                     snapshot.failure,
                     snapshot.draw_failure,
@@ -998,16 +977,14 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
                     fit_workspace,
                     history,
                     round,
-                    fit_count,
-                )
+                    fit_count)
             end
             nothing
         end
         if deferred_accelerator_snapshot
             snapshot = _moment_failure_snapshot!(
                 transfers,
-                buffers.failure_scratch.record,
-            )
+                buffers.failure_scratch.record)
             _capture_moment_round(
                 algorithm, method_state, transfers, round, :sampling, round - 1,
             ) do
@@ -1074,8 +1051,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
             _use_factor_batch_path(
                 sampler.device,
                 history,
-                sampler.factor_execution,
-            )
+                sampler.factor_execution)
         ) ? :batched : :fused,
         rounds=rounds,
         round_sizes=collect(schedule),

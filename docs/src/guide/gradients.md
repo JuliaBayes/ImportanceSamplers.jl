@@ -181,9 +181,9 @@ The matrix callback's operations must support that device.
 An explicit `batch_grad=` takes priority over scalar gradients and AD in accelerator score phases.
 
 ```julia
-using CUDA, MLDataDevices
+using CUDA, MLDataDevices, PureRNGs
 device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(),nothing)
-gpu_sampler = device(prepare_sampler(Xoshiro(21),target,p,algorithm))
+gpu_sampler = device(prepare_sampler(Threefry4x32(21),target,p,algorithm))
 gpu_samples = importance_sample!(gpu_sampler)
 ```
 

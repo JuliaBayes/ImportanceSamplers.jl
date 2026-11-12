@@ -2,7 +2,7 @@ using Test
 using CUDA
 using ImportanceSamplers
 using MLDataDevices
-using Random
+using PureRNGs
 using Statistics
 
 CUDA.allowscalar(false)
@@ -12,7 +12,7 @@ CUDA.allowscalar(false)
     logweights = CuArray(Float32[-Inf, 0, -Inf])
     result = ImportanceSamplers._adopt_weighted_samples(samples, logweights)
 
-    draws = @inferred resample(Random.Xoshiro(21), result, 5)
+    draws, _ = @inferred resample_next(Threefry4x32(21), result, 5)
     @test draws.samples isa CuArray
     @test Array(draws.samples) == Float32[2 2 2 2 2; 5 5 5 5 5]
     @test (@inferred mean(draws)) isa CuArray
@@ -35,10 +35,9 @@ end
     )
     result = ImportanceSamplers._adopt_weighted_samples(
         samples,
-        CuArray(Float32[-Inf, 0, -Inf]),
-    )
+        CuArray(Float32[-Inf, 0, -Inf]))
 
-    draws = resample(Random.Xoshiro(22), result, 2)
+    draws, _ = resample_next(Threefry4x32(22), result, 2)
     @test Array(draws.samples.location) == Float32[2, 2]
     @test Array(draws.samples.state.position) == Float32[2 2; 5 5]
     @test mean(draws).location == 2.0f0

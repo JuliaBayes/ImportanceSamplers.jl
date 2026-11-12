@@ -57,8 +57,7 @@ struct ImportanceSampling{P,S} <: AbstractImportanceSampler
         token::_ValidatedImportanceSamplingToken,
     ) where {P,S}
         token === _VALIDATED_IMPORTANCE_SAMPLING_TOKEN || throw(
-            ArgumentError("invalid internal algorithm-construction token"),
-        )
+            ArgumentError("invalid internal algorithm-construction token"))
         return new{P,S}(proposal, nsamples, mis_scheme)
     end
 end
@@ -219,8 +218,7 @@ function Base.showerror(io::IO, error::SamplerExecutionError)
     print(
         io,
         "importance-sampler execution failed during ",
-        error.phase,
-    )
+        error.phase)
     iszero(error.sample_index) || print(io, " at logical sample ", error.sample_index)
     print(io, ": ")
     showerror(io, error.captured)
@@ -268,8 +266,7 @@ function _validate_factor_execution(factor_execution)
     factor_execution isa Union{
         _DefaultFactorExecution,
         FusedFactorExecution,
-        BatchedFactorExecution,
-    } || throw(
+        BatchedFactorExecution} || throw(
         ArgumentError(
             "factor_execution must be nothing, FusedFactorExecution(), or " *
             "BatchedFactorExecution()",
@@ -332,8 +329,11 @@ selects the two-argument callable form.
 | DensityInterface object | `DensityInterface.DensityKind(target)` advertising a density, and `DensityInterface.logdensityof(target, sample)` | None required |
 | LogDensityProblems object | `LogDensityProblems.capabilities`, `LogDensityProblems.dimension`, and `LogDensityProblems.logdensity` | First-order capability and `LogDensityProblems.logdensity_and_gradient` for gradient methods |
 
-The prepared sampler retains and advances the supplied RNG. Do not consume that
-RNG elsewhere while using the sampler. A prepared sampler is mutable and
+The prepared sampler retains and advances the supplied RNG. Native immutable
+PureRNGs inputs preserve their supplied state and return their continuation
+through [`current_rng`](@ref). Reusing the same input snapshot repeats its stream.
+Mutable `Random.AbstractRNG` inputs remain supported on CPU. Do not consume a
+mutable RNG elsewhere while using its sampler. A prepared sampler is mutable and
 non-reentrant. Repeated calls to [`importance_sample!`](@ref) create separate,
 noncumulative results with separate arrays.
 
@@ -358,7 +358,7 @@ narrowing those weights. Its default remains fused; explicit batching uses
 a separate denominator buffer in the logweight precision.
 """
 function prepare_sampler(
-    rng::Random.AbstractRNG,
+    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -369,8 +369,7 @@ function prepare_sampler(
         logtarget,
         _NoTargetContext(),
         ADTypes.NoAutoDiff(),
-        nothing,
-    )
+        nothing)
     return _prepare_importance_sampler(
         rng,
         target,
@@ -382,7 +381,7 @@ function prepare_sampler(
 end
 
 function prepare_sampler(
-    rng::Random.AbstractRNG,
+    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;
@@ -394,8 +393,7 @@ function prepare_sampler(
         logtarget,
         context,
         ADTypes.NoAutoDiff(),
-        nothing,
-    )
+        nothing)
     return _prepare_importance_sampler(
         rng,
         target,
@@ -426,10 +424,9 @@ function _prepare_importance_sampler(
         device,
         proposal,
         method_state,
-        sample_budget,
-    )
+        sample_budget)
     return _PreparedImportanceSampler(
-        rng,
+        _cpu_rng(rng),
         random_buffers,
         prepared_target,
         algorithm,
@@ -443,8 +440,7 @@ function _prepare_importance_sampler(
 end
 
 _prepare_method_state(
-    ::ImportanceSampling{P,_SingleProposalScheme},
-) where {P} = _SingleProposalMethodState()
+    ::ImportanceSampling{P,_SingleProposalScheme}) where {P} = _SingleProposalMethodState()
 
 _prepare_method_state(algorithm, target) = _prepare_method_state(algorithm)
 
@@ -490,6 +486,18 @@ end
 
 _accelerator_method_state_limit(method_state) = nothing
 
+_cpu_rng(rng) = rng
+_cpu_rng(rng::PureRNGs.AbstractPureRNG) = MLDataDevices.CPUDevice()(rng)
+_clone_rng(device, rng::PureRNGs.AbstractPureRNG) = device(rng)
+
+"""
+    current_rng(sampler)
+
+Return an independent snapshot of a prepared sampler's current random stream.
+Reusing a pure snapshot repeats its stream. Split it explicitly for independent runs.
+"""
+current_rng(sampler::_PreparedImportanceSampler) = _clone_rng(sampler.device, sampler.rng)
+
 function _clone_rng(device, rng::Random.AbstractRNG)
     cloned = try
         copy(rng)
@@ -497,15 +505,9 @@ function _clone_rng(device, rng::Random.AbstractRNG)
         throw(SamplerDeviceError(device, :rng_not_cloneable))
     end
     cloned isa Random.AbstractRNG && cloned !== rng || throw(
-        SamplerDeviceError(device, :rng_not_cloneable),
-    )
+        SamplerDeviceError(device, :rng_not_cloneable))
     return cloned
 end
-
-_commit_rng_snapshot!(_rng, snapshot) = snapshot
-# A TaskLocalRNG copy is a Xoshiro snapshot, not a replacement RNG token.
-_commit_rng_snapshot!(rng::Random.TaskLocalRNG, snapshot::Random.Xoshiro) =
-    copy!(rng, snapshot)
 
 _backend_functional(device) = MLDataDevices.functional(device)
 _with_backend_device(f, device) = f()
@@ -513,8 +515,7 @@ _backend_state_resident(device, state) = true
 
 function _validate_backend_state(device, state)
     _backend_state_resident(device, state) || throw(
-        SamplerDeviceError(device, :device_residency_mismatch),
-    )
+        SamplerDeviceError(device, :device_residency_mismatch))
     return nothing
 end
 
@@ -523,8 +524,7 @@ _prepared_backend_state(sampler, method_state) = (
     method_state,
     sampler.target,
     sampler.random_buffers,
-    sampler.rng,
-)
+    sampler.rng)
 
 _transferred_backend_state(algorithm, method_state, target, random_buffers) =
     (algorithm, method_state, target, random_buffers)
@@ -559,15 +559,12 @@ function _transfer_prepared_sampler(
     ::Val{clone_rng},
 ) where {clone_rng}
     sampler.device isa MLDataDevices.AbstractAcceleratorDevice && throw(
-        SamplerDeviceError(device, :prepared_migration_unsupported),
-    )
+        SamplerDeviceError(device, :prepared_migration_unsupported))
     sampler.executed && throw(SamplerAlreadyExecutedError())
     _backend_functional(device) || throw(
-        SamplerDeviceError(device, :backend_unavailable),
-    )
+        SamplerDeviceError(device, :backend_unavailable))
     _target_transfer_rewrites_opaque_closure(sampler.target) && throw(
-        SamplerDeviceError(device, :opaque_host_closure),
-    )
+        SamplerDeviceError(device, :opaque_host_closure))
     algorithm = _copy_algorithm(device, sampler.algorithm)
     proposal = _algorithm_proposal(algorithm)
     transferred_target = _transfer_prepared_target(device, sampler.target)
@@ -605,19 +602,17 @@ function _transfer_prepared_sampler(
     ::Val{clone_rng},
 ) where {clone_rng}
     sampler.device isa MLDataDevices.AbstractAcceleratorDevice && throw(
-        SamplerDeviceError(device, :prepared_migration_unsupported),
-    )
+        SamplerDeviceError(device, :prepared_migration_unsupported))
     if applicable(Base.eltype, device) && Base.eltype(device) === Missing
         throw(SamplerDeviceError(device, :scalar_policy_unspecified))
     end
     sampler.executed && throw(SamplerAlreadyExecutedError())
     sampler.threaded || throw(SamplerDeviceError(device, :serial_accelerator))
+    _validate_transfer_rng(device, sampler.rng)
     _target_has_opaque_host_closure(sampler.target, device) && throw(
-        SamplerDeviceError(device, :opaque_host_closure),
-    )
+        SamplerDeviceError(device, :opaque_host_closure))
     _backend_functional(device) || throw(
-        SamplerDeviceError(device, :backend_unavailable),
-    )
+        SamplerDeviceError(device, :backend_unavailable))
     source = _accelerator_precision_source(device, sampler)
     isnothing(source) && (source = _accelerator_product_source(sampler))
     if !isnothing(source)
@@ -626,19 +621,16 @@ function _transfer_prepared_sampler(
         return product_destination
     end
     proposal_limit = _accelerator_proposal_limit(
-        _algorithm_proposal(sampler.algorithm),
-    )
+        _algorithm_proposal(sampler.algorithm))
     isnothing(proposal_limit) || throw(SamplerDeviceError(device, proposal_limit))
     method_state_limit = _accelerator_method_state_limit(sampler.method_state)
     isnothing(method_state_limit) || throw(
-        SamplerDeviceError(device, method_state_limit),
-    )
+        SamplerDeviceError(device, method_state_limit))
     return _with_backend_device(device) do
         algorithm = _copy_accelerator_algorithm(
             device,
             sampler.algorithm,
-            sampler.method_state,
-        )
+            sampler.method_state)
         transferred_target = _transfer_prepared_target(device, sampler.target)
         method_state = _prepare_transferred_method_state(
             device,
@@ -658,8 +650,7 @@ function _transfer_prepared_sampler(
             _DMPMCRandomBuffers,
             _PopulationNormalBuffers,
         } || throw(
-            SamplerDeviceError(device, :accelerator_rng_unavailable),
-        )
+            SamplerDeviceError(device, :accelerator_rng_unavailable))
         _validate_backend_state(
             device,
             _transferred_backend_state(
@@ -677,17 +668,7 @@ function _transfer_prepared_sampler(
             random_buffers,
             sampler.factor_execution,
         )
-        source_rng = clone_rng ? _clone_rng(device, sampler.rng) : sampler.rng
-        seed = try
-            Random.rand(source_rng, UInt64)
-        catch
-            throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
-        end
-        backend_rng = try
-            _owned_backend_rng(device, seed)
-        catch
-            throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
-        end
+        backend_rng = _transfer_rng(device, sampler.rng)
         destination = _PreparedImportanceSampler(
             backend_rng,
             random_buffers,
@@ -701,7 +682,6 @@ function _transfer_prepared_sampler(
             false,
         )
         destination = _prepare_backend_execution(destination)
-        sampler.rng = _commit_rng_snapshot!(sampler.rng, source_rng)
         return destination
     end
 end
@@ -711,8 +691,7 @@ function _transfer_prepared_sampler(
     sampler::_PreparedImportanceSampler,
 )
     sampler.device isa MLDataDevices.AbstractAcceleratorDevice && throw(
-        SamplerDeviceError(device, :prepared_migration_unsupported),
-    )
+        SamplerDeviceError(device, :prepared_migration_unsupported))
     sampler.executed && throw(SamplerAlreadyExecutedError())
     throw(SamplerDeviceError(device, :unsupported_device))
 end
@@ -727,14 +706,12 @@ _restore_retarget_device(source, sampler) =
 _restore_retarget_device(
     _source,
     sampler,
-    ::MLDataDevices.CPUDevice{Missing},
-) = sampler
+    ::MLDataDevices.CPUDevice{Missing}) = sampler
 
 function _restore_retarget_device(
     _source,
     sampler,
-    device::MLDataDevices.AbstractCPUDevice,
-)
+    device::MLDataDevices.AbstractCPUDevice)
     return _transfer_prepared_sampler(device, sampler, Val(false))
 end
 
@@ -755,9 +732,16 @@ function _retarget_algorithm(sampler::_PreparedImportanceSampler)
     )
 end
 
+_transfer_rng(device, rng::PureRNGs.AbstractPureRNG) = device(rng)
+_transfer_rng(device, rng) = throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
+_validate_transfer_rng(device, rng::PureRNGs.AbstractPureRNG) = nothing
+_validate_transfer_rng(device, rng) =
+    throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
+
 function _retarget_sampler(rng, sampler, target)
     sampler.running && throw(SamplerBusyError())
-    rng === sampler.rng && throw(
+    rng isa Random.AbstractRNG &&
+        rng === sampler.rng && throw(
         ArgumentError("retarget requires an RNG distinct from the source sampler's RNG"),
     )
     prepared = _prepare_importance_sampler(
@@ -784,10 +768,10 @@ adaptation history, workspaces, diagnostics, and failure buffers. Samples,
 weights, and normalizer state from the source are never reused. The source
 sampler remains unchanged and usable.
 
-On CPU, the returned sampler retains and advances the supplied RNG. Accelerator setup consumes
-one `UInt64` after preflight to seed a separate backend RNG. A later backend RNG
-construction failure can therefore consume that value. The supplied RNG must
-differ from the source sampler's RNG.
+The returned sampler retains and advances the supplied RNG. Accelerator setup
+requires a native PureRNGs generator and preserves its key and position without
+reseeding. A mutable RNG must differ from the source sampler's RNG. An explicit
+immutable continuation is valid, but equal snapshots do not give independent streams.
 
 Retargeting supports prepared [`DeterministicMixturePMC`](@ref), [`APIS`](@ref),
 [`CAIS`](@ref), [`NPMC`](@ref), [`LAIS`](@ref), [`AMIS`](@ref), and [`FirstOrderGRAMIS`](@ref) samplers.
@@ -802,40 +786,34 @@ Normal preparation still checks known target dimensions, callable contracts,
 and method constraints.
 """
 function retarget(
-    rng::Random.AbstractRNG,
+    rng,
     sampler::_PreparedImportanceSampler,
-    logtarget,
-)
+    logtarget)
     target = _PreparedLogTarget(
         logtarget,
         _NoTargetContext(),
         ADTypes.NoAutoDiff(),
-        nothing,
-    )
+        nothing)
     return _retarget_sampler(
         rng,
         sampler,
-        target,
-    )
+        target)
 end
 
 function retarget(
-    rng::Random.AbstractRNG,
+    rng,
     sampler::_PreparedImportanceSampler,
     logtarget,
-    context,
-)
+    context)
     target = _PreparedLogTarget(
         logtarget,
         context,
         ADTypes.NoAutoDiff(),
-        nothing,
-    )
+        nothing)
     return _retarget_sampler(
         rng,
         sampler,
-        target,
-    )
+        target)
 end
 
 """
@@ -858,7 +836,7 @@ The result stores the algorithm's canonical raw log weights. Use
 for the complete estimator's log normalizer.
 """
 function importance_sample(
-    rng::Random.AbstractRNG,
+    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -877,7 +855,7 @@ function importance_sample(
 end
 
 function importance_sample(
-    rng::Random.AbstractRNG,
+    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;
@@ -984,22 +962,19 @@ function _importance_sample_generic_cpu!(sampler, threaded)
     log_type = _resolve_logweight_type(
         target,
         sampler.algorithm.proposal,
-        samples,
-    )
+        samples)
     logweights = if threaded
         _evaluate_logweights_threaded(
             log_type,
             target,
             sampler.algorithm.proposal,
-            samples,
-        )
+            samples)
     else
         _evaluate_logweights(
             log_type,
             target,
             sampler.algorithm.proposal,
-            samples,
-        )
+            samples)
     end
     return samples, logweights
 end
@@ -1018,8 +993,7 @@ function _evaluate_logweights_threaded(
         proposal_logs,
         proposal,
         samples,
-        Val(:proposal_logdensity),
-    )
+        Val(:proposal_logdensity))
     _construct_logweights!(proposal_logs, target_logs)
     return proposal_logs
 end
@@ -1028,15 +1002,14 @@ function _evaluate_logs_threaded!(
     logs::Vector{T},
     evaluator,
     samples,
-    phase::Val,
-) where {T}
+    phase::Val) where {T}
     if phase isa Val{:target} && _has_batch_target(evaluator)
         return _evaluate_generic_batch_logs!(logs, evaluator, samples)
     end
     ntasks = min(Threads.nthreads(:default), length(logs))
     chunk_size = cld(length(logs), ntasks)
     tasks = Task[]
-    for first_index in 1:chunk_size:length(logs)
+    for first_index = 1:chunk_size:length(logs)
         last_index = min(first_index + chunk_size - 1, length(logs))
         let indices = first_index:last_index
             task = Threads.@spawn _evaluate_log_chunk!(
@@ -1075,8 +1048,7 @@ function _evaluate_log_chunk!(
                 evaluator,
                 samples,
                 sample_index,
-                phase,
-            )
+                phase)
         end
     catch error
         error isa SamplerExecutionError && return error
@@ -1097,8 +1069,7 @@ function _phase_logdensity(
     proposal,
     sample,
     sample_index,
-    ::Val{:proposal_logdensity},
-)
+    ::Val{:proposal_logdensity})
     return _proposal_logdensity(proposal, sample, sample_index)
 end
 
@@ -1119,7 +1090,8 @@ function _draw_prepared_batch(sampler)
     proposal = sampler.algorithm.proposal
     nsamples = sampler.algorithm.nsamples
     first_sample = _capture_sampler_failure(:proposal_draw, 1) do
-        rand(sampler.rng, proposal)
+        sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
+        sample
     end
     batch = _capture_sampler_failure(:proposal_draw, 1) do
         _allocate_batch(first_sample, nsamples)
@@ -1128,9 +1100,9 @@ function _draw_prepared_batch(sampler)
         _store_sample!(batch, first_sample, 1)
     end
 
-    for sample_index in 2:nsamples
+    for sample_index = 2:nsamples
         _capture_sampler_failure(:proposal_draw, sample_index) do
-            sample = rand(sampler.rng, proposal)
+            sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
             _store_sample!(batch, sample, sample_index)
         end
     end
@@ -1186,8 +1158,7 @@ function _resolve_logweight_type(target, proposal, sample_type::Type)
         inferred = Base.promote_op(
             DensityInterface.logdensityof,
             typeof(proposal),
-            sample_type,
-        )
+            sample_type)
         _canonical_inferred_log_type(inferred, "proposal")
     end
     return target_type === Float64 || proposal_type === Float64 ? Float64 : Float32
@@ -1234,21 +1205,18 @@ function _evaluate_proposal_logs!(proposal_logs::Vector{T}, proposal, samples) w
             proposal,
             samples,
             sample_index,
-            phase,
-        )
+            phase)
     end
     return proposal_logs
 end
 
 function _construct_logweights!(logweights::Vector{T}, target_logs::Vector{T}) where {T}
     axes(logweights) == axes(target_logs) || throw(
-        DimensionMismatch("target and proposal log arrays must be aligned"),
-    )
+        DimensionMismatch("target and proposal log arrays must be aligned"))
     for sample_index in eachindex(logweights, target_logs)
         logweight, reason = _subtract_logweight(
             target_logs[sample_index],
-            logweights[sample_index],
-        )
+            logweights[sample_index])
         iszero(reason) || _throw_invalid_logweight(logweight, sample_index)
         logweights[sample_index] = logweight
     end
@@ -1286,18 +1254,15 @@ end
 
 function _validate_target_logdensity(value)
     (typeof(value) === Float32 || typeof(value) === Float64) || throw(
-        ArgumentError("target log density must be Float32 or Float64"),
-    )
+        ArgumentError("target log density must be Float32 or Float64"))
     (isnan(value) || value == Inf) && throw(
-        DomainError(value, "target log density may not be NaN or +Inf"),
-    )
+        DomainError(value, "target log density may not be NaN or +Inf"))
     return nothing
 end
 
 function _validate_proposal_logdensity(value)
     (typeof(value) === Float32 || typeof(value) === Float64) || throw(
-        ArgumentError("proposal log density must be Float32 or Float64"),
-    )
+        ArgumentError("proposal log density must be Float32 or Float64"))
     (isnan(value) || value == -Inf) && throw(
         DomainError(
             value,

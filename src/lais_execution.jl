@@ -37,7 +37,21 @@ end
 _reset_transition_diagnostics!(state) = nothing
 
 function _before_population_round!(sampler, state::_PreparedLAIS, target, round, execution, transfers)
-    transition!(state.run_transition, target, sampler.rng, execution, transfers)
+    result = transition!(state.run_transition, target, sampler.rng, execution, transfers)
+    _retain_transition_rng!(sampler, result)
+    return nothing
+end
+
+function _retain_transition_rng!(sampler, result::Tuple)
+    sampler.rng, failure = result
+    isnothing(failure) || throw(failure)
+    return nothing
+end
+
+# The original extension contract remains available for mutable CPU RNGs.
+function _retain_transition_rng!(sampler, ::Nothing)
+    sampler.rng isa Random.AbstractRNG ||
+        throw(ArgumentError("a pure-RNG transition must return (next_rng, failure)"))
     return nothing
 end
 

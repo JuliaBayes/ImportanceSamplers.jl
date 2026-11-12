@@ -38,10 +38,10 @@ learned = current_proposal(prepared)
 # next_samples = importance_sample!(prepared)
 
 # Optional CUDA execution: transfer a fresh complete prepared sampler explicitly.
-# using CUDA, MLDataDevices
+# using CUDA, MLDataDevices, PureRNGs
 # physical = CUDA.device()
 # device = MLDataDevices.CUDADevice{typeof(physical),Nothing}(physical)
-# gpu_prepared = device(prepare_sampler(Xoshiro(43), logtarget, algorithm))
+# gpu_prepared = device(prepare_sampler(Threefry4x32(43), logtarget, algorithm))
 # gpu_samples = importance_sample!(gpu_prepared)
 # host_samples = cpu_device()(gpu_samples)
 # Pass target data as prepare_sampler(rng, logtarget, data, algorithm), so data

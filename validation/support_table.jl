@@ -1,6 +1,7 @@
 module SamplerSupportTable
 
 using ImportanceSamplers, Random
+using PureRNGs
 import MLDataDevices
 
 scalar_target(x::T) where {T} = -(abs2(x) + log(T(2) * T(pi))) / T(2)
@@ -96,7 +97,8 @@ sample_arrays(x::NamedTuple) = values(x)
 
 function check_support_case(row; device=MLDataDevices.CPUDevice(),
     backend=:cpu, isresident=x -> x isa Array, threaded=true)
-    sampler = prepare_sampler(Xoshiro(73), row.target, row.algorithm;
+    rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(73) : Xoshiro(73)
+    sampler = prepare_sampler(rng, row.target, row.algorithm;
         threaded, row.keywords...)
     prepared = try
         device(sampler)

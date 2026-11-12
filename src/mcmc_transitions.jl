@@ -11,7 +11,7 @@ Custom transitions require the following methods, qualified with
 |:--|:--|
 | `prepare_transition(config, centres, target, L)` | Build state without RNG use and retain the supplied centre storage; `L` is the log-density type |
 | `transition_centres(state)` | Return the same centre batch without copying |
-| `transition!(state, target, rng, execution, transfers)` | Advance one upper round and update cumulative work counts |
+| `transition!(state, target, rng, execution, transfers)` | Advance one upper round and update cumulative work counts; with a pure RNG return `(next_rng, failure)`, with `nothing` for success |
 | `Base.copyto!(destination, source)` | Copy persistent state for rollback |
 | `transition_diagnostics(state)` | Report initial, warmup, and production target evaluations, warmup and production proposals, and accepted moves |
 | `retarget_transition(config, state, destination)` | Rebuild the configuration from learned parameters for [`retarget`](@ref) |
@@ -19,6 +19,10 @@ Custom transitions require the following methods, qualified with
 State must support `deepcopy`. Custom device execution also requires Adapt
 support, preserved centre aliases, and device preflight. See the
 [transition interface](@ref extension-guide) for diagnostic field names and limits.
+Mutable CPU RNGs also support the original custom-transition contract returning
+`nothing`. Pure transitions must return their continued RNG even when target or
+adaptation work fails after a completed draw; the caller retains it before
+throwing `failure`.
 """
 abstract type AbstractMCMCTransition end
 
@@ -109,31 +113,26 @@ _transition_count(centres::AbstractMatrix) = size(centres, 2)
 function _transition_factor(covariance::Real, ::Type{T}, dimension) where {T}
     variance = T(covariance)
     isfinite(variance) && variance > zero(T) || throw(
-        ArgumentError("transition variance must be finite and positive"),
-    )
+        ArgumentError("transition variance must be finite and positive"))
     return Matrix(LinearAlgebra.Diagonal(fill(sqrt(variance), dimension)))
 end
 
 function _transition_factor(covariance::AbstractMatrix, ::Type{T}, dimension) where {T}
     size(covariance) == (dimension, dimension) || throw(
-        DimensionMismatch("transition covariance must match the sample dimension"),
-    )
+        DimensionMismatch("transition covariance must match the sample dimension"))
     matrix = Matrix{T}(covariance)
     all(isfinite, matrix) && LinearAlgebra.issymmetric(matrix) || throw(
-        ArgumentError("transition covariance must be finite and symmetric"),
-    )
+        ArgumentError("transition covariance must be finite and symmetric"))
     return Matrix(LinearAlgebra.cholesky(LinearAlgebra.Symmetric(matrix)).L)
 end
 
 function _transition_factor(covariance::LinearAlgebra.Cholesky, ::Type{T}, dimension) where {T}
     size(covariance) == (dimension, dimension) || throw(
-        DimensionMismatch("transition factor must match the sample dimension"),
-    )
+        DimensionMismatch("transition factor must match the sample dimension"))
     factor = Matrix{T}(covariance.L)
     LinearAlgebra.issuccess(covariance) && all(isfinite, factor) &&
         all(>(zero(T)), LinearAlgebra.diag(factor)) || throw(
-        ArgumentError("transition factor must be finite and positive definite"),
-    )
+        ArgumentError("transition factor must be finite and positive definite"))
     return factor
 end
 
@@ -146,14 +145,13 @@ function prepare_transition(transition::RandomWalkMetropolis, centres, target, :
     factors = Array{T}(undef, dimension, dimension, count)
     if covariance isa AbstractVector
         length(covariance) == count || throw(
-            DimensionMismatch("provide one transition covariance per chain"),
-        )
-        for chain in 1:count
+            DimensionMismatch("provide one transition covariance per chain"))
+        for chain = 1:count
             copyto!(view(factors, :, :, chain), _transition_factor(covariance[chain], T, dimension))
         end
     else
         factor = _transition_factor(covariance, T, dimension)
-        for chain in 1:count
+        for chain = 1:count
             copyto!(view(factors, :, :, chain), factor)
         end
     end
@@ -291,7 +289,7 @@ _transition_foreach(f, indices, ::_SerialCPUExecution) = foreach(f, indices)
 _transition_foreach(f, indices, ::_ThreadedCPUExecution) = _threaded_foreach(f, indices)
 
 """Advance the chain batch once, using bulk random draws from the coordinator."""
-transition!(state::_RandomWalkState, target, rng, execution, transfers) =
+@inline transition!(state::_RandomWalkState, target, rng, execution, transfers) =
     _transition_batch!(state, target, rng, execution, transfers, nothing)
 
 function transition!(state::_RAMState{W,<:WarmupTuning}, target, rng, execution, transfers) where {W}
@@ -301,16 +299,19 @@ end
 
 function _warmup_transition!(::KernelAbstractions.CPU, state, target, rng, execution, transfers)
     while state.n_tuned < state.tuning.steps
+        rng, failure =
         _transition_batch!(state.walk, target, rng, execution, transfers, state)
+        isnothing(failure) || return rng, failure
         state.n_tuned += 1
     end
     return transition!(state.walk, target, rng, execution, transfers)
 end
 
 function transition!(state::_RAMState{W,ContinuousTuning}, target, rng, execution, transfers) where {W}
-    _transition_batch!(state.walk, target, rng, execution, transfers, state)
+    rng, failure = _transition_batch!(state.walk, target, rng, execution, transfers, state)
+    isnothing(failure) || return rng, failure
     state.n_tuned += 1
-    return nothing
+    return rng, nothing
 end
 
 _transition_adaptation(::Nothing) = nothing
@@ -326,14 +327,14 @@ function _adapt_transition!(update, batch, chain, alpha)
     T = eltype(batch.normals)
     dimension = size(batch.normals, 1)
     norm = zero(T)
-    for row in 1:dimension
+    for row = 1:dimension
         norm = hypot(norm, batch.normals[row, chain])
     end
     isfinite(norm) && norm > zero(T) || return false
     coefficient = update.gain * (T(alpha) - update.target_acceptance)
-    for row in 1:dimension
+    for row = 1:dimension
         value = zero(T)
-        for column in 1:row
+        for column = 1:row
             value += batch.factors[row, column, chain] * (batch.normals[column, chain] / norm)
         end
         update.direction[row, chain] = sqrt(abs(coefficient)) * value
@@ -367,7 +368,7 @@ function _transition_rankone!(factors, direction, chain, downdate)
         isfinite(next) && next > zero(next) || return false
         c = next / diagonal
         factors[column, column, chain] = next
-        for row in (column + 1):size(direction, 1)
+        for row = (column + 1):size(direction, 1)
             value = direction[row, chain]
             factor, next_direction = _transition_rankone_entry(
                 factors[row, column, chain], value, c, ratio, downdate)
@@ -387,9 +388,9 @@ _transition_arrays(state::_RandomWalkState) = (
 
 function _transition_candidate!(batch, chain)
     dimension = size(batch.normals, 1)
-    for row in 1:dimension
+    for row = 1:dimension
         increment = zero(eltype(batch.normals))
-        for column in 1:row
+        for column = 1:row
             increment += batch.factors[row, column, chain] * batch.normals[column, chain]
         end
         value = _population_sample_coordinate(batch.centres, row, chain) + increment
@@ -413,7 +414,7 @@ function _transition_accept!(batch, value, update, chain)
     _adapt_transition!(update, batch, chain, exp(logacceptance)) ||
         return _NATIVE_PROPOSAL_INVALID, true
     if log(batch.uniforms[chain]) < logacceptance
-        for row in 1:dimension
+        for row = 1:dimension
             _store_population_location!(batch.centres, row, chain,
                 _population_sample_coordinate(batch.candidates, row, chain))
         end
@@ -423,21 +424,23 @@ function _transition_accept!(batch, value, update, chain)
     return UInt16(0), false
 end
 
-function _transition_batch!(state::_RandomWalkState, target, rng, execution, transfers, adaptation)
+@inline function _transition_batch!(state::_RandomWalkState, target, rng, execution, transfers, adaptation)
     backend = KernelAbstractions.get_backend(state.normals)
     return _transition_batch!(backend, state, target, rng, execution, transfers,
         _transition_adaptation(adaptation))
 end
 
-function _transition_batch!(::KernelAbstractions.CPU, state, target, rng, execution, transfers, update)
+@inline function _transition_batch!(::KernelAbstractions.CPU, state, target, rng, execution, transfers, update)
+    try
     if _has_batch_target(target)
         backend = KernelAbstractions.CPU()
         batch_evaluator = _initialize_transition_batch!(backend, state, target, transfers)
-        _launch_transition_move!(backend, state, batch_evaluator, rng, update, execution)
+            rng, failure = _launch_transition_move!(backend, state, batch_evaluator, rng, update, execution)
+            isnothing(failure) || return rng, failure
         KernelAbstractions.synchronize(backend)
         _check_transition_failure!(state, transfers)
         state.steps += 1
-        return nothing
+        return rng, nothing
     end
     count = length(state.logtargets)
     evaluator, failures = _native_target_evaluator(
@@ -458,8 +461,9 @@ function _transition_batch!(::KernelAbstractions.CPU, state, target, rng, execut
         state.cache_valid = true
         state.initial_evaluations += count
     end
-    Random.randn!(rng, state.normals)
-    Random.rand!(rng, state.uniforms)
+        rng = _rand_normal!(rng, state.normals; threaded = _transition_threaded(execution))
+        rng =
+            _rand_uniform!(rng, state.uniforms; threaded = _transition_threaded(execution))
     batch = _transition_arrays(state)
     _transition_foreach(1:count, execution) do chain
         try
@@ -473,5 +477,13 @@ function _transition_batch!(::KernelAbstractions.CPU, state, target, rng, execut
     failure = _take_first_native_target_failure!(failures)
     isnothing(failure) || throw(failure)
     state.steps += 1
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
+
+_transition_threaded(::_SerialCPUExecution) = false
+_transition_threaded(::_ThreadedCPUExecution) = true
+_transition_threaded(execution::_KernelExecution) =
+    _transition_threaded(execution.cpu_execution)

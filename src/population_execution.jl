@@ -44,7 +44,7 @@ end
     if lane == 1
         group[3] = proposal_group + proposal_offset - 1
         first_sample = 1
-        for prior_proposal in 1:(group[3] - 1)
+        for prior_proposal = 1:(group[3] - 1)
             first_sample += counts[prior_proposal, round]
         end
         group[1] = first_sample
@@ -53,7 +53,7 @@ end
     @synchronize()
 
     lane_maximum = eltype(logtargets)(-Inf)
-    for sample in (group[1] + lane - 1):lane_count:group[2]
+    for sample = (group[1] + lane - 1):lane_count:group[2]
         local_logweight = @inbounds(logtargets[sample]) -
                           @inbounds(generating_logdensities[sample])
         lane_maximum = max(lane_maximum, local_logweight)
@@ -149,7 +149,7 @@ end
     if lane == 1
         group[4] = proposal_group + proposal_offset - 1
         first_sample = 1
-        for prior_proposal in 1:(group[4] - 1)
+        for prior_proposal = 1:(group[4] - 1)
             first_sample += counts[prior_proposal, round]
         end
         group[1] = first_sample
@@ -159,7 +159,7 @@ end
     @synchronize()
 
     lane_total = zero(eltype(scaled_weights))
-    for sample in (group[1] + lane - 1):lane_count:group[2]
+    for sample = (group[1] + lane - 1):lane_count:group[2]
         lane_total += @inbounds scaled_weights[sample]
     end
     partials[lane] = lane_total
@@ -176,9 +176,9 @@ end
                    weight_sum[1] > zero(eltype(scaled_weights)) ? 1 : 0
     end
     @synchronize()
-    for coordinate in 1:dimension
+    for coordinate = 1:dimension
         lane_moment = zero(eltype(scaled_weights))
-        for sample in (group[1] + lane - 1):lane_count:group[2]
+        for sample = (group[1] + lane - 1):lane_count:group[2]
             lane_moment += @inbounds(scaled_weights[sample]) *
                            _population_sample_coordinate(samples, coordinate, sample)
         end
@@ -238,7 +238,7 @@ function _launch_local_weighted_means!(candidate_locations, proposal_maxima, sam
     proposal_count = size(counts, 1)
     maxima_kernel = _local_logweight_maxima_kernel!(backend)
     if backend isa KernelAbstractions.CPU && execution isa _SerialCPUExecution
-        for proposal in 1:proposal_count
+        for proposal = 1:proposal_count
             maxima_kernel(
                 proposal_maxima,
                 logtargets,
@@ -274,7 +274,7 @@ function _launch_local_weighted_means!(candidate_locations, proposal_maxima, sam
     means_kernel = _local_weighted_means_kernel!(backend)
     dimension = samples isa AbstractVector ? 1 : size(samples, 1)
     if backend isa KernelAbstractions.CPU && execution isa _SerialCPUExecution
-        for proposal in 1:proposal_count
+        for proposal = 1:proposal_count
             means_kernel(
                 candidate_locations,
                 proposal_maxima,
@@ -314,8 +314,7 @@ function _capture_population_round(
     round,
     phase,
     round_size,
-    completed_rounds,
-)
+    completed_rounds)
     try
         return f()
     catch cause
@@ -359,11 +358,15 @@ end
 
 _reset_prepared_population!(::Nothing, state, record) =
     _reset_population_run!(state, state.run_bank, state.bank)
-_fill_population_normals!(::Nothing, sampler) = _fill_population_normals!(sampler.rng, sampler.random_buffers)
-function _fill_population_normals!(rng, buffers)
-    Random.randn!(rng, buffers.normals)
-    _fill_radial_buffers!(rng, buffers.radial)
+function _fill_population_normals!(::Nothing, sampler::_PreparedImportanceSampler)
+    sampler.rng = _fill_population_normals!(sampler.rng, sampler.random_buffers;
+        threaded = sampler.threaded
+    )
     return nothing
+end
+function _fill_population_normals!(rng, buffers; threaded = false)
+    rng = _rand_normal!(rng, buffers.normals; threaded)
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
 end
 _draw_population_round!(::Nothing, sampler, state, target, round, execution) =
     _launch_population_round!(state, sampler.random_buffers, target, round, execution,
@@ -417,8 +420,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
     samples = _allocate_packed_static_mis_samples(
         buffers.normals,
         bank,
-        total_samples,
-    )
+        total_samples)
     logweights = similar(
         workspace.round_logweights,
         eltype(workspace.round_logweights),
@@ -434,8 +436,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
         1,
         :sample_and_weight,
         plan.schedule[1],
-        0,
-    ) do
+        0) do
         _bind_resolved_target(sampler.target, _population_binding_sample(bank), transfers)
     end
     target_evaluator, target_failures = _capture_population_round(
@@ -443,8 +444,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
         1,
         :sample_and_weight,
         plan.schedule[1],
-        0,
-    ) do
+        0) do
         _native_target_evaluator(
             KernelAbstractions.get_backend(buffers.normals),
             target,
@@ -522,16 +522,14 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
             status = _commit_prepared_population!(sampler.backend_execution, method_state)
             _validate_population_commit!(bank, status, transfers)
             KernelAbstractions.synchronize(
-                KernelAbstractions.get_backend(bank.locations),
-            )
+                KernelAbstractions.get_backend(bank.locations))
         end
         _capture_population_round(
             algorithm,
             round,
             :diagnostics,
             round_size,
-            round,
-        ) do
+            round) do
             round_ess[round] = summary.ess
             round_lognormalizers[round] = summary.lognormalizer
         end

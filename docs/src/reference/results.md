@@ -40,4 +40,5 @@ control_variate_mean
 AbstractResamplingMethod
 MultinomialResampling
 resample
+resample_next
 ```

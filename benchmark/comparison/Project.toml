@@ -16,6 +16,7 @@ MLDataDevices = "7e8f7934-dd98-4c1a-8fe8-92b47a384d40"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+PureRNGs = "2ccaadc3-3d9a-45d4-a2ec-95a2424790b7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Random123 = "74087812-796a-5b5d-8853-05524746bad3"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
@@ -26,7 +27,9 @@ TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 [sources]
 EnsembleMCMC = {rev = "5fcb74c1a7c19bedf95795644fb6296901d25d0e", url = "https://github.com/JuliaBayes/EnsembleMCMC.jl"}
 ImportanceSamplers = {path = "../.."}
+PureRNGs = {rev = "dev", url = "https://github.com/BJMCox/PureRNGs.jl"}
 
 [compat]
 ImportanceSamplers = "0.0.2"
+PureRNGs = "0.0.2"
 julia = "1.13"

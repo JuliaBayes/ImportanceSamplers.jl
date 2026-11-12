@@ -61,6 +61,10 @@ Subtype `AbstractMCMCTransition` and implement the existing namespaced interface
 | `ImportanceSamplers.retarget_transition(config, state, destination)` | Build a configuration from learned parameters |
 
 Here `L` is the log-density scalar type.
+With an immutable RNG, `transition!` returns `(next_rng, failure)`, where `failure`
+is `nothing` on success. Catch target failures while the continued RNG is available.
+The coordinator stores `next_rng` before raising a returned failure.
+Existing mutable CPU transitions may still return `nothing`.
 Diagnostics contain `initial_target_evaluations`, `warmup_target_evaluations`,
 `production_target_evaluations`, `warmup_proposals`, `production_proposals`, and `accepted`.
 

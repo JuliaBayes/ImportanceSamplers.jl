@@ -29,8 +29,7 @@ struct UnweightedSamples{R,S}
         token::_ValidatedUnweightedSamplesToken,
     ) where {R,S}
         token === _VALIDATED_UNWEIGHTED_SAMPLES_TOKEN || throw(
-            ArgumentError("invalid internal unweighted-sample construction token"),
-        )
+            ArgumentError("invalid internal unweighted-sample construction token"))
         return new{R,S}(samples)
     end
 end
@@ -40,8 +39,7 @@ UnweightedSamples(samples) = _adopt_unweighted_samples(deepcopy(samples))
 function _adopt_unweighted_samples(samples)
     _validate_numeric_storage(samples, "sample")
     _sample_count(samples) > 0 || throw(
-        ArgumentError("unweighted results must contain samples"),
-    )
+        ArgumentError("unweighted results must contain samples"))
     R = Base.promote_op(_sample_at, typeof(samples), Int)
     isconcretetype(R) || error("could not infer the logical sample type")
     return UnweightedSamples{R}(samples, _VALIDATED_UNWEIGHTED_SAMPLES_TOKEN)
@@ -49,8 +47,7 @@ end
 
 function (device::MLDataDevices.AbstractDevice)(samples::UnweightedSamples)
     return _adopt_unweighted_samples(
-        _transfer_result_storage(device, samples.samples),
-    )
+        _transfer_result_storage(device, samples.samples))
 end
 
 Base.length(samples::UnweightedSamples) = _sample_count(samples.samples)
@@ -215,8 +212,7 @@ function _resampling_cdf!(
         transfers,
         cdf,
         eltype(cdf),
-        Val(:cdf_sum),
-    )
+        Val(:cdf_sum))
     isfinite(total) && total > zero(total) || throw(AllZeroWeightsError())
     cumsum!(cdf, cdf)
     # Capture the terminal prefix before the broadcast mutates any CDF entry.
@@ -226,12 +222,7 @@ end
 
 _resampling_rng(rng, ::MLDataDevices.AbstractCPUDevice) = rng
 function _resampling_rng(rng, device::MLDataDevices.AbstractAcceleratorDevice)
-    seed = try
-        Random.rand(rng, UInt64)
-    catch
-        throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
-    end
-    return _owned_backend_rng(device, seed)
+    return _transfer_rng(device, rng)
 end
 
 """
@@ -261,6 +252,47 @@ function resample(
 end
 
 function _resample(rng, result, count, ::MultinomialResampling)
+    samples, _ = _resample_next(
+        _resampling_rng(rng, _storage_device(result.logweights)),
+        result,
+        count,
+        MultinomialResampling()
+    )
+    return samples
+end
+
+"""
+    resample_next(rng, result, count=length(result); method=MultinomialResampling())
+
+Resample importance weights and return `(unweighted_samples, next_rng)`.
+Samples stay on the result device. The immutable RNG continues on its input backend.
+For Reactant results, pass a compiled carrier from [`current_rng`](@ref) or
+`Reactant.to_rarray(rng)`. The returned continuation is also a compiled carrier.
+"""
+function resample_next(
+    rng,
+    result::_AbstractWeightedSamples,
+    count::Int = length(result);
+    method::AbstractResamplingMethod = MultinomialResampling()
+)
+    count > 0 || throw(ArgumentError("resampling count must be positive"))
+    device = _storage_device(result.logweights)
+    return _resample_next_on_device(device, rng, result, count, method)
+end
+
+function _resample_next_on_device(
+    device,
+    rng::PureRNGs.AbstractPureRNG,
+    result,
+    count,
+    method
+)
+    source_device = MLDataDevices.get_device(rng)
+    samples, next_rng = _resample_next(device(rng), result, count, method)
+    return samples, source_device(next_rng)
+end
+
+function _resample_next(rng, result, count, ::MultinomialResampling)
     device = _storage_device(result.logweights)
     return _with_backend_device(device) do
         cdf = similar(result.logweights, promote_type(eltype(result.logweights), Float32))
@@ -268,7 +300,7 @@ function _resample(rng, result, count, ::MultinomialResampling)
         ancestors = similar(result.logweights, Int, count)
         destination = _allocate_resampled_storage(result.samples, count)
         _resampling_cdf!(cdf, result.logweights, _result_transfers(result))
-        Random.rand!(_resampling_rng(rng, device), uniforms)
+        rng = _rand_uniform!(rng, uniforms)
         _resample_and_gather!(
             cdf,
             result.logweights,
@@ -278,6 +310,6 @@ function _resample(rng, result, count, ::MultinomialResampling)
             destination,
             _KernelExecution(_ThreadedCPUExecution()),
         )
-        return _adopt_unweighted_samples(destination)
+        return _adopt_unweighted_samples(destination), rng
     end
 end

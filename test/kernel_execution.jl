@@ -3,6 +3,7 @@ import KernelAbstractions: @index, @kernel
 import LinearAlgebra
 import MLDataDevices
 import Random
+import PureRNGs
 
 struct FusedQuadraticTarget{T}
     offset::T
@@ -166,17 +167,11 @@ MLDataDevices.functional(::OwnedBufferAccelerator) = true
     deepcopy(proposal)
 
 @eval ImportanceSamplers begin
-    _owned_backend_rng(::Main.OwnedBufferAccelerator, seed::UInt64) =
-        Random.Xoshiro(seed)
+    _validate_transfer_rng(::Main.OwnedBufferAccelerator,
+        ::PureRNGs.AbstractPureRNG) = nothing
+    _transfer_rng(::Main.OwnedBufferAccelerator, rng::PureRNGs.AbstractPureRNG) = rng
     _factor_batch_supported(::Main.OwnedBufferAccelerator) = true
 end
-
-struct SharedRNGAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
-MLDataDevices.functional(::SharedRNGAccelerator) = true
-
-const SHARED_BACKEND_TEST_RNG = Random.Xoshiro(0)
-MLDataDevices.default_device_rng(::SharedRNGAccelerator) =
-    SHARED_BACKEND_TEST_RNG
 
 function _caught_kernel_execution_error(f)
     try
@@ -340,7 +335,7 @@ end
         Matrix{Float64}(LinearAlgebra.I, dimension, dimension),
     )
     sampler = prepare_sampler(
-        Random.Xoshiro(0x5010),
+        PureRNGs.Threefry4x32(0x5010),
         FusedVectorTarget(0.0),
         ImportanceSampling(proposal; nsamples);
         factor_execution=BatchedFactorExecution(),
@@ -348,7 +343,7 @@ end
     ) |> OwnedBufferAccelerator()
 
     default_sampler = prepare_sampler(
-        Random.Xoshiro(0x5010),
+        PureRNGs.Threefry4x32(0x5010),
         FusedVectorTarget(0.0),
         ImportanceSampling(proposal; nsamples);
         threaded=true,
@@ -1045,20 +1040,17 @@ end
         nothing,
     )
 
-    @test ImportanceSamplers._fill_random_buffers!(rng, buffers) === buffers
+    @test ImportanceSamplers._fill_random_buffers!(rng, buffers) === rng
     @test rng.calls == [:uniform, :normal]
 end
 
-@testset "accelerator transfer owns one seeded stream and destination buffers" begin
+@testset "accelerator transfer preserves advanced streams and owns destination buffers" begin
     device = OwnedBufferAccelerator()
     algorithm = ImportanceSampling(
         SphericalGaussian(0.25, 1.5);
         nsamples=32,
     )
-    source_rng = Random.Xoshiro(0x9111)
-    expected_source = copy(source_rng)
-    expected_seed = rand(expected_source, UInt64)
-    expected_next = rand(expected_source, UInt64)
+    _, source_rng = PureRNGs.rand_next(PureRNGs.Threefry4x32(0x9111), Float32, 7)
     source = prepare_sampler(
         source_rng,
         FusedQuadraticTarget(0.75),
@@ -1067,65 +1059,50 @@ end
     )
 
     destination = device(source)
-    destination_rng = getfield(destination, :rng)
     destination_buffers = getfield(destination, :random_buffers)
-    @test destination_rng isa Random.Xoshiro
-    @test destination_rng !== getfield(source, :rng)
-    @test getfield(source, :rng) !== source_rng
-    @test rand(source_rng, UInt64) == expected_seed
-    @test rand(getfield(source, :rng), UInt64) == expected_next
+    @test getfield(destination, :rng) == getfield(source, :rng) == source_rng
     @test getfield(destination_buffers, :uniform) isa Vector{Float64}
     @test getfield(destination_buffers, :normal) isa Vector{Float64}
     @test getfield(destination_buffers, :normal) !==
           getfield(getfield(source, :random_buffers), :normal)
+    @test getfield(destination_buffers, :uniform) !==
+          getfield(getfield(source, :random_buffers), :uniform)
 
     normal_buffer = getfield(destination_buffers, :normal)
     expected_buffer = similar(normal_buffer)
-    Random.randn!(Random.Xoshiro(expected_seed), expected_buffer)
-    ImportanceSamplers._fill_random_buffers!(destination_rng, destination_buffers)
-    @test collect(normal_buffer) == collect(expected_buffer)
-    @test getfield(destination_buffers, :normal) === normal_buffer
-
-    @test MLDataDevices.default_device_rng(SharedRNGAccelerator()) ===
-          MLDataDevices.default_device_rng(SharedRNGAccelerator())
-    shared_source = prepare_sampler(
-        Random.Xoshiro(0x9112),
-        FusedQuadraticTarget(0.75),
-        algorithm;
-        threaded=true,
-    )
-    expected_shared_rng = copy(getfield(shared_source, :rng))
-    shared_error = _caught_kernel_execution_error() do
-        SharedRNGAccelerator()(shared_source)
+    expected_rng = source_rng
+    for fill in 1:2
+        _, expected_rng = PureRNGs.randn_next!(expected_rng, expected_buffer)
+        destination.rng = ImportanceSamplers._fill_random_buffers!(destination.rng,
+            destination_buffers)
+        @test normal_buffer == expected_buffer
+        @test destination.rng == expected_rng
+        @test getfield(destination_buffers, :normal) === normal_buffer
+        @test getfield(source, :rng) == source_rng
     end
-    @test shared_error isa SamplerDeviceError
-    @test shared_error.reason === :accelerator_rng_unavailable
-    @test rand(getfield(shared_source, :rng), UInt64) ==
-          rand(expected_shared_rng, UInt64)
 end
 
-@testset "task-local RNG accelerator transfer preserves both streams" begin
+@testset "mutable CPU RNG accelerator rejection preserves its source stream" begin
     fetch(@async begin
         Random.seed!(0x9114)
-        source_rng = Random.default_rng()
-        expected_source = copy(source_rng)
-        destination_seed = rand(expected_source, UInt64)
         algorithm = ImportanceSampling(SphericalGaussian(0.25, 1.5); nsamples=8)
         target = FusedQuadraticTarget(0.75)
-        source = prepare_sampler(source_rng, target, algorithm)
-        destination = OwnedBufferAccelerator()(source)
-
-        @test importance_sample!(destination).samples ==
-              importance_sample(Random.Xoshiro(destination_seed), target, algorithm).samples
-        @test importance_sample!(source).samples ==
-              importance_sample(expected_source, target, algorithm).samples
+        for source_rng in (Random.Xoshiro(0x9112), Random.default_rng())
+            expected_source = copy(source_rng)
+            source = prepare_sampler(source_rng, target, algorithm)
+            error = _caught_kernel_execution_error(() -> OwnedBufferAccelerator()(source))
+            @test error isa SamplerDeviceError
+            @test error.reason === :accelerator_rng_unavailable
+            @test importance_sample!(source).samples ==
+                  importance_sample(expected_source, target, algorithm).samples
+        end
     end)
 end
 
 @testset "accelerator launch policy is independent of host threads" begin
     sampler = OwnedBufferAccelerator()(
         prepare_sampler(
-            Random.Xoshiro(0x9113),
+            PureRNGs.Threefry4x32(0x9113),
             FusedQuadraticTarget(0.75),
             ImportanceSampling(
                 SphericalGaussian(0.25, 1.5);
@@ -1137,21 +1114,6 @@ end
     result = importance_sample!(sampler)
     @test result.diagnostics.execution === :threaded
     @test length(result) == 2_048
-end
-
-@testset "core CUDA RNG rejection without CUDA loaded" begin
-    @test Base.get_extension(
-        ImportanceSamplers,
-        :ImportanceSamplersCUDAExt,
-    ) === nothing
-    error = _caught_kernel_execution_error() do
-        ImportanceSamplers._owned_backend_rng(
-            MLDataDevices.CUDADevice(),
-            UInt64(0x9191),
-        )
-    end
-    @test error isa SamplerDeviceError
-    @test error.reason === :accelerator_rng_unavailable
 end
 
 @testset "native transformed density follows public inverse semantics" begin

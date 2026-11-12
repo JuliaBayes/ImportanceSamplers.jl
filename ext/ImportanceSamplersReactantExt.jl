@@ -3,6 +3,7 @@ module ImportanceSamplersReactantExt
 import ImportanceSamplers as IS
 import Reactant
 import Random
+import PureRNGs
 import MLDataDevices
 import ADTypes
 import DifferentiationInterface as DI
@@ -74,12 +75,52 @@ function IS._invoke_batch_target!(target::IS._BoundBatchTarget,
     return nothing
 end
 
-struct _ReactantRNG{R} <: Random.AbstractRNG
-    rng::R
+IS._validate_transfer_rng(::MLDataDevices.ReactantDevice, ::PureRNGs.AbstractPureRNG) = nothing
+function IS._validate_transfer_rng(device::MLDataDevices.ReactantDevice, rng)
+    MLDataDevices.get_device_type(rng) === MLDataDevices.ReactantDevice &&
+    applicable(PureRNGs.rand_next, rng, Float32) ||
+        throw(IS.SamplerDeviceError(device, :accelerator_rng_unavailable))
+    actual = MLDataDevices.get_device(rng)
+    (ismissing(device.client) || device.client == actual.client) &&
+    (ismissing(device.device) || device.device == actual.device) ||
+        throw(IS.SamplerDeviceError(device, :device_residency_mismatch))
+    if !ismissing(device.sharding)
+        expected = _reactant_rng_sharding(device.sharding)
+        all(sharding -> _same_rng_sharding(sharding, expected), values(actual.sharding)) ||
+            throw(IS.SamplerDeviceError(device, :device_residency_mismatch))
+    end
+    return nothing
 end
 
-IS._owned_backend_rng(device::MLDataDevices.ReactantDevice, seed::UInt64) =
-    _ReactantRNG(device(Random.Xoshiro(seed)))
+_reactant_rng_sharding(sharding) = sharding
+_same_rng_sharding(actual, expected) = actual == expected
+_same_rng_sharding(actual::Reactant.Sharding.NamedSharding, expected::Reactant.Sharding.Replicated) =
+    actual.mesh == expected.mesh && all(partition -> all(isnothing, partition), actual.partition_spec)
+function _reactant_rng_sharding(sharding::IdDict)
+    all(x -> x isa Reactant.Sharding.NoSharding, values(sharding)) &&
+        return Reactant.Sharding.NoSharding()
+    meshes = unique(x.mesh for x in values(sharding))
+    return Reactant.Sharding.Replicated(only(meshes))
+end
+
+function IS._transfer_rng(device::MLDataDevices.ReactantDevice, rng::PureRNGs.AbstractPureRNG)
+    kwargs = (;)
+    ismissing(device.client) || (kwargs = (; kwargs..., client=device.client))
+    ismissing(device.device) || (kwargs = (; kwargs..., device=device.device))
+    ismissing(device.sharding) ||
+        (kwargs = (; kwargs..., sharding=_reactant_rng_sharding(device.sharding)))
+    return Reactant.to_rarray(rng; kwargs...)
+end
+function IS._transfer_rng(device::MLDataDevices.ReactantDevice, rng)
+    IS._validate_transfer_rng(device, rng)
+    return deepcopy(rng)
+end
+IS._clone_rng(::MLDataDevices.ReactantDevice, rng::PureRNGs.AbstractPureRNG) = rng
+IS._clone_rng(::MLDataDevices.ReactantDevice, rng::Random.AbstractRNG) = copy(rng)
+function IS._clone_rng(device::MLDataDevices.ReactantDevice, rng)
+    IS._validate_transfer_rng(device, rng)
+    return deepcopy(rng)
+end
 
 # `@jit` compiles on every call. Standalone result operations retain one
 # executable per function, argument types, shapes and device. Views keep `@jit`:
@@ -92,36 +133,115 @@ const _RETAINED_CALL_LIMIT = 64
 _retained_shape(x::Reactant.ConcreteRArray) = (size(x), Reactant.XLA.device(x))
 _retained_shape(x::Reactant.ConcreteRNumber) = ((), Reactant.XLA.device(x))
 _retained_shape(x::Bool) = x
-_retained_shape(x::Reactant.ReactantRNG{<:Reactant.ConcreteRArray}) = (_retained_shape(x.seed), x.algorithm)
 function _retained_shape(x::NamedTuple)
     shapes = map(_retained_shape, x)
     return any(isnothing, shapes) ? nothing : shapes
 end
-_retained_shape(x) = Base.issingletontype(typeof(x)) ? () : nothing
+# Carriers have a generator-specific fixed state shape. Numerical arguments
+# supply the device key; key and cursor values must stay runtime inputs.
+_retained_shape(x) = Base.issingletontype(typeof(x)) || applicable(PureRNGs.rand_next, x, Float32) ? () : nothing
+
+# Select compilation from resident data, never from the process-wide default.
+_call_client() = nothing
+_call_client(x::Union{Reactant.ConcreteRArray,Reactant.ConcreteRNumber}, rest...) = Reactant.XLA.client(x)
+function _call_client(x::AbstractArray, rest...)
+    storage = parent(x)
+    return storage === x ? _call_client(rest...) : _call_client(storage, rest...)
+end
+_call_client(x, rest...) = _call_client(rest...)
 
 function _retained_call(f, arguments...)
+    client = _call_client(arguments...)
     shapes = map(_retained_shape, arguments)
-    any(isnothing, shapes) && return Reactant.@jit f(arguments...)
-    key = (f, map(typeof, arguments), shapes)
+    any(isnothing, shapes) && return Reactant.@jit client=client f(arguments...)
+    key = (f, client, map(typeof, arguments), shapes)
     compiled = @lock _RETAINED_CALLS_LOCK begin
         stored = get(_RETAINED_CALLS, key, nothing)
         if stored === nothing && length(_RETAINED_CALLS) < _RETAINED_CALL_LIMIT
-            stored = _RETAINED_CALLS[key] = Reactant.@compile f(arguments...)
+            stored = _RETAINED_CALLS[key] = Reactant.@compile client=client f(arguments...)
         end
         stored
     end
-    compiled === nothing && return Reactant.@jit f(arguments...)
+    compiled === nothing && return Reactant.@jit client=client f(arguments...)
     return compiled(arguments...)
 end
 
-function Random.rand!(rng::_ReactantRNG, values::AbstractArray)
-    iszero(length(values)) || _retained_call(Random.rand!, rng.rng, values)
-    return values
+function IS._rand_uniform!(rng, values::Reactant.ConcreteRArray; threaded = false)
+    isempty(values) && return rng
+    _, rng = _retained_call(PureRNGs.rand_next!, rng, values)
+    return rng
 end
 
-function Random.randn!(rng::_ReactantRNG, values::AbstractArray)
-    iszero(length(values)) || (Reactant.@jit Random.randn!(rng.rng, values))
-    return values
+function IS._rand_normal!(rng, values::Reactant.ConcreteRArray; threaded = false)
+    isempty(values) && return rng
+    _, rng = _retained_call(PureRNGs.randn_next!, rng, values)
+    return rng
+end
+
+function IS._rand_uniform!(
+    rng,
+    values::SubArray{<:Reactant.TracedRNumber};
+    threaded = false
+)
+    isempty(values) && return rng
+    traced = Reactant.TracedUtils.materialize_traced_array(values)
+    _, rng = PureRNGs.rand_next!(rng, traced; threaded)
+    copyto!(values, traced)
+    return rng
+end
+
+function IS._rand_normal!(rng, values::SubArray{<:Reactant.TracedRNumber}; threaded = false)
+    isempty(values) && return rng
+    traced = Reactant.TracedUtils.materialize_traced_array(values)
+    _, rng = PureRNGs.randn_next!(rng, traced; threaded)
+    copyto!(values, traced)
+    return rng
+end
+
+IS._rand_uniform!(
+    rng::Random.AbstractRNG,
+    values::Reactant.ConcreteRArray;
+    threaded = false
+) = invoke(IS._rand_uniform!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
+IS._rand_normal!(
+    rng::Random.AbstractRNG,
+    values::Reactant.ConcreteRArray;
+    threaded = false
+) = invoke(IS._rand_normal!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
+IS._rand_uniform!(
+    rng::Random.AbstractRNG,
+    values::SubArray{<:Reactant.TracedRNumber};
+    threaded = false
+) = invoke(IS._rand_uniform!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
+IS._rand_normal!(
+    rng::Random.AbstractRNG,
+    values::SubArray{<:Reactant.TracedRNumber};
+    threaded = false
+) = invoke(IS._rand_normal!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
+
+function IS._resample_next_on_device(
+    device::MLDataDevices.ReactantDevice,
+    rng::PureRNGs.AbstractPureRNG,
+    result,
+    count,
+    method
+)
+    throw(
+        ArgumentError(
+            "Reactant resampling requires a compiled RNG carrier; use current_rng(sampler) or Reactant.to_rarray(rng)"
+        )
+    )
+end
+
+function IS._resample_next_on_device(
+    device::MLDataDevices.ReactantDevice,
+    rng,
+    result,
+    count,
+    method
+)
+    IS._validate_transfer_rng(device, rng)
+    return IS._resample_next(rng, result, count, method)
 end
 
 struct _NativePhase{D,F,E}
@@ -134,13 +254,13 @@ _copy_native_samples(samples::AbstractArray) = copy(samples)
 _copy_native_samples(samples::NamedTuple) = map(_copy_native_samples, samples)
 
 function (phase::_NativePhase)(rng, buffers, samples, logweights, target, proposal)
-    IS._fill_random_buffers!(rng, buffers)
+    rng = IS._fill_random_buffers!(rng, buffers)
     record = buffers.failure_scratch.record
     fill!(record.storage, zero(UInt64))
     base, transform = IS._native_fused_components(proposal)
     IS._launch_native_batch!(samples, logweights, record, buffers, target, base,
         transform, phase.execution, phase.device, phase.factor_execution)
-    return _copy_native_samples(samples), copy(logweights)
+    return (_copy_native_samples(samples), copy(logweights)), rng
 end
 
 function _map_samples!(samples, layout, record)
@@ -154,7 +274,7 @@ end
 
 _prepare_result_map(target, samples, record) = nothing
 _prepare_result_map(target::IS._NamedPreparedTarget, samples, record) =
-    Reactant.@compile _map_samples!(samples, target.layout, record)
+    Reactant.@compile client=Reactant.XLA.client(record.storage) _map_samples!(samples, target.layout, record)
 
 struct _CompiledNativeExecution{F,A,M}
     compiled::F
@@ -164,11 +284,11 @@ end
 
 function (phase::_NativePhase)(rng, buffers, samples, logweights, proposal_ids, target,
     state::IS._PreparedStaticMIS)
-    IS._fill_random_buffers!(rng, buffers)
+    rng = IS._fill_random_buffers!(rng, buffers)
     fill!(buffers.failure_scratch.record.storage, zero(UInt64))
     IS._launch_packed_static_mis!(samples, logweights, proposal_ids, buffers, target,
         state, phase.execution, phase.device, phase.factor_execution)
-    return copy(samples), copy(logweights), copy(proposal_ids)
+    return (copy(samples), copy(logweights), copy(proposal_ids)), rng
 end
 
 function _prepare_execution(sampler, state::IS._PreparedStaticMIS)
@@ -182,8 +302,9 @@ function _prepare_execution(sampler, state::IS._PreparedStaticMIS)
     target, _ = IS._native_target_evaluator(KA.get_backend(buffers.normal), bound, L,
         buffers.failure_scratch.target_failures)
     phase = _NativePhase(sampler.device, sampler.factor_execution, IS._ThreadedCPUExecution())
-    arguments = (sampler.rng.rng, buffers, samples, logweights, proposal_ids, target, state)
-    compiled = Reactant.@compile phase(arguments...)
+    arguments = (buffers, samples, logweights, proposal_ids, target, state)
+    rng = sampler.rng
+    compiled = Reactant.@compile client=Reactant.XLA.client(buffers.normal) phase(rng, arguments...)
     mapper = _prepare_result_map(sampler.target, samples, buffers.failure_scratch.record)
     return _CompiledNativeExecution(compiled, arguments, mapper)
 end
@@ -199,11 +320,11 @@ struct _MomentDrawPhase{A,D,F,E}
 end
 
 function (phase::_MomentDrawPhase)(rng, workspace, history, logcounts, buffers, target, round_ids)
-    IS._fill_moment_random_buffers!(rng, buffers, history)
+    rng = IS._fill_moment_random_buffers!(rng, buffers, history)
     state = (; workspace, history, logcounts, phase.schedule, phase.offsets)
     IS._launch_moment_round!(phase.algorithm, state, buffers, _separate_target(target), round_ids,
         phase.round, phase.execution, phase.device, phase.factor_execution)
-    return nothing
+    return rng
 end
 
 struct _MomentFitPhase
@@ -342,14 +463,15 @@ function _prepare_execution(sampler, state::IS._PreparedMomentSampler)
     target, _ = IS._native_target_evaluator(KA.get_backend(workspace.samples), bound,
         eltype(workspace.logweights), buffers.failure_scratch.target_failures)
     round_ids = similar(workspace.logweights, Int, length(workspace.logweights))
-    rng = sampler.rng.rng
+    rng = sampler.rng
     schedule, offsets = collect(state.schedule), collect(state.offsets)
+    client = Reactant.XLA.client(workspace.samples)
     draws = map(eachindex(state.schedule)) do round
         phase = _MomentDrawPhase(sampler.algorithm, sampler.device,
             sampler.factor_execution, IS._ThreadedCPUExecution(),
             schedule, offsets, round)
         logcounts = state.logcounts
-        Reactant.@compile phase(rng, workspace, history, logcounts, buffers, target, round_ids)
+        Reactant.@compile client=client phase(rng, workspace, history, logcounts, buffers, target, round_ids)
     end
     fits = map(eachindex(state.schedule)) do round
         phase = _MomentFitPhase(round, IS._moment_adaptation_count(sampler.algorithm, state, round))
@@ -357,14 +479,14 @@ function _prepare_execution(sampler, state::IS._PreparedMomentSampler)
             phase = _NPMCFitPhase(sampler.algorithm, sampler.device, offsets, phase)
         end
         storage = buffers.failure_scratch.record.storage
-        Reactant.@compile phase(workspace, history, storage)
+        Reactant.@compile client=client phase(workspace, history, storage)
     end
     publish = map(eachindex(state.schedule)) do slot
         phase = _PublishMomentPhase(slot)
-        Reactant.@compile phase(history, workspace)
+        Reactant.@compile client=client phase(history, workspace)
     end
     record = buffers.failure_scratch.record
-    reset = Reactant.@compile _reset_moment_history!(history, record)
+    reset = Reactant.@compile client=client _reset_moment_history!(history, record)
     mapper = _prepare_result_map(sampler.target, workspace.samples, record)
     return _CompiledMomentExecution(draws, fits, publish, reset, mapper)
 end
@@ -379,9 +501,11 @@ IS._prepared_moment_adaptation_workspace!(::_CompiledMomentExecution, algorithm,
     state.workspace
 IS._prepared_moment_summary(::_CompiledMomentExecution, algorithm, state, round, fit, transfers) =
     fit.raw_summary
-IS._draw_moment_round!(sampler, plan::_CompiledMomentExecution, state, round_ids, target, round, execution) =
-    plan.draws[round](sampler.rng.rng, state.workspace, state.history, state.logcounts,
-        sampler.random_buffers, target, round_ids)
+IS._draw_moment_round!(sampler, plan::_CompiledMomentExecution, state, round_ids, target, round, execution) = (
+    sampler.rng = plan.draws[round](sampler.rng, state.workspace, state.history, state.logcounts,
+        sampler.random_buffers, target, round_ids
+    )
+)
 
 function IS._fit_prepared_moment_proposal!(plan::_CompiledMomentExecution, device,
     workspace, history, round, count, transfers, failure_storage)
@@ -410,7 +534,8 @@ function IS._moment_result_samples(plan::_CompiledMomentExecution, sampler, work
     return _map_compiled_result(plan.map_result, sampler, workspace.samples, transfers)
 end
 
-function IS._prepare_backend_execution(sampler::IS._PreparedImportanceSampler{<:_ReactantRNG})
+function IS._prepare_backend_execution(sampler::IS._PreparedImportanceSampler{R,B,T,A,M,D}
+) where {R,B,T,A,M,D<:MLDataDevices.ReactantDevice}
     plan = _prepare_execution(sampler, sampler.method_state)
     return IS._PreparedImportanceSampler(sampler.rng, sampler.random_buffers,
         sampler.target, sampler.algorithm, sampler.method_state, sampler.device,
@@ -432,8 +557,9 @@ function _prepare_execution(sampler, ::IS._SingleProposalMethodState)
         buffers.failure_scratch.target_failures)
     execution = IS._sampling_execution(proposal, true)
     phase = _NativePhase(sampler.device, sampler.factor_execution, execution)
-    arguments = (sampler.rng.rng, buffers, samples, logweights, target, proposal)
-    compiled = Reactant.@compile phase(arguments...)
+    arguments = (buffers, samples, logweights, target, proposal)
+    rng = sampler.rng
+    compiled = Reactant.@compile client=Reactant.XLA.client(samples) phase(rng, arguments...)
     mapper = _prepare_result_map(sampler.target, samples, buffers.failure_scratch.record)
     return _CompiledNativeExecution(compiled, arguments, mapper)
 end
@@ -452,7 +578,7 @@ function _map_compiled_result(compiled, sampler, samples, transfers)
 end
 
 function IS._execute_prepared_sampler!(sampler, plan::_CompiledNativeExecution, threaded)
-    output = plan.compiled(plan.arguments...)
+    output, sampler.rng = plan.compiled(sampler.rng, plan.arguments...)
     return _compiled_native_result(sampler, plan, sampler.method_state, output, threaded)
 end
 
@@ -514,17 +640,18 @@ _prepare_execution(sampler, state::Union{IS._PreparedAPIS,IS._PreparedDMPMC,IS._
 function _prepare_population_execution(sampler, state)
     state = _population_trace_state(state)
     buffers = sampler.random_buffers
-    rng = sampler.rng.rng
+    rng = sampler.rng
     bound = IS._bind_resolved_target(sampler.target, IS._population_binding_sample(state.bank))
     target, _ = IS._native_target_evaluator(KA.get_backend(buffers.normals), bound,
         eltype(state.workspace.round_logweights), buffers.failure_scratch.target_failures)
     execution = IS._population_execution(sampler, true, state)
     device, factor_execution = sampler.device, sampler.factor_execution
-    normals = Reactant.@compile IS._fill_population_normals!(rng, buffers)
+    client = Reactant.XLA.client(buffers.normals)
+    normals = Reactant.@compile client=client IS._fill_population_normals!(rng, buffers)
     draws = map(eachindex(state.plan.schedule)) do round
         phase = (state, buffers, target) -> IS._launch_population_round!(
             _population_draw_state(state), buffers, target, round, execution, device, factor_execution)
-        Reactant.@compile phase(state, buffers, target)
+        Reactant.@compile client=client phase(state, buffers, target)
     end
     adaptation = _prepare_population_adaptation(sampler, state)
     record = buffers.failure_scratch.record
@@ -533,9 +660,9 @@ function _prepare_population_execution(sampler, state)
         fill!(record.storage, zero(UInt64))
         return nothing
     end
-    reset = Reactant.@compile reset_phase(state, record)
+    reset = Reactant.@compile client=client reset_phase(state, record)
     commit_phase = state -> IS._commit_population_round!(state, state.run_bank)
-    commit = Reactant.@compile commit_phase(state)
+    commit = Reactant.@compile client=client commit_phase(state)
     count = last(state.plan.offsets) - 1
     samples = IS._allocate_packed_static_mis_samples(buffers.normals, state.bank, count)
     logweights = similar(state.workspace.round_logweights, count)
@@ -544,13 +671,14 @@ function _prepare_population_execution(sampler, state)
     publish = map(eachindex(state.plan.schedule)) do round
         phase = (state, samples, logweights, round_ids, proposal_ids) ->
             IS._publish_population_round!(nothing, state, round, samples, logweights, round_ids, proposal_ids)
-        Reactant.@compile phase(state, samples, logweights, round_ids, proposal_ids)
+        Reactant.@compile client=client phase(state, samples, logweights, round_ids, proposal_ids)
     end
     mapper = _prepare_result_map(sampler.target, samples, record)
     return _CompiledPopulationExecution(normals, draws, adaptation, reset, commit, publish, mapper)
 end
 
 function _prepare_population_adaptation(sampler, state::IS._PreparedAPIS)
+    client = Reactant.XLA.client(sampler.random_buffers.normals)
     return map(eachindex(state.plan.schedule)) do round
         phase = function (state)
             workspace = state.workspace
@@ -561,24 +689,26 @@ function _prepare_population_adaptation(sampler, state::IS._PreparedAPIS)
                 state.plan.counts, round, IS._ThreadedCPUExecution())
             return _allfinite(workspace.proposal_maxima), _logweight_moments(views.logweights)
         end
-        Reactant.@compile phase(state)
+        Reactant.@compile client=client phase(state)
     end
 end
 
 function _prepare_population_adaptation(sampler, state::IS._PreparedDMPMC)
-    rng, buffers = sampler.rng.rng, sampler.random_buffers
+    rng, buffers = sampler.rng, sampler.random_buffers
+    client = Reactant.XLA.client(buffers.normals)
     return map(eachindex(state.plan.schedule)) do round
         if sampler.algorithm.resampling isa IS.LocalResampling
-            phase = function (rng, state, buffers)
+            phase = function (state, buffers)
                 workspace = state.workspace
                 views = IS._population_round_views(state, round)
-                IS._launch_local_resample!(rng, views.cdf, buffers.resampling_uniforms,
+                IS._launch_local_resample!(
+                    views.cdf, buffers.resampling_uniforms,
                     workspace.ancestors, views.samples, workspace.candidate_locations,
                     views.logweights, views.assignments, workspace.resampling_maxima,
                     state.plan.counts, round, IS._ThreadedCPUExecution())
                 return minimum(workspace.ancestors), _logweight_moments(views.logweights)
             end
-            return (; local_phase=Reactant.@compile phase(rng, state, buffers))
+            return (; local_phase=Reactant.@compile client=client phase(state, buffers))
         end
         cdf_phase = function (state)
             views = IS._population_round_views(state, round)
@@ -590,20 +720,21 @@ function _prepare_population_adaptation(sampler, state::IS._PreparedDMPMC)
         end
         select_phase = function (rng, state, buffers)
             views = IS._population_round_views(state, round)
-            Random.rand!(rng, buffers.resampling_uniforms)
+            rng = IS._rand_uniform!(rng, buffers.resampling_uniforms)
             IS._resample_and_gather!(views.cdf, views.logweights, buffers.resampling_uniforms,
                 state.workspace.ancestors, views.samples, state.workspace.candidate_locations,
                 IS._ThreadedCPUExecution())
-            return nothing
+            return rng
         end
-        cdf = Reactant.@compile cdf_phase(state)
-        select = Reactant.@compile select_phase(rng, state, buffers)
+        cdf = Reactant.@compile client=client cdf_phase(state)
+        select = Reactant.@compile client=client select_phase(rng, state, buffers)
         return (; cdf, select)
     end
 end
 
 function _prepare_population_adaptation(sampler, state::IS._PreparedCAIS)
     execution = IS._population_execution(sampler, true, state)
+    client = Reactant.XLA.client(sampler.random_buffers.normals)
     return map(eachindex(state.plan.schedule)) do round
         weight_phase = state -> IS._cais_weights!(state, IS._population_round_views(state, round), round, execution)
         fit_phase = state -> IS._cais_fit!(state, IS._population_round_views(state, round), round, execution)
@@ -611,9 +742,9 @@ function _prepare_population_adaptation(sampler, state::IS._PreparedCAIS)
             IS._cais_install!(state, round, execution)
             return _logweight_moments(IS._population_round_views(state, round).logweights)
         end
-        weights = Reactant.@compile weight_phase(state)
-        fit = Reactant.@compile fit_phase(state)
-        install = Reactant.@compile install_phase(state)
+        weights = Reactant.@compile client=client weight_phase(state)
+        fit = Reactant.@compile client=client fit_phase(state)
+        install = Reactant.@compile client=client install_phase(state)
         return (; weights, fit, install)
     end
 end
@@ -623,8 +754,8 @@ IS._execute_prepared_sampler!(sampler, ::_CompiledPopulationExecution, threaded)
 IS._reset_prepared_population!(plan::_CompiledPopulationExecution, state, record) =
     plan.reset(_population_trace_state(state), record)
 
-IS._fill_population_normals!(plan::_CompiledPopulationExecution, sampler) =
-    plan.normals(sampler.rng.rng, sampler.random_buffers)
+IS._fill_population_normals!(plan::_CompiledPopulationExecution, sampler::IS._PreparedImportanceSampler) =
+    (sampler.rng = plan.normals(sampler.rng, sampler.random_buffers))
 IS._draw_population_round!(plan::_CompiledPopulationExecution, sampler, state, target, round, execution) =
     plan.draws[round](_population_trace_state(state), sampler.random_buffers, target)
 IS._publish_population_round!(plan::_CompiledPopulationExecution, state, round, samples, weights, rounds, proposals) =
@@ -651,7 +782,9 @@ function IS._advance_prepared_population!(plan::_CompiledPopulationExecution, sa
     state = _population_trace_state(state)
     phase = plan.adaptation[round]
     if sampler.algorithm.resampling isa IS.LocalResampling
-        ancestor, moments = phase.local_phase(sampler.rng.rng, state, sampler.random_buffers)
+        sampler.rng =
+            IS._rand_uniform!(sampler.rng, sampler.random_buffers.resampling_uniforms)
+        ancestor, moments = phase.local_phase(state, sampler.random_buffers)
         valid = Int(ancestor) > 0
         IS._record_device_scalar_transfer!(transfers, state.workspace.ancestors,
             Int, Val(:local_resampling_validity))
@@ -661,7 +794,7 @@ function IS._advance_prepared_population!(plan::_CompiledPopulationExecution, sa
         values = Array(phase.cdf(state))
         IS._record_reported_transfer!(transfers, 1, sizeof(values), Val(:cdf_sum))
         isfinite(values[2]) && values[2] > 0 || throw(IS.AllZeroWeightsError())
-        phase.select(sampler.rng.rng, state, sampler.random_buffers)
+        sampler.rng = phase.select(sampler.rng, state, sampler.random_buffers)
         return IS._logweight_summary(values..., views.round_size)
     end
     IS._record_reported_transfer!(transfers, 1, sizeof(values), Val(:logweight_moments))
@@ -771,7 +904,7 @@ function _pooled_covariance!(covariance, factors)
 end
 
 function IS._pooled_covariance!(covariance::Reactant.AnyConcreteRArray, factors, ::IS._KernelExecution)
-    Reactant.@jit _pooled_covariance!(covariance, factors)
+    Reactant.@jit client=_call_client(covariance) _pooled_covariance!(covariance, factors)
     return nothing
 end
 
@@ -785,14 +918,14 @@ function _factor!(factor)
 end
 
 function IS._factor_pooled_covariance!(factor::Reactant.AnyConcreteRArray)
-    success = Reactant.@jit _factor!(factor)
+    success = Reactant.@jit client=_call_client(factor) _factor!(factor)
     Bool(success) || throw(IS._FirstOrderGRAMISRepulsionError(
         0, :pooled_factorization_failed, :nonfinite_result))
     return nothing
 end
 
 function IS._gaussian_potrf!(::MLDataDevices.ReactantDevice, factor::Reactant.AnyConcreteRArray)
-    success = Reactant.@jit _factor!(factor)
+    success = Reactant.@jit client=_call_client(factor) _factor!(factor)
     Bool(success) || throw(LA.PosDefException(0))
     return factor
 end
@@ -809,7 +942,7 @@ function IS._preflight_gaussian_factorization!(
 end
 
 function IS._weighted_moments!(mean::Reactant.AnyConcreteRArray, covariance, centered, samples, weights)
-    Reactant.@jit IS._weighted_moments!(mean, covariance, centered, samples, weights)
+    Reactant.@jit client=_call_client(mean) IS._weighted_moments!(mean, covariance, centered, samples, weights)
     return nothing
 end
 
@@ -840,12 +973,12 @@ end
 function IS._store_moment_candidate!(
     history::IS._FactorProposalHistory{<:Reactant.AnyConcreteRArray}, slot, workspace::IS._MomentWorkspace,
 )
-    Reactant.@jit _store_moment_candidate!(history, slot, workspace)
+    Reactant.@jit client=Reactant.XLA.client(workspace.candidate_mean) _store_moment_candidate!(history, slot, workspace)
     return nothing
 end
 
 function IS._clip_logweights!(clipped::_ReactantStorage, raw, threshold)
-    Reactant.@jit IS._clip_logweights!(clipped, raw, threshold)
+    Reactant.@jit client=_call_client(clipped) IS._clip_logweights!(clipped, raw, threshold)
     return clipped
 end
 
@@ -863,7 +996,7 @@ end
 function IS._normalize_moment_weights!(
     weights::_ReactantStorage, logweights, count, transfers::IS._ResultTransferCounter,
 )
-    moments = Array(Reactant.@jit _normalize_weights!(weights, logweights, count))
+    moments = Array(Reactant.@jit client=_call_client(weights) _normalize_weights!(weights, logweights, count))
     IS._record_reported_transfer!(transfers, 1, sizeof(moments), Val(:logweight_moments))
     isfinite(moments[2]) && moments[2] > 0 || throw(IS.AllZeroWeightsError())
     return IS._logweight_summary(moments..., count)
@@ -876,7 +1009,7 @@ function _whiten_means!(output, factor, means)
 end
 
 function IS._whiten_means!(output::Reactant.AnyConcreteRArray, factor, means)
-    Reactant.@jit _whiten_means!(output, factor, means)
+    Reactant.@jit client=_call_client(output) _whiten_means!(output, factor, means)
     return nothing
 end
 
@@ -890,7 +1023,7 @@ function _logweight_moments(values)
 end
 
 function IS._logweight_moments(values::_ReactantStorage)
-    return Tuple(Array(Reactant.@jit _logweight_moments(values)))
+    return Tuple(Array(Reactant.@jit client=_call_client(values) _logweight_moments(values)))
 end
 
 function _logsumexp(values)
@@ -906,7 +1039,7 @@ function IS._logsumexp_accumulator(values::_ReactantStorage)
 end
 
 IS._normalized_weights(values::_ReactantStorage, maximum_logweight, total) =
-    Reactant.@jit IS._normalized_weights(values, maximum_logweight, total)
+    Reactant.@jit client=_call_client(values) IS._normalized_weights(values, maximum_logweight, total)
 # Both scalars must remain live inputs to the retained executable.
 IS._normalized_weights(values::Reactant.ConcreteRArray, maximum_logweight, total) =
     _retained_call(IS._normalized_weights, values,
@@ -965,7 +1098,7 @@ IS._resample_and_gather!(cdf::Reactant.ConcreteRArray, logweights, uniforms, anc
     _retained_call(IS._resample_and_gather!, cdf, logweights, uniforms, ancestors, source, destination, execution)
 
 _allfinite(values) = all(isfinite.(values))
-IS._local_means_valid(values::Reactant.AnyConcreteRArray) = Bool(Reactant.@jit _allfinite(values))
+IS._local_means_valid(values::Reactant.AnyConcreteRArray) = Bool(Reactant.@jit client=_call_client(values) _allfinite(values))
 
 function _gramis_diagnostics(status, steps, trials)
     return vcat(sum(Int.(status .== IS._POPULATION_ALL_ZERO_LOCAL); dims=1),
@@ -976,7 +1109,7 @@ end
 function IS._first_order_gramis_diagnostic_summary(
     ::MLDataDevices.ReactantDevice, status, steps, trials, transfers, ::IS._KernelExecution,
 )
-    values = Array(Reactant.@jit _gramis_diagnostics(status, steps, trials))
+    values = Array(Reactant.@jit client=Reactant.XLA.client(status) _gramis_diagnostics(status, steps, trials))
     transfers.count += 1
     transfers.bytes += sizeof(values)
     return NamedTuple{(:all_zero, :tempering, :backtracking, :target_trials)}(Tuple(values))
@@ -1039,7 +1172,7 @@ function IS._prepare_accelerator_gradient(
     # optimization after AD, where the numerical regression preserves them.
     options = Reactant.CompileOptions(; optimization_passes=:after_enzyme,
         raise=true, raise_first=true, excluded_passes=["transpose_is_reshape", "cse_reshape"])
-    compiled = Reactant.@compile compile_options=options _gradient!(
+    compiled = Reactant.@compile client=Reactant.XLA.client(locations) compile_options=options _gradient!(
         values, gradients, locations, target, seeds, status)
     return _BoundReactantGradient(compiled, target, seeds, status)
 end

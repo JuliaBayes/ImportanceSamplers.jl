@@ -14,6 +14,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
 LogExpFunctions = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
 MLDataDevices = "7e8f7934-dd98-4c1a-8fe8-92b47a384d40"
+PureRNGs = "2ccaadc3-3d9a-45d4-a2ec-95a2424790b7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -23,6 +24,9 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
+
+[sources]
+PureRNGs = {rev = "dev", url = "https://github.com/BJMCox/PureRNGs.jl"}
 
 [extensions]
 ImportanceSamplersCUDAExt = "CUDA"
@@ -45,6 +49,7 @@ LogDensityProblems = "2.2.0"
 LogExpFunctions = "1.0.1"
 MLDataDevices = "1.17.10"
 Metal = "1.10"
+PureRNGs = "0.0.2"
 Random = "1.10"
 Reactant = "0.2.285"
 SpecialFunctions = "2"

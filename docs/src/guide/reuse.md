@@ -25,6 +25,23 @@ The second call starts from the proposal learned by the first call.
 Its result contains only its own samples, not samples from earlier calls.
 Earlier result arrays remain unchanged.
 
+Native PureRNGs generators also support reuse:
+
+```julia
+using PureRNGs
+
+rng = Threefry4x32(42)
+prepared = prepare_sampler(rng, logtarget, p, algorithm)
+first_run = importance_sample!(prepared)
+second_run = importance_sample!(prepared)
+rng = current_rng(prepared)
+```
+
+Each call stores the continued RNG. The original immutable `rng` value does not
+change. Passing the same snapshot to separate samplers repeats its stream.
+Use `left, right = splitrng(rng)` for separate streams. Split once and retain
+each continuation rather than splitting the same key repeatedly.
+
 A successful adaptive call retains its final fitted proposal even when that proposal
 generated no sample in the completed call.
 AMIS also starts a new retrospective history on the next call.

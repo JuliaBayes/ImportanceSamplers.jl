@@ -273,7 +273,7 @@ end
 
 function _smh_ordered_cpu!(state, steps)
     dimension = _transition_dimension(state.centres)
-    for move in 1:steps
+    for move = 1:steps
         candidate_logweight = state.candidate_logweights[move]
         candidate_logweight == -Inf && continue
         isfinite(candidate_logweight) || throw(DomainError(
@@ -298,7 +298,7 @@ function _smh_ordered_cpu!(state, steps)
         _smh_valid_uniform(acceptance_uniform) || throw(DomainError(
             acceptance_uniform, "SMH acceptance uniforms must lie in [0, 1)"))
         if log(acceptance_uniform) < logacceptance
-            for coordinate in 1:dimension
+            for coordinate = 1:dimension
                 _store_population_location!(state.centres, coordinate, selected,
                     _population_sample_coordinate(state.candidates, coordinate, move))
             end
@@ -325,7 +325,7 @@ end
     # preserve its failure record for the single host check after replacement.
     @uniform batch_steps = iszero(failures[1]) ? steps : 0
     dimension = _transition_dimension(centres)
-    for move in 1:batch_steps
+    for move = 1:batch_steps
         if lane == 1
             status[1] = 0
             selected[1] = 0
@@ -335,7 +335,7 @@ end
         candidate_logweight == -Inf && continue
         local_maximum = eltype(logratios)(-Inf)
         local_minimum = eltype(logratios)(Inf)
-        for slot in lane:lanes:length(logratios)
+        for slot = lane:lanes:length(logratios)
             value = logratios[slot]
             local_maximum = max(local_maximum, value)
             local_minimum = min(local_minimum, value)
@@ -354,7 +354,7 @@ end
         end
         local_sum = zero(eltype(logratios))
         local_invalid = !isfinite(candidate_logweight)
-        for slot in lane:lanes:length(logratios)
+        for slot = lane:lanes:length(logratios)
             scaled, scaled_status = _smh_scaled_ratio(logratios[slot], maxima[1])
             slot <= length(cached_ratios) && (cached_ratios[slot] = scaled)
             local_invalid |= !iszero(scaled_status)
@@ -398,7 +398,7 @@ end
         end
         @synchronize()
         if selected[1] > 0
-            for coordinate in lane:lanes:dimension
+            for coordinate = lane:lanes:dimension
                 _store_population_location!(centres, coordinate, selected[1],
                     _population_sample_coordinate(candidates, coordinate, move))
             end
@@ -450,10 +450,20 @@ end
 function _smh_candidate_batch!(state, target, rng, execution, steps, ::Type{L}=eltype(state.candidate_logweights)) where {L}
     normal_count = _native_normal_count(state.proposal, steps)
     uniform_count = _native_uniform_count(state.proposal, steps)
-    normal_count > 0 && Random.randn!(rng, view(state.normals, 1:normal_count))
-    uniform_count > 0 &&
-        Random.rand!(rng, view(state.proposal_uniforms, 1:uniform_count))
-    Random.rand!(rng, view(state.decision_uniforms, :, 1:steps))
+    normal_count > 0 && (
+        rng = _rand_normal!(rng, view(state.normals, 1:normal_count);
+            threaded = _transition_threaded(execution)
+        )
+    )
+    uniform_count > 0 && (
+        rng = _rand_uniform!(rng, view(state.proposal_uniforms, 1:uniform_count);
+            threaded = _transition_threaded(execution)
+        )
+    )
+    rng = _rand_uniform!(rng, view(state.decision_uniforms, :, 1:steps);
+        threaded = _transition_threaded(execution)
+    )
+    try
     backend = KernelAbstractions.get_backend(state.normals)
     evaluator, _ = _native_target_evaluator(
         backend, target, L,
@@ -464,7 +474,10 @@ function _smh_candidate_batch!(state, target, rng, execution, steps, ::Type{L}=e
         view(state.proposal_uniforms, 1:uniform_count),
         view(state.normals, 1:normal_count), evaluator, state.proposal,
         _NoSampleTransform(), execution, _solve_exponents(state.density_scratch))
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _smh_ordered_batch!(::KernelAbstractions.CPU, state, steps, transfers)
@@ -492,17 +505,22 @@ end
 
 function transition!(state::_SampleMetropolisHastingsState, target, rng,
     execution, transfers)
+    try
     _initialize_smh_cache!(state, target, execution, transfers)
     backend = KernelAbstractions.get_backend(state.normals)
     completed = 0
     while completed < state.moves
         steps = min(state.capacity, state.moves - completed)
-        _smh_candidate_batch!(state, target, rng, execution, steps)
+            rng, failure = _smh_candidate_batch!(state, target, rng, execution, steps)
+            isnothing(failure) || return rng, failure
         _smh_ordered_batch!(backend, state, steps, transfers)
         state.production_evaluations += steps
         completed += steps
     end
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _preflight_transition(device, state::_SampleMetropolisHastingsState, target)

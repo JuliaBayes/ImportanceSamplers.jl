@@ -48,26 +48,22 @@ function _StaticMISDenominatorEvaluator(
     return _StaticMISDenominatorEvaluator{T,B,A,D}(
         bank,
         assignments,
-        denominator,
-    )
+        denominator)
 end
 
 function _prepare_static_mis_bank(bank::ProposalBank)
     proposal_type = eltype(bank.proposals)
     native_candidate = Val(
-        proposal_type <: _NativeRadialProposal || !isconcretetype(proposal_type),
-    )
+        proposal_type <: _NativeRadialProposal || !isconcretetype(proposal_type))
     return _prepare_static_mis_bank(
         bank,
-        native_candidate,
-    )
+        native_candidate)
 end
 
 function _prepare_static_mis_bank(bank, ::Val{true})
     return _prepare_static_mis_bank(
         bank,
-        _native_radial_pack_kind(eltype(bank.proposals)),
-    )
+        _native_radial_pack_kind(eltype(bank.proposals)))
 end
 
 _prepare_static_mis_bank(bank, ::Val{false}) =
@@ -83,15 +79,13 @@ function _prepare_static_mis_bank(bank, ::Val{:factor})
         proposal_ids,
         logmasses,
         cdf,
-        Val(:factor),
-    )
+        Val(:factor))
     isnothing(packed) || return packed
     return _prepare_generic_active_proposal_bank(
         bank,
         proposal_ids,
         logmasses,
-        cdf,
-    )
+        cdf)
 end
 
 function _prepare_static_mis_bank(bank, ::Val{:dynamic})
@@ -106,8 +100,7 @@ function _prepare_method_state(
     bank = _prepare_static_mis_bank(algorithm.proposal)
     design = _PreparedMISDesign(
         _StratifiedAssignment(),
-        _FullMixtureDenominator(),
-    )
+        _FullMixtureDenominator())
     return _PreparedStaticMIS(bank, design)
 end
 
@@ -117,19 +110,16 @@ function _prepare_method_state(
     bank = _prepare_static_mis_bank(algorithm.proposal)
     design = _PreparedMISDesign(
         _RandomAssignment(),
-        _FullMixtureDenominator(),
-    )
+        _FullMixtureDenominator())
     return _PreparedStaticMIS(bank, design)
 end
 
 function _prepare_method_state(
-    algorithm::ImportanceSampling{<:ProposalBank,<:StandardMIS},
-)
+    algorithm::ImportanceSampling{<:ProposalBank,<:StandardMIS})
     bank = _prepare_static_mis_bank(algorithm.proposal)
     design = _PreparedMISDesign(
         _StratifiedAssignment(),
-        _GeneratingDenominator(),
-    )
+        _GeneratingDenominator())
     return _PreparedStaticMIS(bank, design)
 end
 
@@ -140,8 +130,7 @@ function _prepare_method_state(
     denominator = _compile_partial_denominator(
         algorithm.proposal,
         bank,
-        algorithm.mis_scheme.groups,
-    )
+        algorithm.mis_scheme.groups)
     design = _PreparedMISDesign(_StratifiedAssignment(), denominator)
     return _PreparedStaticMIS(bank, design)
 end
@@ -189,14 +178,12 @@ end
     cdf,
     uniform,
     sample_index,
-    nsamples,
-)
+    nsamples)
     mapped_uniform = _static_mis_assignment_uniform(
         assignment,
         uniform,
         sample_index,
-        nsamples,
-    )
+        nsamples)
     first_slot = firstindex(cdf)
     last_slot = lastindex(cdf)
     while first_slot < last_slot
@@ -213,20 +200,23 @@ end
 function _compile_assignments!(rng, assignments, assignment, cdf)
     nsamples = length(assignments)
     for sample_index in eachindex(assignments)
-        assignments[sample_index] = _capture_sampler_failure(
+        assignments[sample_index], rng = let draw_rng = rng
+            _capture_sampler_failure(
             :proposal_draw,
-            sample_index,
-        ) do
-            _static_mis_assignment(
+            sample_index) do
+                uniform, next_rng = _rand_scalar(draw_rng)
+                slot = _static_mis_assignment(
                 assignment,
                 cdf,
-                rand(rng),
+                    uniform,
                 sample_index,
                 nsamples,
             )
+                slot, next_rng
         end
     end
-    return assignments
+    end
+    return rng
 end
 
 _mis_scheme_name(::_RandomAssignment, ::_FullMixtureDenominator) =
@@ -256,15 +246,12 @@ function _compile_partial_denominator(bank, active_bank, groups)
         first_member = length(members) + 1
         for proposal_id in group
             proposal_id isa Integer && proposal_id !== true && proposal_id !== false || throw(
-                ArgumentError("partial-MIS proposal IDs must be integers"),
-            )
+                ArgumentError("partial-MIS proposal IDs must be integers"))
             1 <= proposal_id <= length(seen) || throw(
-                ArgumentError("partial-MIS proposal ID $proposal_id is out of range"),
-            )
+                ArgumentError("partial-MIS proposal ID $proposal_id is out of range"))
             id = Int(proposal_id)
             seen[id] && throw(
-                ArgumentError("partial-MIS proposal ID $id appears more than once"),
-            )
+                ArgumentError("partial-MIS proposal ID $id appears more than once"))
             seen[id] = true
             slot = active_slot[id]
             iszero(slot) && continue
@@ -274,20 +261,18 @@ function _compile_partial_denominator(bank, active_bank, groups)
 
         active_group += 1
         group_logmass = eltype(active_bank.logmasses)(-Inf)
-        for member_index in first_member:length(members)
+        for member_index = first_member:length(members)
             slot = members[member_index]
             group_logmass = LogExpFunctions.logaddexp(
                 group_logmass,
-                active_bank.logmasses[slot],
-            )
+                active_bank.logmasses[slot])
         end
-        for member_index in first_member:length(members)
+        for member_index = first_member:length(members)
             slot = members[member_index]
             group_of_slot[slot] = active_group
             push!(
                 logcoefficients,
-                active_bank.logmasses[slot] - group_logmass,
-            )
+                active_bank.logmasses[slot] - group_logmass)
         end
         push!(offsets, length(members) + 1)
     end
@@ -298,14 +283,13 @@ function _compile_partial_denominator(bank, active_bank, groups)
         group_of_slot,
         offsets,
         members,
-        logcoefficients,
-    )
+        logcoefficients)
 end
 
 function _draw_static_mis_batch!(sampler, method_state::_PreparedStaticMIS)
     bank = method_state.bank
     assignments = sampler.random_buffers.assignments
-    _compile_assignments!(
+    sampler.rng = _compile_assignments!(
         sampler.rng,
         assignments,
         method_state.design.assignment,
@@ -314,7 +298,8 @@ function _draw_static_mis_batch!(sampler, method_state::_PreparedStaticMIS)
 
     first_slot = assignments[1]
     first_sample = _capture_sampler_failure(:proposal_draw, 1) do
-        rand(sampler.rng, bank.proposals[first_slot])
+        sample, sampler.rng = _rand_proposal(sampler.rng, bank.proposals[first_slot])
+        sample
     end
     samples = _capture_sampler_failure(:proposal_draw, 1) do
         _allocate_batch(first_sample, length(assignments))
@@ -323,10 +308,10 @@ function _draw_static_mis_batch!(sampler, method_state::_PreparedStaticMIS)
         _store_sample!(samples, first_sample, 1)
     end
 
-    for sample_index in 2:length(assignments)
+    for sample_index = 2:length(assignments)
         slot = assignments[sample_index]
         _capture_sampler_failure(:proposal_draw, sample_index) do
-            sample = rand(sampler.rng, bank.proposals[slot])
+            sample, sampler.rng = _rand_proposal(sampler.rng, bank.proposals[slot])
             _store_sample!(samples, sample, sample_index)
         end
     end
@@ -380,8 +365,7 @@ end
 ) where {T}
     value = DensityInterface.logdensityof(
         @inbounds(bank.proposals[proposal_slot]),
-        sample,
-    )
+        sample)
     _validate_mixture_proposal_logdensity(value)
     return _convert_static_mis_logdensity(T, value)
 end
@@ -404,8 +388,7 @@ end
 @inline _mis_term_bounds(
     bank,
     ::_EqualAllocationGeneratingDenominator,
-    generating_slot,
-) = (generating_slot, generating_slot)
+    generating_slot) = (generating_slot, generating_slot)
 
 @inline function _mis_denominator_term(
     ::Type{T},
@@ -424,8 +407,7 @@ end
 ) where {T}
     return @inbounds(denominator.members[term_index]), convert(
         T,
-        @inbounds(denominator.logcoefficients[term_index]),
-    )
+        @inbounds(denominator.logcoefficients[term_index]))
 end
 
 @inline _mis_denominator_term(
@@ -470,11 +452,9 @@ end
 
 function _validate_mixture_proposal_logdensity(value)
     (typeof(value) === Float32 || typeof(value) === Float64) || throw(
-        ArgumentError("proposal log density must be Float32 or Float64"),
-    )
+        ArgumentError("proposal log density must be Float32 or Float64"))
     isnan(value) && throw(
-        DomainError(value, "proposal mixture terms may not be NaN"),
-    )
+        DomainError(value, "proposal mixture terms may not be NaN"))
     return nothing
 end
 
@@ -501,9 +481,7 @@ function _validate_reduced_mis_denominator(value)
     (isnan(value) || value == -Inf) && throw(
         DomainError(
             value,
-            "the reduced MIS denominator may not be NaN or -Inf",
-        ),
-    )
+            "the reduced MIS denominator may not be NaN or -Inf"))
     return nothing
 end
 
@@ -522,8 +500,7 @@ function _evaluate_static_mis_logweights!(
             target_logs,
             target,
             samples,
-            Val(:target),
-        )
+            Val(:target))
         _evaluate_logs_threaded!(
             logweights,
             denominator,
@@ -545,8 +522,7 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
     log_type = _resolve_static_mis_logweight_type(
         target,
         method_state.bank,
-        samples,
-    )
+        samples)
     denominator = _StaticMISDenominatorEvaluator(
         log_type,
         method_state.bank,
@@ -558,8 +534,7 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
         target,
         denominator,
         samples,
-        threaded,
-    )
+        threaded)
     diagnostics = (
         method=:importance_sampling,
         mis_scheme=_mis_scheme_name(

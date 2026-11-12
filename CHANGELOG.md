@@ -2,6 +2,10 @@
 
 ## Unreleased (0.0.2)
 
+- Native PureRNGs continuation across sampling, adaptation, transitions, and resampling.
+- Accelerator preparation now requires PureRNGs and preserves its key and stream position without reseeding. Mutable Random inputs remain supported on CPU.
+- `current_rng` snapshots prepared streams; `resample_next` returns resampled values and the continued stream.
+
 - Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
 - Optional local marginal-width adaptation for LAIS and HAIS.

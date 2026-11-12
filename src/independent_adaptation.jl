@@ -284,19 +284,19 @@ end
 function _fill_moment_random_buffers!(
     rng,
     buffers,
-    history::_IndependentProposalHistory{_GammaFamily},
+    history::_IndependentProposalHistory{_GammaFamily};
+    threaded = false,
 )
-    _fill_radial_buffers!(rng, buffers.radial)
-    return nothing
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
 end
 
 function _fill_moment_random_buffers!(
     rng,
     buffers,
-    history::_IndependentProposalHistory{_LaplaceFamily},
+    history::_IndependentProposalHistory{_LaplaceFamily};
+    threaded = false,
 )
-    Random.rand!(rng, buffers.normal)
-    return nothing
+    return _rand_uniform!(rng, buffers.normal; threaded)
 end
 
 @inline function _independent_moment_parameters(::_GammaFamily, mean::T, variance::T) where {T}

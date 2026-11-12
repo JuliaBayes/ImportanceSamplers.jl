@@ -49,11 +49,11 @@ ad_samples = importance_sample(Xoshiro(44), ad_target, algorithm)
 For native CUDA, transfer a fresh complete prepared sampler before its first run:
 
 ```julia
-using CUDA
+using CUDA, PureRNGs
 import MLDataDevices
 CUDA.allowscalar(false)
 device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(), nothing)
-gpu_sampler = device(prepare_sampler(Xoshiro(45), target, algorithm))
+gpu_sampler = device(prepare_sampler(Threefry4x32(45), target, algorithm))
 gpu_samples = importance_sample!(gpu_sampler)
 host_samples = MLDataDevices.CPUDevice()(gpu_samples)
 ```

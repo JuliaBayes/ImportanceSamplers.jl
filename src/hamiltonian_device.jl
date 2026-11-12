@@ -81,7 +81,7 @@ end
 function _hmc_device_momentum!(momentum, normal, root::LinearAlgebra.LowerTriangular)
     for row in eachindex(momentum)
         value = zero(eltype(momentum))
-        for column in 1:row
+        for column = 1:row
             value += root[row, column] * normal[column]
         end
         momentum[row] = value
@@ -94,14 +94,14 @@ function _hmc_device_velocity!(velocity, whitened, momentum,
                                root::LinearAlgebra.LowerTriangular)
     for row in eachindex(momentum)
         value = momentum[row]
-        for column in 1:(row - 1)
+        for column = 1:(row - 1)
             value -= root[row, column] * whitened[column]
         end
         whitened[row] = value / root[row, row]
     end
     for row in reverse(eachindex(momentum))
         value = whitened[row]
-        for column in (row + 1):length(momentum)
+        for column = (row + 1):length(momentum)
             value -= root[column, row] * velocity[column]
         end
         velocity[row] = value / root[row, row]
@@ -286,7 +286,7 @@ end
 @kernel function _hmc_device_trajectory_kernel!(arrays, bound, steps, threshold)
     chain = @index(Global, Linear)
     _hmc_device_start!(arrays, chain)
-    for leapfrog in 1:steps
+    for leapfrog = 1:steps
         _hmc_device_drift!(arrays, chain)
         _hmc_device_explicit_gradient!(arrays.candidate_values, arrays.candidate_gradients,
                                        arrays.candidates, bound, arrays.work, chain, false)
@@ -311,7 +311,7 @@ end
 function _launch_hmc_device_sweep!(state, bound::_BoundBatchGradient, backend)
     arrays, count = _hmc_device_arrays(state), length(state.logtargets)
     _hmc_device_start_kernel!(backend)(arrays; ndrange=count, workgroupsize=64)
-    for leapfrog in 1:(state.leapfrog_steps)
+    for leapfrog = 1:(state.leapfrog_steps)
         _hmc_device_drift_kernel!(backend)(arrays; ndrange=count, workgroupsize=64)
         _hmc_device_evaluate!(state, bound, false, backend)
         _hmc_device_kick_kernel!(backend)(arrays, leapfrog, state.leapfrog_steps,
@@ -334,7 +334,7 @@ end
     acceptance = zero(E)
     maximum_error = E(NaN)
     for chain in eachindex(arrays.acceptance)
-        for row in 1:5
+        for row = 1:5
             summary[row] += arrays.work[row, chain]
         end
         if iszero(summary[6]) && !iszero(arrays.work[7, chain])
@@ -369,7 +369,7 @@ end
     end
     scalars[1] = acceptance
     scalars[2] = maximum_error
-    for row in 1:3
+    for row = 1:3
         scalars[row + 2] = arrays.tuning[row]
     end
 end
@@ -428,10 +428,12 @@ function _hmc_sweep!(state::_HamiltonianState, rng, execution::_KernelExecution,
     state.device_workspace === nothing && return invoke(_hmc_sweep!,
                                                         Tuple{_HamiltonianState,Any,Any,Any}, state, rng,
                                                         execution.cpu_execution, transfers; warmup)
+    try
     backend = KernelAbstractions.get_backend(state.centres)
     _initialize_hmc_device!(state, backend, transfers)
-    Random.randn!(rng, state.normals)
-    Random.rand!(rng, state.uniforms)
+        rng = _rand_normal!(rng, state.normals; threaded = _transition_threaded(execution))
+        rng =
+            _rand_uniform!(rng, state.uniforms; threaded = _transition_threaded(execution))
     fill!(state.work, 0)
     fill!(state.acceptance, zero(eltype(state.acceptance)))
     fill!(state.energy_error, eltype(state.energy_error)(NaN))
@@ -444,15 +446,23 @@ function _hmc_sweep!(state::_HamiltonianState, rng, execution::_KernelExecution,
         state.max_abs_energy_error = isnothing(state.max_abs_energy_error) ? scalars[2] :
                                      max(state.max_abs_energy_error, scalars[2])
     end
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _warmup_hmc!(state::_HamiltonianState, rng, execution::_KernelExecution, transfers)
     state.device_workspace === nothing &&
         return _warmup_hmc!(state, rng, execution.cpu_execution, transfers)
-    _initialize_hmc_device!(state, KernelAbstractions.get_backend(state.centres), transfers)
+    try
+        _initialize_hmc_device!(state, KernelAbstractions.get_backend(state.centres), transfers)
     while state.n_tuned < state.warmup_steps
-        _hmc_sweep!(state, rng, execution, transfers; warmup=true)
+            rng, failure = _hmc_sweep!(state, rng, execution, transfers; warmup=true)
+            isnothing(failure) || return rng, failure
+        end
+    return rng, nothing
+    catch failure
+        return rng, failure
     end
-    return nothing
 end

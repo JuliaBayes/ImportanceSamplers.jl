@@ -114,21 +114,23 @@ function _prepare_mis_normals!(
 end
 
 function _fill_population_normals!(
-    rng::Random.AbstractRNG,
-    buffers::_PopulationNormalBuffers{N,F,_BoxFamily},
+    rng,
+    buffers::_PopulationNormalBuffers{N,F,_BoxFamily};
+    threaded = false,
 ) where {N,F}
-    Random.rand!(rng, buffers.normals)
-    return nothing
+    return _rand_uniform!(rng, buffers.normals; threaded)
 end
 
 _fill_population_normals!(
-    rng::Random.AbstractRNG,
-    buffers::_PopulationNormalBuffers{N,F,G},
-) where {N,F,G<:_GammaDrawBuffers} = _fill_radial_buffers!(rng, buffers.radial)
+    rng,
+    buffers::_PopulationNormalBuffers{N,F,G};
+    threaded = false,
+) where {N,F,G<:_GammaDrawBuffers} = _fill_radial_buffers!(rng, buffers.radial; threaded)
 _fill_population_normals!(
-    rng::Random.AbstractRNG,
-    buffers::_DMPMCRandomBuffers{N,U,F,G},
-) where {N,U,F,G<:_GammaDrawBuffers} = _fill_radial_buffers!(rng, buffers.radial)
+    rng,
+    buffers::_DMPMCRandomBuffers{N,U,F,G};
+    threaded = false,
+) where {N,U,F,G<:_GammaDrawBuffers} = _fill_radial_buffers!(rng, buffers.radial; threaded)
 
 function _population_with_locations(bank::_PackedGammaPopulation, locations)
     return _PackedDiagonalBank(
@@ -183,9 +185,9 @@ function _prepare_method_state(
 end
 
 function _fill_population_normals!(
-    rng::Random.AbstractRNG,
-    buffers::_DMPMCRandomBuffers{N,U,F,_BoxFamily},
+    rng,
+    buffers::_DMPMCRandomBuffers{N,U,F,_BoxFamily};
+    threaded = false,
 ) where {N,U,F}
-    Random.rand!(rng, buffers.normals)
-    return nothing
+    return _rand_uniform!(rng, buffers.normals; threaded)
 end

@@ -5,6 +5,7 @@ using BenchmarkTools, Distributions, ForwardDiff, LinearAlgebra, Optim, Random,
 import AbstractMCMC, AdvancedHMC, AdvancedMH, CUDA, EnsembleMCMC, ImportanceSamplers,
        LogDensityProblems, MCMCDiagnosticTools, MLDataDevices, SliceSampling
 using FFTW
+using PureRNGs
 
 include("models.jl")
 include("batch_targets.jl")
@@ -101,7 +102,9 @@ function tune_population(rng, device, model, bank, pilot; family=:student_t,
     start = time_ns()
     logsumexp = IS.LogExpFunctions.logsumexp
     # A separate stream prevents the main sampler from replaying pilot draws.
-    prepared = IS.prepare_sampler(Xoshiro(rand(rng,UInt64)),target,data,
+    pilot_seed = rand(rng,UInt64)
+    sampling_rng = device === nothing ? Xoshiro(pilot_seed) : Threefry4x32(pilot_seed)
+    prepared = IS.prepare_sampler(sampling_rng,target,data,
         IS.ImportanceSampling(bank;nsamples=pilot.nsamples,mis_scheme=IS.RandomMixture()))
     device === nothing || (prepared = device(prepared))
     samples = IS.importance_sample!(prepared)
@@ -175,7 +178,8 @@ function run_method(method, device, model, seed; nsamples=2^18, warmup=1024, nch
                 IS.LAIS(bank; transition, options...)
             end
         end
-        prepared = IS.prepare_sampler(rng, target, data, algorithm)
+        sampling_rng = device === nothing ? rng : Threefry4x32(seed)
+        prepared = IS.prepare_sampler(sampling_rng, target, data, algorithm)
         device === nothing || (prepared = device(prepared))
         result = IS.importance_sample!(prepared)
         # This includes the device reduction, final transfer, and its sync.

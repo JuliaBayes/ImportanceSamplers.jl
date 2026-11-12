@@ -80,8 +80,7 @@ end
             failure_storage,
             sample_index,
             0,
-            returned_reason,
-        )
+            returned_reason)
         return nothing
     end
     @inbounds returned_logweights[sample_index] = returned_logweight
@@ -161,13 +160,11 @@ function _first_order_gramis_sample_round!(
 )
     adaptation = _MISAdaptationOutput(
         local_logweights,
-        generating_logdensities,
-    )
+        generating_logdensities)
     output = _MISRoundOutput(
         returned_logweights,
         proposal_ids,
-        adaptation,
-    )
+        adaptation)
     launch = _use_factor_batch_mis_path(
         device,
         bank,
@@ -232,8 +229,7 @@ end
 @noinline function _throw_first_order_gramis_derivative_error(
     proposal_slot,
     reason,
-    value,
-)
+    value)
     throw(_FirstOrderGRAMISDerivativeError(proposal_slot, reason, value))
 end
 
@@ -262,8 +258,7 @@ end
 
 function _first_order_gramis_failure_value(device, values, index, transfers)
     _is_host_storage(values) || throw(
-        SamplerDeviceError(device, :kernel_argument_unsupported),
-    )
+        SamplerDeviceError(device, :kernel_argument_unsupported))
     return @inbounds vec(values)[index]
 end
 
@@ -289,8 +284,7 @@ function _throw_first_order_gramis_device_derivative_failure(
         device,
         failure_values,
         slot,
-        transfers,
-    )
+        transfers)
     _throw_first_order_gramis_derivative_error(
         slot,
         _first_order_gramis_derivative_reason(failure.reason_bits),
@@ -312,8 +306,7 @@ function _throw_first_order_gramis_device_backtracking_failure(
         device,
         failure_values,
         slot,
-        transfers,
-    )
+        transfers)
     _throw_first_order_gramis_derivative_error(
         slot,
         _first_order_gramis_derivative_reason(failure.reason_bits),
@@ -338,8 +331,7 @@ end
             factors,
             row,
             column,
-            proposal_slot,
-        ) * _covariance_multiplier(_radial_family_at(family, proposal_slot), T)
+            proposal_slot) * _covariance_multiplier(_radial_family_at(family, proposal_slot), T)
     end
     @inbounds pooled_covariance[row, column] = covariance / T(proposal_count)
     return nothing
@@ -348,9 +340,8 @@ end
 function _pooled_covariance!(
     pooled_covariance,
     factors,
-    ::_SerialCPUExecution,
-)
-    @inbounds for entry in 1:length(pooled_covariance)
+    ::_SerialCPUExecution)
+    @inbounds for entry = 1:length(pooled_covariance)
         _pooled_covariance_entry!(pooled_covariance, factors, entry)
     end
     return nothing
@@ -359,15 +350,13 @@ end
 function _pooled_covariance!(
     pooled_covariance,
     factors,
-    ::_KernelExecution,
-)
+    ::_KernelExecution)
     dimension = size(factors, 1)
     proposal_count = size(factors, 3)
     packed_factors = reshape(
         factors,
         dimension,
-        dimension * proposal_count,
-    )
+        dimension * proposal_count)
     T = eltype(pooled_covariance)
     LinearAlgebra.mul!(
         pooled_covariance,
@@ -382,8 +371,7 @@ end
 function _pooled_covariance!(
     pooled_covariance,
     factors,
-    ::_ThreadedCPUExecution,
-)
+    ::_ThreadedCPUExecution)
     _threaded_foreach(1:length(pooled_covariance)) do entry
         _pooled_covariance_entry!(pooled_covariance, factors, entry)
     end
@@ -409,8 +397,7 @@ function _whiten_means!(whitened_means, pooled_factor, means)
     copyto!(whitened_means, means)
     LinearAlgebra.ldiv!(
         LinearAlgebra.LowerTriangular(pooled_factor),
-        whitened_means,
-    )
+        whitened_means)
     return nothing
 end
 
@@ -438,8 +425,7 @@ end
 @noinline function _throw_first_order_gramis_repulsion_error(
     proposal_slot,
     reason,
-    value,
-)
+    value)
     throw(_FirstOrderGRAMISRepulsionError(proposal_slot, reason, value))
 end
 
@@ -456,20 +442,17 @@ function _throw_first_order_gramis_device_repulsion_failure(
         device,
         failure_values,
         index,
-        transfers,
-    )
+        transfers)
     if failure.reason_bits == _GRAMIS_POOLED_COVARIANCE_NONFINITE
         _throw_first_order_gramis_repulsion_error(
             0,
             :pooled_covariance_nonfinite,
-            value,
-        )
+            value)
     elseif failure.reason_bits == _GRAMIS_FORCE_NONFINITE
         _throw_first_order_gramis_repulsion_error(
             index,
             :force_nonfinite,
-            value,
-        )
+            value)
     end
     error("unknown FirstOrderGRAMIS repulsion failure code")
 end
@@ -487,8 +470,7 @@ function _factor_pooled_covariance!(pooled_covariance)
     iszero(info) || _throw_first_order_gramis_repulsion_error(
         0,
         :pooled_factorization_failed,
-        info,
-    )
+        info)
     return nothing
 end
 
@@ -615,8 +597,7 @@ end
     whitened_means,
     strength,
     round,
-    softening,
-)
+    softening)
 
 function _repulsion_force!(
     repulsion,
@@ -645,8 +626,7 @@ function _repulsion_force!(
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -698,8 +678,7 @@ end
 @kernel function _validate_repulsion_kernel!(
     failure_storage,
     failure_values,
-    repulsion,
-)
+    repulsion)
     proposal_slot = @index(Global, Linear)
     reason, value = _repulsion_failure(repulsion, proposal_slot)
     if !iszero(reason)
@@ -847,8 +826,7 @@ function _launch_gramis_force!(::Nothing, repulsion, collision_counts, pooled_co
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -869,8 +847,7 @@ function _validate_frozen_derivatives!(values, gradients)
         reason, value = _frozen_derivative_failure(
             values,
             gradients,
-            proposal_slot,
-        )
+            proposal_slot)
         iszero(reason) || _throw_first_order_gramis_derivative_error(
             proposal_slot,
             _first_order_gramis_derivative_reason(reason),
@@ -918,16 +895,14 @@ function _validate_backtracking_candidates!(
     candidate_values,
     active_mask,
     trials,
-    trial,
-)
+    trial)
     any_active = false
     @inbounds for proposal_slot in eachindex(candidate_values, active_mask, trials)
         evaluated, reason, value = _backtracking_candidate_failure(
             candidate_values,
             trials,
             trial,
-            proposal_slot,
-        )
+            proposal_slot)
         evaluated || continue
         iszero(reason) || _throw_first_order_gramis_derivative_error(
             proposal_slot,
@@ -948,9 +923,9 @@ end
 )
     dimension = size(gradients, 1)
     T = eltype(gradients)
-    for factor_column in 1:dimension
+    for factor_column = 1:dimension
         projected_gradient = zero(T)
-        for gradient_row in factor_column:dimension
+        for gradient_row = factor_column:dimension
             projected_gradient += @inbounds(
                 factors[gradient_row, factor_column, proposal_slot] *
                 gradients[gradient_row, proposal_slot]
@@ -958,9 +933,9 @@ end
         end
         @inbounds moves[factor_column, proposal_slot] = projected_gradient
     end
-    for row in dimension:-1:1
+    for row = dimension:-1:1
         move = zero(T)
-        for factor_column in 1:row
+        for factor_column = 1:row
             move += @inbounds(
                 factors[row, factor_column, proposal_slot] *
                 moves[factor_column, proposal_slot]
@@ -1023,8 +998,7 @@ function _precondition_gradients!(
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -1136,8 +1110,7 @@ function _evaluate_frozen_gradients!(
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -1220,8 +1193,7 @@ function _validate_gramis_gradients!(workspace, failure_record, execution)
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -1246,8 +1218,7 @@ function _launch_gramis_precondition!(::Nothing, method_state, execution, device
     workspace = method_state.workspace
     device === nothing || fill!(
         failure_record.storage,
-        zero(eltype(failure_record.storage)),
-    )
+        zero(eltype(failure_record.storage)))
     _precondition_gradients!(
         workspace.moves,
         workspace.gradients,
@@ -1266,8 +1237,7 @@ function _launch_gramis_precondition!(::Nothing, method_state, execution, device
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -1308,8 +1278,7 @@ end
 )
     copyto!(
         view(candidate_locations, :, proposal_slot),
-        view(locations, :, proposal_slot),
-    )
+        view(locations, :, proposal_slot))
     @inbounds candidate_values[proposal_slot] = frozen_values[proposal_slot]
     @inbounds active_mask[proposal_slot] = true
     @inbounds steps[proposal_slot] = zero(eltype(steps))
@@ -1369,8 +1338,7 @@ end
     @inbounds active_mask[proposal_slot] || return nothing
     copyto!(
         view(candidate_locations, :, proposal_slot),
-        view(locations, :, proposal_slot),
-    )
+        view(locations, :, proposal_slot))
     @inbounds candidate_values[proposal_slot] = frozen_values[proposal_slot]
     @inbounds active_mask[proposal_slot] = false
     return nothing
@@ -1537,7 +1505,7 @@ end
         locations,
         proposal_slot,
     )
-    for trial in 1:max_trials
+    for trial = 1:max_trials
         @inbounds active_mask[proposal_slot] || break
         step = ldexp(one(eltype(steps)), 1 - trial)
         _backtracking_trial_slot!(
@@ -1560,8 +1528,7 @@ end
             candidate_values,
             trials,
             trial,
-            proposal_slot,
-        )
+            proposal_slot)
         if !iszero(reason)
             @inbounds active_mask[proposal_slot] = false
             logical_index = (trial - 1) * size(locations, 2) + proposal_slot
@@ -1569,8 +1536,7 @@ end
                 failure_storage,
                 logical_index,
                 0,
-                reason,
-            )
+                reason)
         end
     end
     _finish_backtracking_slot!(
@@ -1614,15 +1580,13 @@ function _launch_gramis_backtracking!(::Nothing, batch, execution, device, failu
     workgroupsize = _population_workgroupsize(
         execution,
         backend,
-        proposal_count,
-    )
+        proposal_count)
     failure_storage = if device === nothing
         nothing
     else
         fill!(
             failure_record.storage,
-            zero(eltype(failure_record.storage)),
-        )
+            zero(eltype(failure_record.storage)))
         failure_record.storage
     end
     kernel = _backtrack_means_kernel!(backend)
@@ -1630,8 +1594,7 @@ function _launch_gramis_backtracking!(::Nothing, batch, execution, device, failu
         values(batch)...,
         failure_storage;
         ndrange=proposal_count,
-        workgroupsize,
-    )
+        workgroupsize)
     KernelAbstractions.synchronize(backend)
     return nothing
 end
@@ -1681,7 +1644,7 @@ function _backtrack_means!(
         locations,
         execution,
     )
-    for trial in 1:max_trials
+    for trial = 1:max_trials
         step = ldexp(one(eltype(steps)), 1 - trial)
         _backtracking_trial!(
             candidate_locations,
@@ -1701,8 +1664,7 @@ function _backtrack_means!(
             candidate_values,
             active_mask,
             trials,
-            trial,
-        ) || break
+            trial) || break
     end
     _finish_backtracking!(
         candidate_locations,
@@ -1772,8 +1734,7 @@ function _execute_first_order_gramis_live_preflight!(
     _precondition_gradients!(
         method_state,
         execution,
-        ; device, failure_record, transfers,
-    )
+        ; device, failure_record, transfers)
     try
         _backtrack_means!(
             method_state,
@@ -1784,8 +1745,7 @@ function _execute_first_order_gramis_live_preflight!(
     finally
         copyto!(
             method_state.candidate.locations,
-            method_state.run.locations,
-        )
+            method_state.run.locations)
     end
     return nothing
 end
@@ -1903,8 +1863,7 @@ end
 function _fit_local_covariances!(
     method_state::_PreparedFirstOrderGRAMIS,
     round,
-    execution,
-)
+    execution)
     _prepare_local_covariance_weights!(method_state, round, execution)
     workspace = method_state.workspace
     return _fit_population_covariances!(
@@ -1940,7 +1899,7 @@ end
         ridge = _factor_scale_aware_ridge(
             factors, proposal_slot, _radial_family_at(family, proposal_slot), regularization)
         rate = T(@inbounds covariance_rate[round])
-        for column in 1:dimension, row in column:dimension
+        for column = 1:dimension, row = column:dimension
             estimate = (
                 @inbounds(covariances[row, column, proposal_slot]) +
                 @inbounds(covariances[column, row, proposal_slot])
@@ -1952,8 +1911,7 @@ end
                     factors,
                     row,
                     column,
-                    proposal_slot,
-                )
+                    proposal_slot)
                 (one(T) - rate) * old * multiplier + rate * estimate
             end
             row == column && (blended += ridge)
@@ -1975,14 +1933,12 @@ function _blend_local_covariances!(
     kernel(
         _first_order_gramis_covariance_kernel_arguments(
             method_state,
-            round,
-        )[3]...;
+            round)[3]...;
         ndrange=proposal_count,
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -2015,8 +1971,7 @@ end
 
 @kernel function _record_first_order_gramis_factor_failures!(
     failure_storage,
-    info,
-)
+    info)
     proposal_slot = @index(Global, Linear)
     iszero(@inbounds(info[proposal_slot])) || _record_native_failure!(
         failure_storage,
@@ -2065,8 +2020,7 @@ function _launch_gramis_covariance!(::Nothing, method_state, round, info, execut
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            length(info),
-        ),
+            length(info)),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -2165,8 +2119,7 @@ function _first_order_gramis_failure_details(cause)
                  (
         proposal_slot=cause.proposal_slot,
         reason=cause.reason,
-        value=cause.value,
-    ) : nothing
+        value=cause.value) : nothing
     return (; covariance, derivative)
 end
 
@@ -2185,8 +2138,7 @@ macro _capture_first_order_gramis_round(
             cause isa FirstOrderGRAMISRoundError && rethrow()
             failure_phase = _first_order_gramis_round_phase(
                 cause,
-                $(esc(phase)),
-            )
+                $(esc(phase)))
             details = _first_order_gramis_failure_details(cause)
             throw(
                 FirstOrderGRAMISRoundError(
@@ -2225,8 +2177,7 @@ function _first_order_gramis_round_views(method_state, round)
         local_logweights=view(workspace.local_logweights, 1:round_size),
         generating_logdensities=view(
             workspace.generating_logdensities,
-            1:round_size,
-        ),
+            1:round_size),
         proposal_ids=view(workspace.round_proposal_ids, 1:round_size),
         round_ids=view(workspace.round_ids, 1:round_size),
         assignments=view(method_state.plan.assignments, 1:round_size, round),
@@ -2246,9 +2197,7 @@ function _add_first_order_gramis_repulsion!(
             _FirstOrderGRAMISProposalError(
                 proposal_slot,
                 :location_nonfinite,
-                value,
-            ),
-        )
+                value))
         candidate[row, proposal_slot] = value
     end
     return nothing
@@ -2290,8 +2239,7 @@ function _throw_first_order_gramis_device_proposal_failure(
         device,
         failure_values,
         slot,
-        transfers,
-    )
+        transfers)
     throw(
         _FirstOrderGRAMISProposalError(
             slot,
@@ -2340,8 +2288,7 @@ function _launch_gramis_add_repulsion!(::Nothing, candidate, repulsion, executio
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -2363,8 +2310,7 @@ end
                 true,
                 _GRAMIS_FACTOR_DIAGONAL_INVALID,
                 value,
-                zero(T),
-            )
+                zero(T))
             logabsdet += log(value)
         end
     end
@@ -2417,8 +2363,7 @@ end
         factors,
         status,
         proposal_slot,
-        family,
-    )
+        family)
     if ready
         if !iszero(reason)
             @inbounds failure_values[proposal_slot] = value
@@ -2463,8 +2408,7 @@ function _launch_gramis_factor_validation!(::Nothing, candidate, status, executi
         workgroupsize=_population_workgroupsize(
             execution,
             backend,
-            proposal_count,
-        ),
+            proposal_count),
     )
     KernelAbstractions.synchronize(backend)
     return nothing
@@ -2480,9 +2424,7 @@ function _throw_first_order_gramis_covariance_failure(
         iszero(info[proposal_slot]) || throw(
             _FirstOrderGRAMISCovarianceError(
                 proposal_slot,
-                info[proposal_slot],
-            ),
-        )
+                info[proposal_slot]))
     end
     return nothing
 end
@@ -2500,23 +2442,20 @@ function _throw_first_order_gramis_covariance_failure(
         device,
         info,
         slot,
-        transfers,
-    )
+        transfers)
     throw(_FirstOrderGRAMISCovarianceError(slot, Int(factor_info)))
 end
 
 @inline function _minimum_first_order_gramis_whitened_distance_value(
-    whitened_means,
-)
+    whitened_means)
     T = eltype(whitened_means)
     minimum_distance = T(Inf)
-    @inbounds for right in 2:size(whitened_means, 2), left in 1:(right - 1)
+    @inbounds for right = 2:size(whitened_means, 2), left = 1:(right - 1)
         distance = zero(T)
         for row in axes(whitened_means, 1)
             distance = hypot(
                 distance,
-                whitened_means[row, right] - whitened_means[row, left],
-            )
+                whitened_means[row, right] - whitened_means[row, left])
         end
         minimum_distance = min(minimum_distance, distance)
     end
@@ -2564,8 +2503,7 @@ function _first_order_gramis_failure_value(
     _record_device_scalar_transfer!(
         transfers,
         values,
-        eltype(values),
-    )
+        eltype(values))
     return only(snapshot)
 end
 
@@ -2580,16 +2518,14 @@ function _first_order_gramis_diagnostic_summary(
     all_zero = count(==(_POPULATION_ALL_ZERO_LOCAL), status)
     tempering = count(
         ==(_POPULATION_TEMPERING_FAILED),
-        status,
-    )
+        status)
     backtracking = count(iszero, steps)
     target_trials = sum(trials)
     for values in (status, status, steps, trials)
         _record_device_scalar_transfer!(
             transfers,
             values,
-            Int,
-        )
+            Int)
     end
     return (; all_zero, tempering, backtracking, target_trials)
 end
@@ -2641,15 +2577,52 @@ _gramis_result_samples(::Nothing, sampler, samples, transfers) =
     _map_result_samples(sampler.target, samples, sampler.random_buffers.failure_scratch,
         transfers, sampler.threaded)
 
-_sample_prepared_gramis_round!(::Nothing, sampler, state, target, round, execution) =
-    _launch_gramis_round!(sampler.rng, sampler.random_buffers, state, target, round,
+function _sample_prepared_gramis_round!(::Nothing, sampler, state, target, round, execution)
+    sampler.rng = _fill_gramis_random_buffers!(sampler.rng, sampler.random_buffers, state,
+        round;
+        threaded = sampler.threaded
+    )
+    _launch_buffered_gramis_round!(
+        sampler.random_buffers,
+        state,
+        target, round,
         execution, sampler.device, sampler.factor_execution)
+    return nothing
+end
 
-function _launch_gramis_round!(rng, buffers, state, target, round, execution, device, factor_execution)
+function _launch_gramis_round!(rng, buffers, state, target, round, execution, device, factor_execution
+)
+    rng = _fill_gramis_random_buffers!(rng, buffers, state, round)
+    _launch_buffered_gramis_round!(
+        buffers,
+        state,
+        target,
+        round,
+        execution,
+        device,
+        factor_execution
+    )
+    return rng
+end
+
+function _fill_gramis_random_buffers!(rng, buffers, state, round; threaded = false)
     views = _first_order_gramis_round_views(state, round)
     normal = view(buffers.normal, 1:(size(state.run.locations, 1) * views.round_size))
-    Random.randn!(rng, normal)
-    _fill_radial_buffers!(rng, buffers.radial)
+    rng = _rand_normal!(rng, normal; threaded)
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
+end
+
+function _launch_buffered_gramis_round!(
+    buffers,
+    state,
+    target,
+    round,
+    execution,
+    device,
+    factor_execution
+)
+    views = _first_order_gramis_round_views(state, round)
+    normal = view(buffers.normal, 1:(size(state.run.locations, 1) * views.round_size))
     _prepare_mis_normals!(normal, buffers.radial, state.run,
         views.assignments, buffers.failure_scratch.record.storage, execution)
     # Explicit batches use the shared MIS draw/value/weight phases, including
@@ -2713,8 +2686,7 @@ end
 function _importance_sample_cpu!(
     sampler,
     method_state::_PreparedFirstOrderGRAMIS,
-    threaded,
-)
+    threaded)
     cpu_execution = threaded ? _ThreadedCPUExecution() : _SerialCPUExecution()
     execution = sampler.device isa MLDataDevices.AbstractAcceleratorDevice ?
                 _KernelExecution(cpu_execution) : cpu_execution
@@ -2738,8 +2710,7 @@ function _importance_sample_cpu!(
         begin
             allocated_active_rounds = collect(
                 Int,
-                method_state.active_repulsion_rounds,
-            )
+                method_state.active_repulsion_rounds)
             active_repulsion_count = length(allocated_active_rounds)
             (
                 output=_allocate_gramis_output(method_state),
@@ -2748,8 +2719,7 @@ function _importance_sample_cpu!(
                 active_repulsion_rounds=allocated_active_rounds,
                 minimum_whitened_distances=Vector{T}(
                     undef,
-                    active_repulsion_count,
-                ),
+                    active_repulsion_count),
             )
         end,
     )
@@ -2911,8 +2881,7 @@ function _importance_sample_cpu!(
                         sampler.device,
                         workspace.whitened_means,
                         transfers,
-                        execution,
-                    )
+                        execution)
                     minimum_whitened_distances[active_repulsion_position[]] =
                         accelerator_device === nothing ?
                         _minimum_prepared_gramis_distance(
@@ -2974,12 +2943,10 @@ function _importance_sample_cpu!(
                     method_state,
                     round,
                     workspace.factor_info,
-                    execution,
-                )
+                    execution)
                 factor_failure = accelerator_device === nothing ?
                                  _update_local_covariances!(
-                    covariance_arguments...,
-                ) : _update_local_covariances!(
+                    covariance_arguments...) : _update_local_covariances!(
                     covariance_arguments...,
                     buffers.failure_scratch.record,
                     transfers,
@@ -2989,8 +2956,7 @@ function _importance_sample_cpu!(
                     sampler.device,
                     workspace.factor_info,
                     transfers,
-                    execution,
-                )
+                    execution)
                 accelerator_device === nothing ?
                 _throw_first_order_gramis_covariance_failure(
                     covariance_failure_arguments...,
@@ -3181,7 +3147,7 @@ function _backtrack_batch_values!(::Nothing, batch, execution, device, record, t
     indices = similar(batch.trials)
     offsets = similar(indices)
     _initialize_batch_backtracking_kernel!(backend)(arrays; ndrange=count, workgroupsize)
-    for trial in 1:batch.max_trials
+    for trial = 1:batch.max_trials
         offsets .= batch.active_mask
         cumsum!(offsets, offsets)
         width = _is_host_storage(offsets) ? offsets[end] : only(Array(view(offsets, count:count)))

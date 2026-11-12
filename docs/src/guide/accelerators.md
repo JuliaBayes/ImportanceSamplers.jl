@@ -6,7 +6,7 @@ The target data, proposal, random buffers, and adaptation state move together.
 ## Prepared state
 
 ```@example devices
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 import MLDataDevices
 
 function logtarget(x, p)
@@ -22,7 +22,7 @@ algorithm = ImportanceSampling(
     SphericalGaussian(zeros(Float32, 3), 1.5f0);
     nsamples=10_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, p, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, p, algorithm)
 nothing # hide
 ```
 
@@ -176,8 +176,11 @@ An accelerator-prepared sampler cannot itself migrate to another device or back 
 Use `current_proposal(MLDataDevices.CPUDevice(), sampler)` for a proposal snapshot.
 Use [`retarget`](@ref reuse-guide) to rebuild target-dependent state on the same device.
 
-Accelerator setup consumes a seed from the source RNG for a separate backend stream.
-Seeded replay assumes the same software, hardware, and execution configuration.
+Accelerator setup requires a native PureRNGs generator. Transfer preserves its
+generator family, key, and position without consuming a replacement seed.
+The source and transferred handles start from the same snapshot. Split the RNG
+explicitly for independent runs. Normal draws and floating-point reductions
+need not agree bitwise across devices.
 
 ## State containers
 
