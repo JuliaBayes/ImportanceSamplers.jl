@@ -154,7 +154,9 @@ function _retained_call(f, arguments...)
     client = _call_client(arguments...)
     shapes = map(_retained_shape, arguments)
     any(isnothing, shapes) && return Reactant.@jit client=client f(arguments...)
-    key = (f, client, map(typeof, arguments), shapes)
+    # Device identities in shapes determine the client. Fresh PJRT client
+    # wrappers compare equal but do not hash equally.
+    key = (f, map(typeof, arguments), shapes)
     compiled = @lock _RETAINED_CALLS_LOCK begin
         stored = get(_RETAINED_CALLS, key, nothing)
         if stored === nothing && length(_RETAINED_CALLS) < _RETAINED_CALL_LIMIT

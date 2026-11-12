@@ -298,8 +298,7 @@ function _draw_static_mis_batch!(sampler, method_state::_PreparedStaticMIS)
 
     first_slot = assignments[1]
     first_sample = _capture_sampler_failure(:proposal_draw, 1) do
-        sample, sampler.rng = _rand_proposal(sampler.rng, bank.proposals[first_slot])
-        sample
+        _draw_proposal!(sampler, bank.proposals[first_slot])
     end
     samples = _capture_sampler_failure(:proposal_draw, 1) do
         _allocate_batch(first_sample, length(assignments))
@@ -311,7 +310,7 @@ function _draw_static_mis_batch!(sampler, method_state::_PreparedStaticMIS)
     for sample_index = 2:length(assignments)
         slot = assignments[sample_index]
         _capture_sampler_failure(:proposal_draw, sample_index) do
-            sample, sampler.rng = _rand_proposal(sampler.rng, bank.proposals[slot])
+            sample = _draw_proposal!(sampler, bank.proposals[slot])
             _store_sample!(samples, sample, sample_index)
         end
     end

@@ -20,11 +20,12 @@ const _VALIDATED_IMPORTANCE_SAMPLING_TOKEN = _ValidatedImportanceSamplingToken()
 
 Configure plain or static multiple importance sampling.
 
-Generic CPU proposals require both operations below for the same normalized measure.
+Generic CPU proposals need one draw operation and the normalized density for the same measure.
 
 | Operation | Requirement |
 |:--|:--|
-| `Random.rand(rng, proposal)` | Return a scalar, vector, or named tuple with consistent shape and leaf types |
+| `Random.rand(rng, proposal)` | Mutable CPU RNGs: return a scalar, vector, or named tuple with consistent shape and leaf types |
+| `PureRNGs.rand_next(rng, proposal)` | Immutable CPU RNGs: return `(sample, next_rng)` with the same sample contract |
 | `DensityInterface.logdensityof(proposal, sample)` | Return the normalized log density of the draw law |
 
 `nsamples` must be a positive `Int` and is the exact number of samples
@@ -1090,8 +1091,7 @@ function _draw_prepared_batch(sampler)
     proposal = sampler.algorithm.proposal
     nsamples = sampler.algorithm.nsamples
     first_sample = _capture_sampler_failure(:proposal_draw, 1) do
-        sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
-        sample
+        _draw_proposal!(sampler, proposal)
     end
     batch = _capture_sampler_failure(:proposal_draw, 1) do
         _allocate_batch(first_sample, nsamples)
@@ -1102,7 +1102,7 @@ function _draw_prepared_batch(sampler)
 
     for sample_index = 2:nsamples
         _capture_sampler_failure(:proposal_draw, sample_index) do
-            sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
+            sample = _draw_proposal!(sampler, proposal)
             _store_sample!(batch, sample, sample_index)
         end
     end

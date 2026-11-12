@@ -386,6 +386,11 @@ _rand_scalar(rng) = PureRNGs.rand_next(rng, Float64)
 _rand_proposal(rng::Random.AbstractRNG, proposal) = (Random.rand(rng, proposal), rng)
 _rand_proposal(rng, proposal) = PureRNGs.rand_next(rng, proposal)
 
+function _draw_proposal!(sampler, proposal)
+    sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
+    return sample
+end
+
 function _fill_random_buffers!(rng, buffers::Union{_RandomBuffers,_PackedStaticMISRandomBuffers};
     threaded = false
 )

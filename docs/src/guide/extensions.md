@@ -31,6 +31,25 @@ It does not describe a Gaussian over the entire real line.
 The draw and density operations must describe the same normalized measure.
 The package cannot prove that property for a user-defined type.
 
+For an immutable RNG, implement `PureRNGs.rand_next(rng, proposal)` and return
+both the sample and the continued RNG:
+
+```@example extension
+using PureRNGs
+
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, ::UniformInterval)
+    uniform, next_rng = PureRNGs.rand_next(rng, Float64)
+    return 2uniform - 1, next_rng
+end
+
+samples = importance_sample(
+    Threefry4x32(42), x -> -1 <= x <= 1 ? -x^2 : -Inf,
+    ImportanceSampling(UniformInterval(); nsamples=5_000),
+)
+
+mean(x -> x^2, samples)
+```
+
 Generic proposals support CPU execution.
 Adaptive methods require their supported native proposal forms.
 A generic proposal does not become GPU-compatible through an Adapt rule alone.

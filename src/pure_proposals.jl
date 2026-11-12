@@ -99,20 +99,18 @@ function _rand_proposal(rng::PureRNGs.AbstractPureRNG, proposal::_NativeIndepend
     return sample, rng
 end
 
-_rand_product_values_next(rng, ::Tuple{}) = (), rng
-function _rand_product_values_next(rng, blocks::Tuple)
-    value, rng = _rand_proposal(rng, first(blocks))
-    remaining, rng = _rand_product_values_next(rng, Base.tail(blocks))
-    return (value, remaining...), rng
+function _draw_proposal!(
+    sampler::_PreparedImportanceSampler{<:PureRNGs.AbstractPureRNG},
+    proposal::ProductProposal,
+)
+    return map(block -> _draw_proposal!(sampler, block), proposal.blocks)
 end
 
-function _rand_proposal(rng::PureRNGs.AbstractPureRNG, proposal::ProductProposal)
-    block_values, rng = _rand_product_values_next(rng, values(proposal.blocks))
-    return NamedTuple{keys(proposal.blocks)}(block_values), rng
-end
-
-function _rand_proposal(rng::PureRNGs.AbstractPureRNG, proposal::TransformedProposal)
-    coordinates, rng = _rand_proposal(rng, proposal.base)
+function _draw_proposal!(
+    sampler::_PreparedImportanceSampler{<:PureRNGs.AbstractPureRNG},
+    proposal::TransformedProposal,
+)
+    coordinates = _draw_proposal!(sampler, proposal.base)
     logical_value, _ = _transform_with_logjac(proposal.transform, coordinates)
-    return logical_value, rng
+    return logical_value
 end

@@ -25,3 +25,37 @@ import MLDataDevices
     @test unweighted.samples == replay.samples
     @test rngposition(continued) == rngposition(replay_rng) > rngposition(next_rng)
 end
+
+@testset "Generic transform failures retain completed draws" begin
+    rng = Threefry4x32(1)
+    base = ProductProposal((
+        x = SphericalGaussian(100.0f0, 1.0f0),
+        g = IndependentGamma(2.0f0, 1.0f0),
+    ))
+    proposal = TransformedProposal(base, (x = PositiveTransform(),))
+    prefix = BoxUniform(0.0f0, 1.0f0)
+    for (input, control) in (
+        (proposal, base),
+        (ProposalBank([proposal]), ProposalBank([base])),
+        (
+            ProductProposal((prefix = prefix, inner = proposal)),
+            ProductProposal((prefix = prefix, inner = base)),
+        ),
+    )
+        sampler =
+            prepare_sampler(rng, Returns(0.0f0), ImportanceSampling(input; nsamples = 1))
+        reference =
+            prepare_sampler(rng, Returns(0.0f0), ImportanceSampling(control; nsamples = 1))
+        importance_sample!(reference)
+        failure = try
+            importance_sample!(sampler)
+            nothing
+        catch error
+            error
+        end
+        @test failure isa SamplerExecutionError &&
+              failure.phase == :proposal_draw &&
+              failure.captured.ex isa InvalidTransformError
+        @test current_rng(sampler) == current_rng(reference)
+    end
+end
