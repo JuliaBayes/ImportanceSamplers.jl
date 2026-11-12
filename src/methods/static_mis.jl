@@ -513,6 +513,7 @@ function _evaluate_static_mis_logweights!(
     denominator,
     samples,
     threaded,
+    save_logtargets::Val=Val(false),
 ) where {T<:AbstractFloat}
     nsamples = _sample_count(samples)
     target_logs = Vector{T}(undef, nsamples)
@@ -535,7 +536,7 @@ function _evaluate_static_mis_logweights!(
         _evaluate_proposal_logs!(logweights, denominator, samples)
     end
     _construct_logweights!(logweights, target_logs)
-    return logweights
+    return logweights, _saved_logtargets(save_logtargets, target_logs)
 end
 
 function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, threaded)
@@ -553,12 +554,13 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
         sampler.random_buffers.assignments,
         method_state.design.denominator,
     )
-    logweights = _evaluate_static_mis_logweights!(
+    logweights, logtargets = _evaluate_static_mis_logweights!(
         log_type,
         target,
         denominator,
         samples,
         threaded,
+        sampler.save_logtargets,
     )
     diagnostics = (
         method=:importance_sampling,
@@ -588,5 +590,6 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
         logweights;
         provenance=(proposal_id=proposal_ids,),
         diagnostics=diagnostics,
+        logtargets=logtargets,
     )
 end

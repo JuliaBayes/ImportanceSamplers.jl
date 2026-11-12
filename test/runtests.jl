@@ -30,6 +30,7 @@ test_files = if isempty(ARGS)
         "retarget",
         "threading",
         "results",
+        "saved_logtargets",
         "psis",
         "fitted_transport",
         "control_variates",

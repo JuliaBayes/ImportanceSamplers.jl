@@ -563,6 +563,7 @@ end
         [Inf],
         NamedTuple(),
         NamedTuple(),
+        nothing,
         forged_token,
     )
     @test_throws ArgumentError ImportanceSamplers.WeightedSampleView{Any}(
@@ -570,6 +571,7 @@ end
         view([Inf], 1:1),
         NamedTuple(),
         ImportanceSamplers._ResultTransferCounter(0, 0),
+        nothing,
         forged_token,
     )
 end

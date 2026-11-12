@@ -60,6 +60,27 @@ struct _NativeBatchTarget{L,T}
 end
 Adapt.@adapt_structure _NativeBatchTarget
 
+struct _SavingBatchTarget{T,V}
+    target::T
+    values::V
+end
+Adapt.@adapt_structure _SavingBatchTarget
+
+_save_target_evaluator(target::_NativeBatchTarget, ::Nothing) = target
+function _save_target_evaluator(target::_NativeBatchTarget{L}, values::AbstractVector) where {L}
+    saving = _SavingBatchTarget(target.target, values)
+    return _NativeBatchTarget{L,typeof(saving)}(saving)
+end
+_target_values(target::_NativeBatchTarget) = _target_values(target.target)
+_target_values(target::_SavingBatchTarget) = target.values
+
+function _invoke_batch_target!(target::_SavingBatchTarget, logs, samples, failures, execution;
+    transform=_NoSampleTransform())
+    _invoke_batch_target!(target.target, logs, samples, failures, execution; transform)
+    copyto!(target.values, logs)
+    return nothing
+end
+
 # Derivative kernels borrow the same scalar callable and context, without
 # retaining an unused host batch callback in their device arguments.
 _scalar_target(target) = target

@@ -278,7 +278,7 @@ function _validate_factor_execution(factor_execution)
     return factor_execution
 end
 
-mutable struct _PreparedImportanceSampler{R,B,T,A,M,D,F,E}
+mutable struct _PreparedImportanceSampler{R,B,T,A,M,D,F,E,S}
     rng::R
     random_buffers::B
     target::T
@@ -290,22 +290,43 @@ mutable struct _PreparedImportanceSampler{R,B,T,A,M,D,F,E}
     running::Bool
     executed::Bool
     backend_execution::E
+    save_logtargets::S
 end
 
 _PreparedImportanceSampler(rng, buffers, target, algorithm, state, device, factor_execution,
+    threaded, running, executed, save_logtargets::Val) = _PreparedImportanceSampler(rng, buffers, target,
+    algorithm, state, device, factor_execution, threaded, running, executed, nothing, save_logtargets)
+
+_PreparedImportanceSampler(rng, buffers, target, algorithm, state, device, factor_execution,
     threaded, running, executed) = _PreparedImportanceSampler(rng, buffers, target,
-    algorithm, state, device, factor_execution, threaded, running, executed, nothing)
+    algorithm, state, device, factor_execution, threaded, running, executed, Val(false))
+
+_allocate_saved_logtargets(::Val{false}, prototype, count=length(prototype)) = nothing
+_allocate_saved_logtargets(::Val{true}, prototype, count=length(prototype)) = similar(prototype, count)
+_saved_logtargets(::Val{false}, values) = nothing
+_saved_logtargets(::Val{true}, values) = values
+_logtarget_view(::Nothing, indices) = nothing
+_logtarget_view(values::AbstractVector, indices) = view(values, indices)
 
 _prepare_backend_execution(sampler) = sampler
 
 """
     prepare_sampler(rng, logtarget, algorithm;
-                    transform=nothing, factor_execution=nothing, threaded=true)
+                    transform=nothing, factor_execution=nothing, threaded=true,
+                    save_logtargets=false)
     prepare_sampler(rng, logtarget, p, algorithm;
-                    transform=nothing, factor_execution=nothing, threaded=true)
+                    transform=nothing, factor_execution=nothing, threaded=true,
+                    save_logtargets=false)
 
 Bind a target, optional context `p`, algorithm, CPU execution policy, and RNG
 into a reusable prepared sampler.
+
+Set `save_logtargets=true` to retain the exact target log densities used in
+weight construction in `result.logtargets`, aligned with the samples. Values
+are in sampling coordinates: `transform=` includes its forward log Jacobian,
+even when returned samples use logical coordinates. No target is evaluated
+again to fill this vector. Each result owns its vector on the sampling device;
+the default stores `nothing` and adds no sample-sized storage or execution work.
 
 An optional [`QuadraticCoupling`](@ref) maps latent vectors to physical vectors.
 A named `transform` uses complete, disjoint flat selectors such as
@@ -357,13 +378,14 @@ Native Gaussian MIS with wider logweights supports explicit batching without
 narrowing those weights. Its default remains fused; explicit batching uses
 a separate denominator buffer in the logweight precision.
 """
-function prepare_sampler(
+Base.@constprop :aggressive function prepare_sampler(
     rng::Random.AbstractRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
     transform=nothing,
     threaded=true,
+    save_logtargets=false,
 )
     target = _PreparedLogTarget(
         logtarget,
@@ -378,10 +400,11 @@ function prepare_sampler(
         factor_execution,
         transform,
         threaded,
+        save_logtargets,
     )
 end
 
-function prepare_sampler(
+Base.@constprop :aggressive function prepare_sampler(
     rng::Random.AbstractRNG,
     logtarget,
     context,
@@ -389,6 +412,7 @@ function prepare_sampler(
     factor_execution=nothing,
     transform=nothing,
     threaded=true,
+    save_logtargets=false,
 )
     target = _PreparedLogTarget(
         logtarget,
@@ -403,18 +427,21 @@ function prepare_sampler(
         factor_execution,
         transform,
         threaded,
+        save_logtargets,
     )
 end
 
-function _prepare_importance_sampler(
+Base.@constprop :aggressive function _prepare_importance_sampler(
     rng,
     target,
     algorithm,
     factor_execution,
     transform,
     threaded,
+    save_logtargets,
 )
     threaded isa Bool || throw(ArgumentError("threaded must be Bool"))
+    save_logtargets isa Bool || throw(ArgumentError("save_logtargets must be Bool"))
     factor_execution = _validate_factor_execution(factor_execution)
     algorithm, transform = _prepare_product_layout(algorithm, transform, target)
     proposal = _algorithm_proposal(algorithm)
@@ -439,6 +466,7 @@ function _prepare_importance_sampler(
         threaded,
         false,
         false,
+        Val(save_logtargets),
     )
 end
 
@@ -485,7 +513,8 @@ function _accelerator_product_source(sampler::_PreparedImportanceSampler{R,B,T,A
     target = sampler.target isa _PreparedLogTarget ? sampler.target :
         _PreparedLogTarget(sampler.target, _NoTargetContext(), ADTypes.NoAutoDiff(), nothing)
     return _prepare_importance_sampler(sampler.rng, target, algorithm,
-        sampler.factor_execution, lowered.layout, sampler.threaded)
+        sampler.factor_execution, lowered.layout, sampler.threaded,
+        sampler.save_logtargets isa Val{true})
 end
 
 _accelerator_method_state_limit(method_state) = nothing
@@ -589,6 +618,7 @@ function _transfer_prepared_sampler(
         sampler.threaded,
         false,
         false,
+        sampler.save_logtargets,
     )
 end
 
@@ -699,6 +729,7 @@ function _transfer_prepared_sampler(
             sampler.threaded,
             false,
             false,
+            sampler.save_logtargets,
         )
         destination = _prepare_backend_execution(destination)
         sampler.rng = _commit_rng_snapshot!(sampler.rng, source_rng)
@@ -767,6 +798,7 @@ function _retarget_sampler(rng, sampler, target)
         sampler.factor_execution,
         _prepared_target_layout(sampler.target),
         sampler.threaded,
+        sampler.save_logtargets isa Val{true},
     )
     return _restore_retarget_device(sampler, prepared)
 end
@@ -840,9 +872,11 @@ end
 
 """
     importance_sample(rng, logtarget, algorithm;
-                      transform=nothing, factor_execution=nothing, threaded=true)
+                      transform=nothing, factor_execution=nothing, threaded=true,
+                      save_logtargets=false)
     importance_sample(rng, logtarget, p, algorithm;
-                      transform=nothing, factor_execution=nothing, threaded=true)
+                      transform=nothing, factor_execution=nothing, threaded=true,
+                      save_logtargets=false)
 
 Run one complete importance-sampling estimator.
 
@@ -857,13 +891,14 @@ The result stores the algorithm's canonical raw log weights. Use
 [`normalized_weights`](@ref) for weights that sum to one and [`lognormalizer`](@ref)
 for the complete estimator's log normalizer.
 """
-function importance_sample(
+Base.@constprop :aggressive function importance_sample(
     rng::Random.AbstractRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
     transform=nothing,
     threaded=true,
+    save_logtargets=false,
 )
     sampler = prepare_sampler(
         rng,
@@ -872,11 +907,12 @@ function importance_sample(
         factor_execution=factor_execution,
         transform=transform,
         threaded=threaded,
+        save_logtargets=save_logtargets,
     )
     return importance_sample!(sampler)
 end
 
-function importance_sample(
+Base.@constprop :aggressive function importance_sample(
     rng::Random.AbstractRNG,
     logtarget,
     context,
@@ -884,6 +920,7 @@ function importance_sample(
     factor_execution=nothing,
     transform=nothing,
     threaded=true,
+    save_logtargets=false,
 )
     sampler = prepare_sampler(
         rng,
@@ -893,6 +930,7 @@ function importance_sample(
         factor_execution=factor_execution,
         transform=transform,
         threaded=threaded,
+        save_logtargets=save_logtargets,
     )
     return importance_sample!(sampler)
 end
@@ -943,7 +981,7 @@ end
 
 function _importance_sample_cpu!(sampler, ::_SingleProposalMethodState, threaded)
     execution = _sampling_execution(sampler.algorithm.proposal, threaded)
-    samples, logweights, transfers = _importance_sample!(sampler, execution)
+    samples, logweights, logtargets, transfers = _importance_sample!(sampler, execution)
     transfers = _ResultTransferCounter(transfers.count, transfers.bytes)
     samples = _map_result_samples(
         sampler.target,
@@ -952,10 +990,10 @@ function _importance_sample_cpu!(sampler, ::_SingleProposalMethodState, threaded
         transfers,
         sampler.threaded,
     )
-    return _single_proposal_result(sampler, execution, samples, logweights, transfers)
+    return _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets)
 end
 
-function _single_proposal_result(sampler, execution, samples, logweights, transfers)
+function _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets)
     diagnostics = (
         method=:importance_sampling,
         execution=_execution_name(execution),
@@ -973,9 +1011,10 @@ function _single_proposal_result(sampler, execution, samples, logweights, transf
             samples,
             logweights;
             diagnostics=diagnostics,
+            logtargets=logtargets,
         )
     end
-    return _adopt_weighted_samples(samples, logweights; diagnostics=diagnostics)
+    return _adopt_weighted_samples(samples, logweights; diagnostics=diagnostics, logtargets)
 end
 
 function _importance_sample_generic_cpu!(sampler, threaded)
@@ -986,12 +1025,13 @@ function _importance_sample_generic_cpu!(sampler, threaded)
         sampler.algorithm.proposal,
         samples,
     )
-    logweights = if threaded
+    logweights, logtargets = if threaded
         _evaluate_logweights_threaded(
             log_type,
             target,
             sampler.algorithm.proposal,
             samples,
+            sampler.save_logtargets,
         )
     else
         _evaluate_logweights(
@@ -999,16 +1039,21 @@ function _importance_sample_generic_cpu!(sampler, threaded)
             target,
             sampler.algorithm.proposal,
             samples,
+            sampler.save_logtargets,
         )
     end
-    return samples, logweights
+    return samples, logweights, logtargets
 end
+
+_evaluate_logweights_threaded(T, target, proposal, samples) =
+    first(_evaluate_logweights_threaded(T, target, proposal, samples, Val(false)))
 
 function _evaluate_logweights_threaded(
     ::Type{T},
     target,
     proposal,
     samples,
+    save_logtargets::Val,
 ) where {T<:Union{Float32,Float64}}
     nsamples = _sample_count(samples)
     target_logs = Vector{T}(undef, nsamples)
@@ -1021,7 +1066,7 @@ function _evaluate_logweights_threaded(
         Val(:proposal_logdensity),
     )
     _construct_logweights!(proposal_logs, target_logs)
-    return proposal_logs
+    return proposal_logs, _saved_logtargets(save_logtargets, target_logs)
 end
 
 function _evaluate_logs_threaded!(
@@ -1202,11 +1247,15 @@ function _canonical_inferred_log_type(inferred, label)
     return Float64 <: inferred ? Float64 : Float32
 end
 
+_evaluate_logweights(T, target, proposal, samples) =
+    first(_evaluate_logweights(T, target, proposal, samples, Val(false)))
+
 function _evaluate_logweights(
     ::Type{T},
     target,
     proposal,
     samples,
+    save_logtargets::Val,
 ) where {T<:Union{Float32,Float64}}
     nsamples = _sample_count(samples)
     target_logs = Vector{T}(undef, nsamples)
@@ -1214,7 +1263,7 @@ function _evaluate_logweights(
     _evaluate_target_logs!(target_logs, target, samples)
     _evaluate_proposal_logs!(proposal_logs, proposal, samples)
     _construct_logweights!(proposal_logs, target_logs)
-    return proposal_logs
+    return proposal_logs, _saved_logtargets(save_logtargets, target_logs)
 end
 
 function _evaluate_target_logs!(target_logs::Vector{T}, target, samples) where {T}

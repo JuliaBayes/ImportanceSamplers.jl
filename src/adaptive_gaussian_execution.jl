@@ -903,6 +903,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
     schedule = committed_state.schedule
     rounds = length(schedule)
     total_samples = last(committed_state.offsets) - 1
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, workspace.logtargets)
     round_ids = similar(workspace.logweights, Int, total_samples)
     transfers = _ResultTransferCounter(0, 0)
     accelerator = sampler.device isa MLDataDevices.AbstractAcceleratorDevice
@@ -949,6 +950,8 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
         _capture_moment_round(algorithm, method_state, transfers, round, :sampling, round - 1) do
             _draw_moment_round!(sampler, sampler.backend_execution, method_state,
                 round_ids, target_evaluator, round, execution)
+            indices = method_state.offsets[round]:(method_state.offsets[round + 1] - 1)
+            _copy_logtarget_round!(logtargets, workspace.logtargets, indices)
             if !deferred_accelerator_snapshot
                 snapshot = _moment_failure_snapshot!(
                     transfers,
@@ -1096,6 +1099,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
             copy(workspace.logweights);
             provenance=(round=round_ids,),
             diagnostics=diagnostics,
+            logtargets=logtargets,
         )
     end
     _capture_moment_round(

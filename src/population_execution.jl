@@ -425,6 +425,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
         total_samples,
     )
     round_ids = similar(workspace.round_proposal_ids, Int, total_samples)
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
     proposal_ids = similar(workspace.round_proposal_ids, Int, total_samples)
     round_ess = Vector{eltype(logweights)}(undef, length(plan.schedule))
     round_lognormalizers = similar(round_ess)
@@ -456,6 +457,8 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
     for round in eachindex(plan.schedule)
         round_views = _population_round_views(method_state, round)
         round_size = round_views.round_size
+        indices = plan.offsets[round]:(plan.offsets[round + 1] - 1)
+        retained_target = _save_target_evaluator(target_evaluator, _logtarget_view(logtargets, indices))
         _capture_population_round(algorithm, round, :transition, round_size, round - 1) do
             _before_prepared_population_round!(sampler.backend_execution, sampler,
                 method_state, target, round, execution, transfers)
@@ -477,7 +480,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
             round - 1,
         ) do
             _draw_population_round!(sampler.backend_execution, sampler, method_state,
-                target_evaluator, round, execution)
+                retained_target, round, execution)
             snapshot = _device_failure_snapshot(buffers.failure_scratch.record)
             _record_reported_transfer!(
                 transfers,
@@ -560,6 +563,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
             logweights;
             provenance=(round=round_ids, proposal_id=proposal_ids),
             diagnostics=diagnostics,
+            logtargets=logtargets,
         )
     end
     _commit_population_run!(method_state)

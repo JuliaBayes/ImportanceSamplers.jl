@@ -26,7 +26,11 @@ function _prepare_execution(sampler, state::IS._PreparedFirstOrderGRAMIS)
     evaluator, _ = IS._native_target_evaluator(KA.get_backend(buffers.normal), target,
         eltype(workspace.round_logweights), buffers.failure_scratch.target_failures)
     output = IS._allocate_gramis_output(state)
+    retained_values = IS._allocate_saved_logtargets(sampler.save_logtargets, output.logweights)
     rounds = map(eachindex(state.plan.schedule)) do round
+        indices = state.plan.offsets[round]:(state.plan.offsets[round + 1] - 1)
+        retained = IS._save_target_evaluator(evaluator, IS._logtarget_view(
+            retained_values, indices))
         draw_phase = (rng, buffers, inputs, evaluator) -> IS._launch_gramis_round!(
             rng, buffers, _gramis_state(inputs), evaluator, round, execution, device, factor_execution)
         fit_phase = inputs -> IS._fit_local_covariances!(_gramis_state(inputs), round, execution)
@@ -41,7 +45,7 @@ function _prepare_execution(sampler, state::IS._PreparedFirstOrderGRAMIS)
             return _logweight_moments(IS._first_order_gramis_round_views(traced, round).logweights),
                 _gramis_diagnostics(w.factor_status, w.steps, w.backtracking_trials)
         end
-        draw = Reactant.@compile draw_phase(rng, buffers, inputs, evaluator)
+        draw = Reactant.@compile draw_phase(rng, buffers, inputs, retained)
         fit = Reactant.@compile fit_phase(inputs)
         covariance = Reactant.@compile covariance_phase(inputs, record)
         publish = Reactant.@compile publish_phase(inputs, output)

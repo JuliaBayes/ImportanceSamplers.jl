@@ -320,6 +320,7 @@ function _importance_sample_cpu!(
         typeof(binding_sample),
     )
     logweights = similar(buffers.normal, log_type, nsamples)
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
     proposal_ids = similar(buffers.assignments, Int, nsamples)
     failure_scratch = buffers.failure_scratch
     target_evaluator, target_failures = _native_target_evaluator(
@@ -328,6 +329,7 @@ function _importance_sample_cpu!(
         log_type,
         failure_scratch.target_failures,
     )
+    target_evaluator = _save_target_evaluator(target_evaluator, logtargets)
     _launch_packed_static_mis!(
         samples,
         logweights,
@@ -350,11 +352,11 @@ function _importance_sample_cpu!(
     samples = _map_result_samples(sampler.target, samples, failure_scratch,
         transfers, sampler.threaded)
     return _packed_static_mis_result(sampler, samples, logweights, proposal_ids,
-        cpu_execution, transfers)
+        cpu_execution, transfers, logtargets)
 end
 
 function _packed_static_mis_result(sampler, samples, logweights, proposal_ids,
-    execution, transfers)
+    execution, transfers, logtargets)
     method_state = sampler.method_state
     diagnostics = (
         method=:importance_sampling,
@@ -377,5 +379,6 @@ function _packed_static_mis_result(sampler, samples, logweights, proposal_ids,
         logweights;
         provenance=(proposal_id=proposal_ids,),
         diagnostics=diagnostics,
+        logtargets=logtargets,
     )
 end

@@ -1,7 +1,7 @@
 """
     ParetoSmoothedSamples
 
-A weighted-sample result returned by [`psis`](@ref). Samples and provenance are
+A weighted-sample result returned by [`psis`](@ref). Samples, saved log targets, and provenance are
 shared with the input and must remain read-only. `logweights` contains a separate
 array of unnormalized Pareto-smoothed log weights. Existing weighted statistics,
 indexing, and resampling use these weights.
@@ -13,14 +13,15 @@ tail, not support coverage, arbitrary functionals, or adaptive dependence.
 [`lognormalizer`](@ref) is deliberately unavailable: smoothing changes that
 estimator. Keep the original result for its raw normalizer.
 """
-struct ParetoSmoothedSamples{R,S,W,P,D} <: _AbstractWeightedSamples{R}
+struct ParetoSmoothedSamples{R,S,W,P,D,L} <: _AbstractWeightedSamples{R}
     samples::S
     logweights::W
     provenance::P
     diagnostics::D
+    logtargets::L
 end
 
-function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnostics)
+function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnostics, logtargets)
     R = _result_record_type(samples, logweights, provenance)
     return ParetoSmoothedSamples{
         R,
@@ -28,11 +29,13 @@ function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnosti
         typeof(logweights),
         typeof(provenance),
         typeof(diagnostics),
+        typeof(logtargets),
     }(
         samples,
         logweights,
         provenance,
         diagnostics,
+        logtargets,
     )
 end
 
@@ -45,6 +48,7 @@ function (device::MLDataDevices.AbstractDevice)(result::ParetoSmoothedSamples)
         _transfer_result_storage(device, result.logweights),
         _transfer_result_storage(device, result.provenance),
         _transfer_result_storage(device, result.diagnostics),
+        _transfer_result_storage(device, result.logtargets),
     )
 end
 
@@ -132,6 +136,7 @@ function psis(result::_AbstractWeightedSamples; kwargs...)
         smoothed.logweights,
         result.provenance,
         smoothed.diagnostics,
+        result.logtargets,
     )
 end
 

@@ -2756,6 +2756,7 @@ function _importance_sample_cpu!(
     output = storage.output
     samples = output.samples
     logweights = output.logweights
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
     round_ids = output.round_ids
     proposal_ids = output.proposal_ids
     local_ess = output.local_ess
@@ -2813,6 +2814,8 @@ function _importance_sample_cpu!(
     )
 
     for round in eachindex(plan.schedule)
+        indices = plan.offsets[round]:(plan.offsets[round + 1] - 1)
+        retained_target = _save_target_evaluator(target_evaluator, _logtarget_view(logtargets, indices))
         @_capture_first_order_gramis_round(
             method_state,
             transfers,
@@ -2821,7 +2824,7 @@ function _importance_sample_cpu!(
             round - 1,
             begin
                 _sample_prepared_gramis_round!(sampler.backend_execution, sampler,
-                    method_state, target_evaluator, round, execution)
+                    method_state, retained_target, round, execution)
                 snapshot = _device_failure_snapshot(buffers.failure_scratch.record)
                 _record_reported_transfer!(
                     transfers,
@@ -3104,6 +3107,7 @@ function _importance_sample_cpu!(
                 logweights;
                 provenance=(round=round_ids, proposal_id=proposal_ids),
                 diagnostics=diagnostics,
+                logtargets=logtargets,
             )
             KernelAbstractions.synchronize(
                 KernelAbstractions.get_backend(method_state.run.locations),
