@@ -904,6 +904,8 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
     rounds = length(schedule)
     total_samples = last(committed_state.offsets) - 1
     logtargets = _allocate_saved_logtargets(sampler.save_logtargets, workspace.logtargets)
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, workspace.logweights, total_samples, _moment_history_binding_sample(history))
     round_ids = similar(workspace.logweights, Int, total_samples)
     transfers = _ResultTransferCounter(0, 0)
     accelerator = sampler.device isa MLDataDevices.AbstractAcceleratorDevice
@@ -948,9 +950,11 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
     for round in eachindex(schedule)
         deferred_accelerator_snapshot = accelerator
         _capture_moment_round(algorithm, method_state, transfers, round, :sampling, round - 1) do
-            _draw_moment_round!(sampler, sampler.backend_execution, method_state,
-                round_ids, target_evaluator, round, execution)
             indices = method_state.offsets[round]:(method_state.offsets[round + 1] - 1)
+            retained_target = _save_retained_target(target_evaluator, nothing, retention,
+                _retained_view(retained, indices), KernelAbstractions.get_backend(buffers.normal), target_failures)
+            _draw_moment_round!(sampler, sampler.backend_execution, method_state,
+                round_ids, retained_target, round, execution)
             _copy_logtarget_round!(logtargets, workspace.logtargets, indices)
             if !deferred_accelerator_snapshot
                 snapshot = _moment_failure_snapshot!(
@@ -1100,6 +1104,7 @@ function _importance_sample_cpu!(sampler, committed_state::_PreparedMomentSample
             provenance=(round=round_ids,),
             diagnostics=diagnostics,
             logtargets=logtargets,
+            retained=retained,
         )
     end
     _capture_moment_round(

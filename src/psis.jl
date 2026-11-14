@@ -13,15 +13,16 @@ tail, not support coverage, arbitrary functionals, or adaptive dependence.
 [`lognormalizer`](@ref) is deliberately unavailable: smoothing changes that
 estimator. Keep the original result for its raw normalizer.
 """
-struct ParetoSmoothedSamples{R,S,W,P,D,L} <: _AbstractWeightedSamples{R}
+struct ParetoSmoothedSamples{R,S,W,P,D,L,C} <: _AbstractWeightedSamples{R}
     samples::S
     logweights::W
     provenance::P
     diagnostics::D
     logtargets::L
+    retained::C
 end
 
-function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnostics, logtargets)
+function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnostics, logtargets, retained=nothing)
     R = _result_record_type(samples, logweights, provenance)
     return ParetoSmoothedSamples{
         R,
@@ -30,12 +31,14 @@ function _new_pareto_smoothed_samples(samples, logweights, provenance, diagnosti
         typeof(provenance),
         typeof(diagnostics),
         typeof(logtargets),
+        typeof(retained),
     }(
         samples,
         logweights,
         provenance,
         diagnostics,
         logtargets,
+        retained,
     )
 end
 
@@ -49,6 +52,7 @@ function (device::MLDataDevices.AbstractDevice)(result::ParetoSmoothedSamples)
         _transfer_result_storage(device, result.provenance),
         _transfer_result_storage(device, result.diagnostics),
         _transfer_result_storage(device, result.logtargets),
+        _transfer_result_storage(device, result.retained),
     )
 end
 
@@ -137,6 +141,7 @@ function psis(result::_AbstractWeightedSamples; kwargs...)
         result.provenance,
         smoothed.diagnostics,
         result.logtargets,
+        result.retained,
     )
 end
 

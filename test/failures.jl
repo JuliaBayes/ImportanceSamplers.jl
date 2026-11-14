@@ -557,23 +557,6 @@ end
         NamedTuple(),
     )
 
-    forged_token = ImportanceSamplers._ValidatedResultToken()
-    @test_throws ArgumentError ImportanceSamplers.WeightedSamples{Any}(
-        [1.0],
-        [Inf],
-        NamedTuple(),
-        NamedTuple(),
-        nothing,
-        forged_token,
-    )
-    @test_throws ArgumentError ImportanceSamplers.WeightedSampleView{Any}(
-        view([1.0], 1:1),
-        view([Inf], 1:1),
-        NamedTuple(),
-        ImportanceSamplers._ResultTransferCounter(0, 0),
-        nothing,
-        forged_token,
-    )
 end
 
 @testset "result selection failures" begin

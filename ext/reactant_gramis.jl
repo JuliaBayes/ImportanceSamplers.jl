@@ -27,10 +27,13 @@ function _prepare_execution(sampler, state::IS._PreparedFirstOrderGRAMIS)
         eltype(workspace.round_logweights), buffers.failure_scratch.target_failures)
     output = IS._allocate_gramis_output(state)
     retained_values = IS._allocate_saved_logtargets(sampler.save_logtargets, output.logweights)
+    retention = IS._retention_plan(sampler.target)
+    retained_output = IS._allocate_retained(retention, output.logweights, length(output.logweights), view(state.run.locations, :, 1))
     rounds = map(eachindex(state.plan.schedule)) do round
         indices = state.plan.offsets[round]:(state.plan.offsets[round + 1] - 1)
-        retained = IS._save_target_evaluator(evaluator, IS._logtarget_view(
-            retained_values, indices))
+        retained = IS._save_retained_target(evaluator, IS._logtarget_view(
+            retained_values, indices), retention, IS._retained_view(retained_output, indices),
+            KA.get_backend(buffers.normal), buffers.failure_scratch.target_failures)
         draw_phase = (rng, buffers, inputs, evaluator) -> IS._launch_gramis_round!(
             rng, buffers, _gramis_state(inputs), evaluator, round, execution, device, factor_execution)
         fit_phase = inputs -> IS._fit_local_covariances!(_gramis_state(inputs), round, execution)

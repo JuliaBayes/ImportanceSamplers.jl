@@ -426,6 +426,8 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
     )
     round_ids = similar(workspace.round_proposal_ids, Int, total_samples)
     logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, logweights, total_samples, _population_binding_sample(bank))
     proposal_ids = similar(workspace.round_proposal_ids, Int, total_samples)
     round_ess = Vector{eltype(logweights)}(undef, length(plan.schedule))
     round_lognormalizers = similar(round_ess)
@@ -458,7 +460,9 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
         round_views = _population_round_views(method_state, round)
         round_size = round_views.round_size
         indices = plan.offsets[round]:(plan.offsets[round + 1] - 1)
-        retained_target = _save_target_evaluator(target_evaluator, _logtarget_view(logtargets, indices))
+        retained_target = _save_retained_target(target_evaluator, _logtarget_view(logtargets, indices),
+            retention, _retained_view(retained, indices),
+            KernelAbstractions.get_backend(buffers.normals), target_failures)
         _capture_population_round(algorithm, round, :transition, round_size, round - 1) do
             _before_prepared_population_round!(sampler.backend_execution, sampler,
                 method_state, target, round, execution, transfers)
@@ -564,6 +568,7 @@ function _importance_sample_fixed_population!(sampler, method_state, threaded)
             provenance=(round=round_ids, proposal_id=proposal_ids),
             diagnostics=diagnostics,
             logtargets=logtargets,
+            retained=retained,
         )
     end
     _commit_population_run!(method_state)

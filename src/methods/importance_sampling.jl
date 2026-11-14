@@ -447,6 +447,7 @@ Base.@constprop :aggressive function _prepare_importance_sampler(
     proposal = _algorithm_proposal(algorithm)
     sample_budget = _algorithm_sample_budget(algorithm)
     prepared_target = _resolve_prepared_target(target, proposal, transform)
+    save_logtargets |= !isnothing(_retention_plan(prepared_target))
     method_state = _prepare_method_state(algorithm, prepared_target)
     device = MLDataDevices.CPUDevice()
     random_buffers = _allocate_random_buffers(
@@ -963,7 +964,10 @@ function importance_sample!(sampler::_PreparedImportanceSampler)
             threaded =
                 sampler.device isa MLDataDevices.AbstractAcceleratorDevice ||
                 sampler.threaded && Threads.nthreads(:default) > 1
-            return _execute_prepared_sampler!(sampler, sampler.backend_execution, threaded)
+            result = _execute_prepared_sampler!(sampler, sampler.backend_execution, threaded)
+            isnothing(_retention_plan(sampler.target)) || !isnothing(result.retained) ||
+                throw(ArgumentError("this sampler did not return the requested mapped coordinates"))
+            return result
         end
     finally
         sampler.running = false
@@ -981,7 +985,7 @@ end
 
 function _importance_sample_cpu!(sampler, ::_SingleProposalMethodState, threaded)
     execution = _sampling_execution(sampler.algorithm.proposal, threaded)
-    samples, logweights, logtargets, transfers = _importance_sample!(sampler, execution)
+    samples, logweights, logtargets, retained, transfers = _importance_sample!(sampler, execution)
     transfers = _ResultTransferCounter(transfers.count, transfers.bytes)
     samples = _map_result_samples(
         sampler.target,
@@ -990,10 +994,10 @@ function _importance_sample_cpu!(sampler, ::_SingleProposalMethodState, threaded
         transfers,
         sampler.threaded,
     )
-    return _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets)
+    return _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets, retained)
 end
 
-function _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets)
+function _single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets, retained=nothing)
     diagnostics = (
         method=:importance_sampling,
         execution=_execution_name(execution),
@@ -1012,9 +1016,10 @@ function _single_proposal_result(sampler, execution, samples, logweights, transf
             logweights;
             diagnostics=diagnostics,
             logtargets=logtargets,
+            retained=retained,
         )
     end
-    return _adopt_weighted_samples(samples, logweights; diagnostics=diagnostics, logtargets)
+    return _adopt_weighted_samples(samples, logweights; diagnostics=diagnostics, logtargets, retained)
 end
 
 function _importance_sample_generic_cpu!(sampler, threaded)
@@ -1025,6 +1030,9 @@ function _importance_sample_generic_cpu!(sampler, threaded)
         sampler.algorithm.proposal,
         samples,
     )
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, samples, _sample_count(samples), _sample_at(samples, 1))
+    target = _bind_retained_target(target, retention, retained)
     logweights, logtargets = if threaded
         _evaluate_logweights_threaded(
             log_type,
@@ -1042,7 +1050,7 @@ function _importance_sample_generic_cpu!(sampler, threaded)
             sampler.save_logtargets,
         )
     end
-    return samples, logweights, logtargets
+    return samples, logweights, logtargets, retained
 end
 
 _evaluate_logweights_threaded(T, target, proposal, samples) =
@@ -1186,10 +1194,12 @@ function _resolve_prepared_target(
     target::_PreparedLogTarget{F,_NoTargetContext},
     proposal,
 ) where {F}
+    isnothing(target.retain) || return target
     return _prepare_target(target.logdensity, proposal)
 end
 
 function _resolve_prepared_target(target::_PreparedLogTarget, proposal)
+    isnothing(target.retain) || return target
     return _prepare_target(target.logdensity, target.context, proposal)
 end
 
@@ -1319,7 +1329,7 @@ end
 
 function _target_logdensity(target, sample, sample_index)
     return _capture_sampler_failure(:target, sample_index) do
-        value = target(sample)
+        value = _target_value(target, sample, sample_index)
         _validate_target_logdensity(value)
         value
     end
