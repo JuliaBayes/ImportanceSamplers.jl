@@ -3,6 +3,7 @@
 ## Unreleased (0.0.2)
 
 - Fix accelerator AutoEnzyme gradients for reductions over sampled parameters.
+- Retain mapped coordinates and Jacobians during importance draws without recording adaptation or MCMC trials.
 - Optional `save_logtargets=true` retains sampling-coordinate target log densities without reevaluation.
 - Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.

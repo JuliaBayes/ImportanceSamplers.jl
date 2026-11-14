@@ -89,6 +89,7 @@ function _prepare_explicit_batch_gradient(
     values,
     gradients = locations,
 )
+    target = _without_retention(target)
     callback = target.gradient.batch
     arguments =
         target.context isa _NoTargetContext ? (values, gradients, locations) :
@@ -134,6 +135,7 @@ _fill_batch_gradient!(gradients::NamedTuple) =
     foreach(_fill_batch_gradient!, values(gradients))
 
 function _prepare_explicit_batch_gradient(target::_NamedPreparedTarget, locations, values)
+    target = _without_retention(target)
     mapped =
         _allocate_flat_samples(locations, eltype(locations), target.layout, length(values))
     gradients = similar(

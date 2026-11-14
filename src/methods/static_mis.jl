@@ -554,6 +554,9 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
         sampler.random_buffers.assignments,
         method_state.design.denominator,
     )
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, samples, _sample_count(samples), _sample_at(samples, 1))
+    target = _bind_retained_target(target, retention, retained)
     logweights, logtargets = _evaluate_static_mis_logweights!(
         log_type,
         target,
@@ -591,5 +594,6 @@ function _importance_sample_cpu!(sampler, method_state::_PreparedStaticMIS, thre
         provenance=(proposal_id=proposal_ids,),
         diagnostics=diagnostics,
         logtargets=logtargets,
+        retained=retained,
     )
 end

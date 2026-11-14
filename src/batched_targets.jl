@@ -86,7 +86,7 @@ end
 _scalar_target(target) = target
 function _scalar_target(target::_PreparedLogTarget)
     gradient = _scalar_gradient(target.gradient)
-    isnothing(target.batch) && gradient === target.gradient && return target
+    isnothing(target.batch) && isnothing(target.retain) && gradient === target.gradient && return target
     return _PreparedLogTarget(target.logdensity, target.context, target.adtype, gradient)
 end
 _scalar_target(target::_NamedPreparedTarget) =
@@ -170,6 +170,7 @@ function _invoke_batch_target!(target::_BoundNamedTarget, logs, samples, failure
     _check_batch_mapping!(target, mapping_failures, failure_storage !== nothing)
     _invoke_batch_target!(target.target, logs, mapped, failure_storage, execution)
     logs .+= jacobians
+    _add_retained_batch_jacobians!(_retained_jacobians(target.target), jacobians)
     if failure_storage !== nothing
         _validate_batch_values_kernel!(backend)(logs, failure_storage;
             ndrange=length(logs), workgroupsize=_native_workgroupsize(execution, length(logs)))
