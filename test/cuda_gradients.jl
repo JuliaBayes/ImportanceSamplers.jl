@@ -3,6 +3,22 @@ import ADTypes, MLDataDevices
 
 CUDA.allowscalar(false)
 
+@testset "CUDA automatic reductions ($T)" for T in (Float32, Float64)
+    device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(), nothing)
+    bank = ProposalBank([
+        FactorGaussian(fill(T(shift), 4), Matrix{T}(I, 4, 4)) for shift in (-0.2, 0.2)
+    ])
+    algorithm =
+        FirstOrderGRAMIS(bank; rounds = 2, round_size = 64, repulsion_strength = zero(T))
+    f = x -> -sum(abs2, x) / 2
+    automatic = LogTarget(f, ADTypes.AutoEnzyme())
+    analytic = LogTarget(f; grad = (g, x) -> map!(-, g, x))
+    actual = importance_sample!(device(prepare_sampler(Xoshiro(54), automatic, algorithm)))
+    expected = importance_sample!(device(prepare_sampler(Xoshiro(54), analytic, algorithm)))
+    @test Array(actual.samples) ≈ Array(expected.samples) rtol=128eps(T)
+    @test Array(actual.logweights) ≈ Array(expected.logweights) rtol=128eps(T)
+end
+
 function cuda_gradient_logtarget(x, p)
     value = zero(eltype(x))
     for i in eachindex(x)
