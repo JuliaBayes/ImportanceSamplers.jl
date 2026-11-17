@@ -12,6 +12,7 @@ import LinearAlgebra
 import LogDensityProblems
 import LogExpFunctions
 import MLDataDevices
+import PureRNGs
 import Random
 import Statistics
 import SpecialFunctions
@@ -88,6 +89,7 @@ export AbstractImportanceSampler,
     WeightedSamples,
     WeightedSampleView,
     current_proposal,
+    current_rng,
     control_variate_mean,
     fit_control_variate,
     fit_transport,
@@ -100,7 +102,8 @@ export AbstractImportanceSampler,
     prepare_sampler,
     RetainCoordinates,
     retarget,
-    resample
+    resample,
+    resample_next
 
 include("proposals.jl")
 include("transforms.jl")
@@ -116,6 +119,7 @@ include("named_derivatives.jl")
 include("methods/importance_sampling.jl")
 include("storage.jl")
 include("execution.jl")
+include("pure_proposals.jl")
 include("methods/static_mis.jl")
 include("population_preparation.jl")
 include("methods/dm_pmc.jl")

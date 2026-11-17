@@ -120,12 +120,12 @@ covariance, and scalar checks return to CPU for proposal construction.
 The fit returns CPU parameters for the usual prepare-then-transfer workflow:
 
 ```julia
-import CUDA, MLDataDevices
+import CUDA, MLDataDevices, PureRNGs
 CUDA.allowscalar(false)
-device = MLDataDevices.gpu_device()
+device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(), nothing)
 device_pilot = device(pilot)
 fit = fit_transport(device_pilot)
-prepared = device(prepare_sampler(Xoshiro(41), logtarget,
+prepared = device(prepare_sampler(PureRNGs.Threefry4x32(41), logtarget,
     ImportanceSampling(fit.proposal; nsamples=1_000_000); transform=fit.transform))
 samples = importance_sample!(prepared)
 ```

@@ -44,7 +44,9 @@ jobs:
         if: matrix.julia == '1' && matrix.os == 'ubuntu-latest'
         run: >-
           julia --code-coverage=@. -e
-          'using Pkg; Pkg.activate(; temp=true); Pkg.develop(path=pwd());
+          'using Pkg; Pkg.activate(; temp=true);
+          Pkg.add(PackageSpec(url="https://github.com/BJMCox/PureRNGs.jl", rev="dev"));
+          Pkg.develop(path=pwd());
           Pkg.add(["Reactant", "CUDA", "MLDataDevices", "DensityInterface"]);
           include("test/reactant_cpu.jl")'
       - uses: julia-actions/julia-processcoverage@v1

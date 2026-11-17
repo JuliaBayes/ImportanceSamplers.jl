@@ -6,6 +6,9 @@ include("support/proposals.jl")
 test_files = if isempty(ARGS)
     [
         "algorithm",
+        "purerngs",
+        "purerngs_adaptive",
+        "purerngs_transitions",
         "static_mis",
         "static_mis_kernel",
         "adaptive_schedule",

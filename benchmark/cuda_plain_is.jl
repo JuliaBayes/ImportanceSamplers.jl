@@ -4,6 +4,7 @@ using ImportanceSamplers
 using MLDataDevices
 using Pkg
 using Random
+using PureRNGs
 
 include(joinpath(@__DIR__, "..", "validation", "cuda_plain_is_support.jl"))
 
@@ -141,7 +142,7 @@ function benchmark_type(device, ::Type{T}) where {T}
     algorithm = ImportanceSampling(case.proposal; nsamples=SAMPLE_COUNT)
 
     cold_sampler = prepare_sampler(
-        Xoshiro(BENCHMARK_SEED),
+        Threefry4x32(BENCHMARK_SEED),
         case.target,
         case.context,
         algorithm;
@@ -152,7 +153,7 @@ function benchmark_type(device, ::Type{T}) where {T}
     cold = run(cold_benchmark; samples=1, evals=1, warmup=false)
 
     sampler = prepare_sampler(
-        Xoshiro(BENCHMARK_SEED),
+        Threefry4x32(BENCHMARK_SEED),
         case.target,
         case.context,
         algorithm;
@@ -173,7 +174,7 @@ function benchmark_type(device, ::Type{T}) where {T}
     sustained_warm_benchmark = @benchmarkable synchronized_sustained_warm_execution(
         $sampler, $SUSTAINED_WARM_EXECUTIONS,
     ) setup=(CUDA.synchronize()) gcsample=true
-    rng_benchmark = @benchmarkable synchronized(Random.randn!, $rng, $normals)
+    rng_benchmark = @benchmarkable synchronized(PureRNGs.randn_next!, $rng, $normals)
     synthetic_proposal_benchmark = @benchmarkable synchronized(
         synthetic_proposal_generation!, $samples, $normals, $location, $scale,
     )

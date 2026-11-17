@@ -21,8 +21,7 @@ function _copy_accelerator_algorithm(
 end
 
 _accelerator_method_state_limit(
-    ::_PreparedStaticMIS{<:_PackedStaticBank},
-) = nothing
+    ::_PreparedStaticMIS{<:_PackedStaticBank}) = nothing
 
 function _prepare_transferred_method_state(
     device,
@@ -43,8 +42,7 @@ _transfer_static_mis_denominator(device, denominator) = denominator
 
 function _transfer_static_mis_denominator(
     device,
-    denominator::_PartialMixtureDenominator,
-)
+    denominator::_PartialMixtureDenominator)
     return _PartialMixtureDenominator(
         _copy_to_device(device, denominator.group_of_slot),
         _copy_to_device(device, denominator.offsets),
@@ -62,13 +60,11 @@ _transferred_backend_state(
 
 _prepared_backend_state(
     sampler,
-    method_state::_PreparedStaticMIS{<:_PackedStaticBank},
-) = (
+    method_state::_PreparedStaticMIS{<:_PackedStaticBank}) = (
     method_state,
     sampler.target,
     sampler.random_buffers,
-    sampler.rng,
-)
+    sampler.rng)
 
 function _preflight_accelerator_method(
     device,
@@ -126,8 +122,7 @@ end
     assignments,
     uniforms,
     cdf,
-    assignment,
-)
+    assignment)
     sample_index = @index(Global, Linear)
     @inbounds assignments[sample_index] = _static_mis_assignment(
         assignment,
@@ -149,8 +144,7 @@ end
 function _allocate_packed_static_mis_samples(
     prototype,
     bank::_PackedFactorBank,
-    nsamples,
-)
+    nsamples)
     return similar(
         prototype,
         eltype(_static_bank_parameters(bank)),
@@ -198,8 +192,7 @@ function _preflight_packed_static_mis_kernel_target(
         buffers.assignments,
         buffers.uniform,
         bank.cdf,
-        method_state.design.assignment,
-    )
+        method_state.design.assignment)
         _preflight_kernel_argument(device, assignment_kernel, argument)
     end
 
@@ -243,8 +236,7 @@ function _resolve_packed_static_mis_logweight_type(target, bank, sample_type)
     return promote_type(
         target_type,
         eltype(bank.lognormalizers),
-        eltype(bank.logmasses),
-    )
+        eltype(bank.logmasses))
 end
 
 function _launch_packed_static_mis!(
@@ -300,15 +292,15 @@ function _importance_sample_cpu!(
     threaded,
 )
     cpu_execution = threaded ? _ThreadedCPUExecution() : _SerialCPUExecution()
-    buffers = _capture_sampler_failure(:proposal_draw, 1) do
-        _fill_random_buffers!(sampler.rng, sampler.random_buffers)
+    buffers = sampler.random_buffers
+    _capture_sampler_failure(:proposal_draw, 1) do
+        sampler.rng = _fill_random_buffers!(sampler.rng, buffers; threaded)
     end
     nsamples = sampler.algorithm.nsamples
     samples = _allocate_packed_static_mis_samples(
         buffers.normal,
         method_state.bank,
-        nsamples,
-    )
+        nsamples)
     binding_sample = _native_binding_sample(samples)
     transfers = _ResultTransferCounter(0, 0)
     target = _capture_sampler_failure(:target, 1) do

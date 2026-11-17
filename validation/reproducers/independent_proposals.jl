@@ -1,4 +1,5 @@
 using ImportanceSamplers, Random, Statistics, Test
+using PureRNGs: Threefry4x32
 import DensityInterface: logdensityof
 import MLDataDevices
 
@@ -9,6 +10,7 @@ function check_independent_proposals(;
     T = Float64,
     count = 4096,
 )
+    rng(seed) = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(seed) : Xoshiro(seed)
     cases = (
         (BoxUniform(T[-2, 0], T[2, 3]), BoxUniform(T[-3, -1], T[3, 4])),
         (IndependentGamma(T[0.5, 5], T[2, 0.2]), IndependentGamma(T[2, 3], T[1, 1])),
@@ -17,7 +19,7 @@ function check_independent_proposals(;
     @testset "independent proposals on $(typeof(device)), $T" begin
         for (target, other) in cases
             single =
-                prepare_sampler(Xoshiro(1801), target, ImportanceSampling(target; nsamples = count))
+                prepare_sampler(rng(1801), target, ImportanceSampling(target; nsamples = count))
             result = importance_sample!(device(single))
             @test isresident(result.samples) && isresident(result.logweights)
             host = MLDataDevices.CPUDevice()(result)
@@ -30,7 +32,7 @@ function check_independent_proposals(;
                 PartialDeterministicMixture([[1], [2]]),
             )
                 sampler = prepare_sampler(
-                    Xoshiro(1802),
+                    rng(1802),
                     target,
                     ImportanceSampling(bank; nsamples = count, mis_scheme = scheme),
                 )
@@ -58,11 +60,12 @@ independent_positive_target(x, base) = logdensityof(base, log(x)) - log(x)
 
 "Check shared transforms and whole-call draw failure without scalar device reads."
 function check_independent_proposal_edges(; device = MLDataDevices.CPUDevice(), T = Float32)
+    rng(seed) = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(seed) : Xoshiro(seed)
     @testset "independent proposal edges on $(typeof(device)), $T" begin
         for base in (BoxUniform(-one(T), one(T)), IndependentGamma(T(2), T(0.2)))
             q = TransformedProposal(base, PositiveTransform())
             sampler = prepare_sampler(
-                Xoshiro(1803),
+                rng(1803),
                 independent_positive_target,
                 base,
                 ImportanceSampling(q; nsamples = 256),
@@ -73,7 +76,7 @@ function check_independent_proposal_edges(; device = MLDataDevices.CPUDevice(), 
         layout = (; rate = 1=>PositiveTransform(), offset = 2)
         for q in (BoxUniform(T[-1, -1], T[1, 1]), IndependentGamma(T[2, 2], T[0.2, 0.2]))
             sampler = prepare_sampler(
-                Xoshiro(1804),
+                rng(1804),
                 independent_named_target,
                 nothing,
                 ImportanceSampling(q; nsamples = 256);
@@ -88,7 +91,7 @@ function check_independent_proposal_edges(; device = MLDataDevices.CPUDevice(), 
             @test result.logweights ≈ expected rtol=128eps(T) atol=128eps(T)
         end
         q = IndependentGamma(T(1e-10), one(T))
-        sampler = device(prepare_sampler(Xoshiro(1805), q, ImportanceSampling(q; nsamples = 1)))
+        sampler = device(prepare_sampler(rng(1805), q, ImportanceSampling(q; nsamples = 1)))
         failure = try
             importance_sample!(sampler)
         catch error

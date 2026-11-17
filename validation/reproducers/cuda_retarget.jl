@@ -1,7 +1,7 @@
 using CUDA
+using PureRNGs: Threefry4x32, rand_next
 using ImportanceSamplers
 using MLDataDevices
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -65,7 +65,7 @@ end
 function cuda_retarget_case(device, caller, target, algorithm, seed)
     T = Float32
     source = prepare_sampler(
-        Random.Xoshiro(seed),
+        Threefry4x32(seed),
         target,
         cuda_retarget_context(T, (-0.25, 0.25), 0.0),
         algorithm;
@@ -78,16 +78,14 @@ function cuda_retarget_case(device, caller, target, algorithm, seed)
     committed = cuda_retarget_snapshot(
         current_proposal(MLDataDevices.cpu_device(), source),
     )
-    root_rng = Random.Xoshiro(seed + 1)
-    rng_oracle = copy(root_rng)
-    rand(rng_oracle, UInt64)
+    _, root_rng = rand_next(Threefry4x32(seed + 1), UInt64)
     sampler = @inferred retarget(
         root_rng,
         source,
         target,
         cuda_retarget_context(T, (0.75, -0.5), 1.0),
     )
-    @test rand(root_rng, UInt64) == rand(rng_oracle, UInt64)
+    @test MLDataDevices.CPUDevice()(current_rng(sampler)) == root_rng
     @test CUDA.device() == caller
     @test sampler.device == device
     @test cuda_retarget_snapshot(

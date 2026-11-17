@@ -4,11 +4,13 @@ Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterCodeBlocks = "b6400b83-267f-4b55-9fd8-bffc853bdfd8"
 ImportanceSamplers = "f51d20bd-8e2c-46f0-bdaa-6990265b9f1c"
 MLDataDevices = "7e8f7934-dd98-4c1a-8fe8-92b47a384d40"
+PureRNGs = "2ccaadc3-3d9a-45d4-a2ec-95a2424790b7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [sources]
 ImportanceSamplers = {path = ".."}
+PureRNGs = {rev = "dev", url = "https://github.com/BJMCox/PureRNGs.jl"}
 
 [compat]
 DensityInterface = "0.4"

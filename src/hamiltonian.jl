@@ -383,7 +383,7 @@ function _hmc_trajectory!(state, chain, slot)
         momentum[row] += halfstep * gradient[row]
     end
     value = state.logtargets[chain]
-    for leapfrog in 1:(state.leapfrog_steps)
+    for leapfrog = 1:(state.leapfrog_steps)
         _hmc_velocity!(velocity, whitened, momentum, state.mass_root)
         if !(all(isfinite, momentum) && all(isfinite, velocity))
             state.work[4, chain] = 1
@@ -487,9 +487,11 @@ function _hmc_record_sweep!(state, warmup)
 end
 
 function _hmc_sweep!(state::_HamiltonianState, rng, execution, transfers; warmup=false)
+    try
     _initialize_hmc!(state, execution)
-    Random.randn!(rng, state.normals)
-    Random.rand!(rng, state.uniforms)
+        rng = _rand_normal!(rng, state.normals; threaded = _transition_threaded(execution))
+        rng =
+            _rand_uniform!(rng, state.uniforms; threaded = _transition_threaded(execution))
     fill!(state.work, 0)
     fill!(state.acceptance, zero(eltype(state.acceptance)))
     fill!(state.energy_error, eltype(state.energy_error)(NaN))
@@ -497,7 +499,10 @@ function _hmc_sweep!(state::_HamiltonianState, rng, execution, transfers; warmup
         _hmc_trajectory!(state, chain, slot)
     end
     _hmc_record_sweep!(state, warmup)
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _hmc_tune_step!(state)
@@ -520,18 +525,23 @@ function _hmc_tune_step!(state)
 end
 
 function _warmup_hmc!(state::_HamiltonianState, rng, execution, transfers)
+    try
     _initialize_hmc!(state, execution)
     while state.n_tuned < state.warmup_steps
-        _hmc_sweep!(state, rng, execution, transfers; warmup=true)
+            rng, failure = _hmc_sweep!(state, rng, execution, transfers; warmup=true)
+            isnothing(failure) || return rng, failure
         state.n_tuned = Base.Checked.checked_add(state.n_tuned, 1)
         _hmc_tune_step!(state)
     end
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 function transition!(state::_HamiltonianState, target, rng, execution, transfers)
-    _warmup_hmc!(state, rng, execution, transfers)
-    _hmc_sweep!(state, rng, execution, transfers)
-    return nothing
+    rng, failure = _warmup_hmc!(state, rng, execution, transfers)
+    isnothing(failure) || return rng, failure
+    return _hmc_sweep!(state, rng, execution, transfers)
 end
 
 function _gather_hmc_centres!(state::_HamiltonianState, ancestors)

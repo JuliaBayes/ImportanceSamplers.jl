@@ -36,16 +36,16 @@ end
     target_values = @localmem eltype(batch.logtargets) (2,)
     status = @localmem UInt16 (2,) # failure reason and acceptance flag
     invalid = @localmem Bool (_TRANSITION_WORKGROUP_SIZE,)
-    for step in 1:steps
+    for step = 1:steps
         isfinite(batch.logtargets[chain]) || break
         invalid[lane] = false
         if lane == 1
             status[1] = 0
             status[2] = 0
         end
-        for row in lane:lanes:dimension
+        for row = lane:lanes:dimension
             increment = zero(T)
-            for column in 1:row
+            for column = 1:row
                 increment += batch.factors[row, column, chain] * normals[column, chain, step]
             end
             value = _population_sample_coordinate(batch.centres, row, chain) + increment
@@ -62,7 +62,7 @@ end
                 target_values[2] = min(zero(value), value - batch.logtargets[chain])
                 status[1] = failed ? reason : UInt16(0)
                 norm = zero(T)
-                for row in 1:dimension
+                for row = 1:dimension
                     norm = hypot(norm, normals[row, chain, step])
                 end
                 parameters[1] = norm
@@ -75,9 +75,9 @@ end
         end
         @synchronize()
         if iszero(status[1])
-            for row in lane:lanes:dimension
+            for row = lane:lanes:dimension
                 value = zero(T)
-                for column in 1:row
+                for column = 1:row
                     value += batch.factors[row, column, chain] *
                         (normals[column, chain, step] / parameters[1])
                 end
@@ -85,7 +85,7 @@ end
             end
         end
         @synchronize()
-        for column in 1:dimension
+        for column = 1:dimension
             if lane == 1 && iszero(status[1])
                 diagonal = batch.factors[column, column, chain]
                 next, ratio = _transition_rankone_diagonal(
@@ -100,7 +100,7 @@ end
             end
             @synchronize()
             if iszero(status[1])
-                for row in (column + lane):lanes:dimension
+                for row = (column + lane):lanes:dimension
                     value = direction[row, chain]
                     factor, next_direction = _transition_rankone_entry(
                         batch.factors[row, column, chain], value,
@@ -123,7 +123,7 @@ end
         end
         @synchronize()
         if !iszero(status[2])
-            for row in lane:lanes:dimension
+            for row = lane:lanes:dimension
                 _store_population_location!(batch.centres, row, chain,
                     _population_sample_coordinate(batch.candidates, row, chain))
             end
@@ -176,32 +176,44 @@ function _initialize_transition_batch!(backend, state, target, transfers)
 end
 
 function _enqueue_transition_move!(backend, state, evaluator, rng, update)
-    _launch_transition_move!(backend, state, evaluator, rng, update)
+    rng, failure = _launch_transition_move!(backend, state, evaluator, rng, update)
+    isnothing(failure) || return rng, failure
     state.steps += 1
-    return nothing
+    return rng, nothing
 end
 
 function _launch_transition_move!(backend, state, evaluator, rng, update, execution=_ThreadedCPUExecution())
-    Random.randn!(rng, state.normals)
-    Random.rand!(rng, state.uniforms)
+    rng = _rand_normal!(rng, state.normals; threaded = _transition_threaded(execution))
+    rng = _rand_uniform!(rng, state.uniforms; threaded = _transition_threaded(execution))
+    try
     if evaluator isa _NativeBatchTarget
-        return _launch_batched_transition!(_transition_arrays(state), state.batch_values,
+            _launch_batched_transition!(_transition_arrays(state), state.batch_values,
             evaluator.target, update, state.failure_scratch.record.storage, execution)
-    end
+            return rng, nothing
+        end
     _transition_step_kernel!(backend)(_transition_arrays(state), evaluator, update,
         state.failure_scratch.record.storage; ndrange=length(state.logtargets))
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _transition_batch!(backend, state, target, rng, execution, transfers, update)
+    try
     evaluator = _initialize_transition_batch!(backend, state, target, transfers)
-    _enqueue_transition_move!(backend, state, evaluator, rng, update)
+        rng, failure = _enqueue_transition_move!(backend, state, evaluator, rng, update)
+        isnothing(failure) || return rng, failure
     KernelAbstractions.synchronize(backend)
     _check_transition_failure!(state, transfers)
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _warmup_transition!(backend, state, target, rng, execution, transfers)
+    try
     walk = state.walk
     evaluator = _initialize_transition_batch!(backend, walk, target, transfers)
     remaining = state.tuning.steps - state.n_tuned
@@ -210,16 +222,21 @@ function _warmup_transition!(backend, state, target, rng, execution, transfers)
         capacity = size(normals, 3)
         while state.n_tuned < state.tuning.steps
             steps = min(capacity, state.tuning.steps - state.n_tuned)
-            _launch_transition_warmup!(backend, state, evaluator, rng,
+                rng, failure = _launch_transition_warmup!(backend, state, evaluator, rng,
                 normals, uniforms, state.n_tuned, steps)
+                isnothing(failure) || return rng, failure
             state.n_tuned += steps
             walk.steps += steps
         end
     end
-    _enqueue_transition_move!(backend, walk, evaluator, rng, nothing)
+        rng, failure = _enqueue_transition_move!(backend, walk, evaluator, rng, nothing)
+        isnothing(failure) || return rng, failure
     KernelAbstractions.synchronize(backend)
     _check_transition_failure!(walk, transfers)
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _transition_warmup_buffers(walk, remaining)
@@ -232,10 +249,11 @@ end
 
 function _launch_transition_warmup!(backend, state, evaluator, rng, normals, uniforms, first_step, steps)
     walk = state.walk
-    Random.randn!(rng, view(normals, :, :, 1:steps))
-    Random.rand!(rng, view(uniforms, :, 1:steps))
+    rng = _rand_normal!(rng, view(normals, :, :, 1:steps))
+    rng = _rand_uniform!(rng, view(uniforms, :, 1:steps))
+    try
     if evaluator isa _NativeBatchTarget
-        for step in 1:steps
+        for step = 1:steps
             batch = merge(_transition_arrays(walk),
                 (; normals=view(normals, :, :, step), uniforms=view(uniforms, :, step)))
             update = (direction=state.direction, target_acceptance=state.target_acceptance,
@@ -243,7 +261,7 @@ function _launch_transition_warmup!(backend, state, evaluator, rng, normals, uni
             _launch_batched_transition!(batch, walk.batch_values, evaluator.target, update,
                 walk.failure_scratch.record.storage, _ThreadedCPUExecution())
         end
-        return nothing
+        return rng, nothing
     end
     lanes = min(_TRANSITION_WORKGROUP_SIZE, size(walk.normals, 1))
     _cooperative_transition_warmup_kernel!(backend)(
@@ -251,7 +269,10 @@ function _launch_transition_warmup!(backend, state, evaluator, rng, normals, uni
         uniforms, first_step, steps, state.target_acceptance, state.decay,
         walk.failure_scratch.record.storage;
         ndrange=lanes*length(walk.logtargets), workgroupsize=lanes)
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 _preflight_transition(device, state, target) =
@@ -286,13 +307,11 @@ function _preflight_accelerator_method(device, target, ::Union{LAIS,HAIS}, state
         bank,
         denominator,
         L,
-        factor_execution,
-    )
+        factor_execution)
     solve_scratch = use_factor_batch ? state.workspace.solve_scratch :
                     _fused_mis_solve_scratch(
         state.workspace.solve_scratch,
-        backend,
-    )
+        backend)
     kernel = _mis_round_launch_kernel!(backend)
     for argument in (views.samples, views.logweights, views.proposal_ids,
         buffers.failure_scratch.record.storage, buffers.normals, evaluator,

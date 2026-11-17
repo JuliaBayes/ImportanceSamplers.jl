@@ -5,6 +5,7 @@ include("signal_background_proposal.jl")
 using .SignalBackgroundProposals: SignalBackgroundProposal
 using BenchmarkTools, LinearAlgebra, Optim, Printf, Random, SHA, Statistics, TOML
 import CUDA, MLDataDevices
+using PureRNGs
 const SC = SamplerComparison
 const IS = SC.IS
 const WIDTH_PILOT = (nsamples=4096, scale_limits=(0.25, 2.0))
@@ -69,7 +70,8 @@ function run_conditional(device, model, seed; nsamples=2^18, pilot_draws=2^16)
     pilot = SC.run_method(:lais, nothing, model, seed+2_000_000;
         nsamples=pilot_draws, pilot=WIDTH_PILOT)
     proposal = fit_proposal(pilot.samples)
-    sampler = IS.prepare_sampler(Xoshiro(seed+3_000_000), IS.LogTarget(SC.logtarget),
+    rng = device === nothing ? Xoshiro(seed+3_000_000) : Threefry4x32(seed+3_000_000)
+    sampler = IS.prepare_sampler(rng, IS.LogTarget(SC.logtarget),
         model.data, IS.ImportanceSampling(proposal; nsamples))
     device === nothing || (sampler = device(sampler))
     samples = IS.importance_sample!(sampler)

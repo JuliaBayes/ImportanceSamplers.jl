@@ -1,6 +1,7 @@
 module LAISBenchmark
 
 using BenchmarkTools, ImportanceSamplers, LinearAlgebra, MLDataDevices, Random, Statistics
+using PureRNGs
 
 const KA = ImportanceSamplers.KernelAbstractions
 
@@ -48,7 +49,8 @@ function fresh(device; kwargs...)
     covariance = T(transition_scale)^2
     transition = isnothing(tuning) ? RandomWalkMetropolis(covariance) : RAM(covariance; tuning)
     algorithm = LAIS(bank; transition, rounds, round_size)
-    prepared = device(prepare_sampler(Xoshiro(seed), Target{family}(), algorithm; threaded))
+    rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(seed) : Xoshiro(seed)
+    prepared = device(prepare_sampler(rng, Target{family}(), algorithm; threaded))
     KA.synchronize(KA.get_backend(prepared.method_state.bank.locations))
     return prepared
 end

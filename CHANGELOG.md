@@ -2,19 +2,34 @@
 
 ## Unreleased (0.0.2)
 
-- Fix accelerator AutoEnzyme gradients for reductions over sampled parameters.
+### Added
+
+- Native PureRNGs continuation across sampling, adaptation, transitions, and resampling.
+- `current_rng` snapshots prepared streams; `resample_next` returns resampled values and the continued stream.
 - Retain mapped coordinates and Jacobians during importance draws without recording adaptation or MCMC trials.
 - Optional `save_logtargets=true` retains sampling-coordinate target log densities without reevaluation.
-- Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
 - Optional local marginal-width adaptation for LAIS and HAIS.
-- Fix cold CUDA HMC execution with reduction-based target functions.
 - Batched value/gradient callbacks for HMC and first-order GRAMIS accelerator execution.
 - Native proposal moments and scale-factor access, with optional Gaussian conversion to Distributions.jl.
-
 - Native Pareto-smoothed importance sampling with tail diagnostics and separate smoothed results.
 - Fitted pairwise quadratic transport with weighted moment or cached-score fitting.
 - Pilot-fitted score control variates for scalar weighted expectations.
+
+### Changed
+
+- Accelerator preparation requires PureRNGs inputs and preserves their key and stream position without reseeding. Mutable `Random.AbstractRNG` inputs remain supported on CPU.
+- Document the immutable custom-proposal interface, `PureRNGs.rand_next(rng, proposal)`, returning `(sample, next_rng)`.
+- Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
+
+### Fixed
+
+- Retain completed RNG draws when a generic proposal transform fails, including nested products and static MIS.
+- Respect explicit Reactant client and device selection during preparation and compiled operations.
+- Reuse compiled Reactant operations across changes to RNG keys and stream positions.
+- Preserve the inferred type of the continued RNG in CUDA resampling.
+- Fix accelerator AutoEnzyme gradients for reductions over sampled parameters.
+- Fix cold CUDA HMC execution with reduction-based target functions.
 
 ## 0.0.1
 

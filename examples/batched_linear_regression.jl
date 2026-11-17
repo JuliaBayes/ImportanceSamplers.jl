@@ -1,4 +1,5 @@
 using ImportanceSamplers, LinearAlgebra, Random, Statistics
+using PureRNGs
 import MLDataDevices
 
 # Unit observation noise and independent Normal(0, 2) coefficient priors.
@@ -35,7 +36,8 @@ function batched_regression_example(device=MLDataDevices.CPUDevice(); T=Float64)
     # proposal covers posterior uncertainty. Importance weights correct it.
     proposal = SphericalGaussian(design \ observed, T(2) / sqrt(T(size(design, 1))))
     target = LogTarget(regression_logtarget; batch=regression_batch!)
-    prepared = prepare_sampler(rng, target, p,
+    sampling_rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(43) : rng
+    prepared = prepare_sampler(sampling_rng, target, p,
         ImportanceSampling(proposal; nsamples=16_384))
 
     # This transfers the sampler, target data, proposal and random buffers.

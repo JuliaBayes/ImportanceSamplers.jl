@@ -1,4 +1,5 @@
-using Test, CUDA, ImportanceSamplers, Random, LinearAlgebra
+using Test, CUDA, ImportanceSamplers, LinearAlgebra
+using PureRNGs: Threefry4x32
 import MLDataDevices, DensityInterface
 
 CUDA.allowscalar(false)
@@ -29,7 +30,7 @@ end
         round_size=128,
         adapt_scales=true,
     )
-    prepared = device(prepare_sampler(Xoshiro(44), target, walk))
+    prepared = device(prepare_sampler(Threefry4x32(44), target, walk))
     result = importance_sample!(prepared)
     learned = only(current_proposal(MLDataDevices.cpu_device(), prepared).proposals)
     x, lw = Array(result.samples), Array(result.logweights)
@@ -46,10 +47,10 @@ end
         round_size=128,
         adapt_scales=true,
     )
-    prepared = device(prepare_sampler(Xoshiro(45), target, algorithm))
+    prepared = device(prepare_sampler(Threefry4x32(45), target, algorithm))
     importance_sample!(prepared)
     fitted = only(current_proposal(MLDataDevices.cpu_device(), prepared).proposals)
-    retargeted = retarget(Xoshiro(46), prepared, target)
+    retargeted = retarget(Threefry4x32(46), prepared, target)
     @test DensityInterface.logdensityof(
         only(current_proposal(MLDataDevices.cpu_device(), retargeted).proposals),
         zeros(Float32, 3),
@@ -75,9 +76,9 @@ end
             bank = ProposalBank([constructor(fill(T(slot-1)/4, 3), storage) for slot = 1:2])
             upper = HamiltonianMonteCarlo(; step_size=T(0.1), leapfrog_steps=2)
             algorithm = method(bank; transition=upper, rounds=1, round_size=512, adapt_scales=true)
-            prepared = device(prepare_sampler(Xoshiro(231), target, algorithm))
+            prepared = device(prepare_sampler(Threefry4x32(231), target, algorithm))
             fixed = method(bank; transition=upper, rounds=1, round_size=512)
-            reference = importance_sample!(device(prepare_sampler(Xoshiro(231), target, fixed)))
+            reference = importance_sample!(device(prepare_sampler(Threefry4x32(231), target, fixed)))
             result = importance_sample!(prepared)
             snapshot = current_proposal(MLDataDevices.cpu_device(), prepared)
             x, lw, ids = Array(result.samples),

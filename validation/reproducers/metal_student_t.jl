@@ -1,7 +1,7 @@
 using ImportanceSamplers
+using PureRNGs: Threefry4x32
 using LinearAlgebra
 using Metal
-using Random
 using Test
 
 Metal.functional() || error("Metal is not functional")
@@ -38,7 +38,7 @@ end
         @testset "$(nameof(typeof(algorithm)))" begin
             p = Float32[0.25, -0.15]
             sampler = device(prepare_sampler(
-                Xoshiro(62), LogTarget(student_target; grad=student_gradient!), p, algorithm))
+                Threefry4x32(62), LogTarget(student_target; grad=student_gradient!), p, algorithm))
             first_result = importance_sample!(sampler)
             saved = Array(first_result.samples)
             for result in (first_result, importance_sample!(sampler))
