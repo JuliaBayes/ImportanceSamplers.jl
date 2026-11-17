@@ -10,7 +10,6 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [sources]
 ImportanceSamplers = {path = ".."}
-PureRNGs = {rev = "dev", url = "https://github.com/BJMCox/PureRNGs.jl"}
 
 [compat]
 DensityInterface = "0.4"
