@@ -1,4 +1,5 @@
 using CUDA
+using PureRNGs: Threefry4x32
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
@@ -130,7 +131,7 @@ end
 
 function zero_append_case(device, ::Type{T}, kind::Symbol) where {T}
     source = prepare_sampler(
-        Random.Xoshiro(0x616d69737a65726f),
+        Threefry4x32(0x616d69737a65726f),
         AMISZeroTarget{T}(),
         AMIS(amis_capability_proposal(T, kind); rounds=2, round_size=2),
     )
@@ -357,7 +358,7 @@ function public_execution_case(
     proposal = amis_capability_proposal(row)
     target = AMISQuadraticTarget{T}()
     source = prepare_sampler(
-        Random.Xoshiro(AMIS_CUDA_SEED + UInt(sizeof(T)) + UInt(kind === :factor)),
+        Threefry4x32(AMIS_CUDA_SEED + UInt(sizeof(T)) + UInt(kind === :factor)),
         target,
         AMIS(proposal; rounds=length(schedule), round_size=schedule);
         threaded=true,
@@ -466,7 +467,7 @@ end
 function transfer_shape_case(device, ::Type{T}) where {T}
     function run(kind, schedule)
         source = prepare_sampler(
-            Random.Xoshiro(AMIS_CUDA_SEED + UInt(sum(schedule))),
+            Threefry4x32(AMIS_CUDA_SEED + UInt(sum(schedule))),
             AMISQuadraticTarget{T}(),
             AMIS(
                 amis_capability_proposal(T, kind);
@@ -502,7 +503,7 @@ function factor_batch_case(device)
         Matrix{T}(LinearAlgebra.I, dimension, dimension),
     )
     source = prepare_sampler(
-        Random.Xoshiro(AMIS_CUDA_SEED + 0x50),
+        Threefry4x32(AMIS_CUDA_SEED + 0x50),
         AMISQuadraticTarget{T}(),
         AMIS(proposal; rounds=length(schedule), round_size=schedule);
         factor_execution=BatchedFactorExecution(),
@@ -579,7 +580,7 @@ function wrong_device_pre_rng_case(device, ::Type{T}) where {T}
         round_size=[7, 9],
     )
     make_source() = prepare_sampler(
-        Random.Xoshiro(AMIS_CUDA_SEED + 0x100),
+        Threefry4x32(AMIS_CUDA_SEED + 0x100),
         AMISQuadraticTarget{T}(),
         algorithm;
         threaded=true,
@@ -608,14 +609,14 @@ function degenerate_scalar_covariance_case(device)
     T = Float32
     proposal = SphericalGaussian(zero(T), nextfloat(zero(T)))
     algorithm = AMIS(proposal; rounds=1, round_size=1)
-    make_source(seed; threaded=true) = prepare_sampler(
-        Random.Xoshiro(seed),
+    make_source(rng; threaded=true) = prepare_sampler(
+        rng,
         AMISQuadraticTarget{T}(),
         algorithm;
         threaded,
     )
 
-    cpu = make_source(AMIS_CUDA_SEED + 0x200; threaded=false)
+    cpu = make_source(Xoshiro(AMIS_CUDA_SEED + 0x200); threaded=false)
     cpu_before = current_proposal(cpu)
     cpu_failure = try
         importance_sample!(cpu)
@@ -636,7 +637,7 @@ function degenerate_scalar_covariance_case(device)
     @test current_proposal(cpu) == cpu_before
 
     caller = CUDA.device()
-    prepared = device(make_source(AMIS_CUDA_SEED + 0x201))
+    prepared = device(make_source(Threefry4x32(AMIS_CUDA_SEED + 0x201)))
     before = current_proposal(MLDataDevices.cpu_device(), prepared)
     first_failure = try
         importance_sample!(prepared)
@@ -718,7 +719,7 @@ function factor_overflow_transaction_case(device, ::Type{T}) where {T}
     caller = CUDA.device()
     proposal = FactorGaussian(T[0], reshape(T[scale], 1, 1))
     source = prepare_sampler(
-        Random.Xoshiro(AMIS_CUDA_SEED + UInt64(0x300) + UInt64(sizeof(T))),
+        Threefry4x32(AMIS_CUDA_SEED + UInt64(0x300) + UInt64(sizeof(T))),
         AMISZeroTarget{T}(),
         AMIS(proposal; rounds=1, round_size);
         threaded=true,
@@ -834,7 +835,7 @@ function combined_sample_fit_failure_case(device, ::Type{T}) where {T}
     caller = CUDA.device()
     proposal = FactorGaussian(T[0], reshape(T[scale], 1, 1))
     source = prepare_sampler(
-        Random.Xoshiro(AMIS_CUDA_SEED + UInt64(0x400) + UInt64(sizeof(T))),
+        Threefry4x32(AMIS_CUDA_SEED + UInt64(0x400) + UInt64(sizeof(T))),
         AMISZeroSampleFailureTarget{T}(),
         AMIS(proposal; rounds=1, round_size);
         threaded=true,

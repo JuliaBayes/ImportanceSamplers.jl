@@ -15,10 +15,6 @@ Metal.@device_override function IS._native_target_reason(value::Float32)
     return UInt16(0)
 end
 
-function IS._owned_backend_rng(device::MLDataDevices.MetalDevice, seed::UInt64)
-    return Random.seed!(MLDataDevices.default_device_rng(device), seed)
-end
-
 IS._allocate_failure_storage(::Metal.MetalBackend, prototype, capacity) =
     IS._allocate_portable_failure_storage(prototype, capacity)
 

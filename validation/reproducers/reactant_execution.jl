@@ -1,5 +1,6 @@
 module ReactantExecutionValidation
-using ImportanceSamplers, Reactant, CUDA, Random, Test
+using ImportanceSamplers, Reactant, CUDA, Test
+using PureRNGs: Threefry4x32
 
 logtarget(x, p) = -((x[1] - p[1])^2 + (x[2] - p[2])^2) / 2
 function gradient!(g, x, p)
@@ -31,7 +32,7 @@ function run()
             LAIS(bank; transition=RandomWalkMetropolis(0.1f0), rounds=3, round_size=16384),
             FirstOrderGRAMIS(bank; rounds=3, round_size=16384, repulsion_strength=0.1f0))
             p = Float32[0.25, -0.15]
-            sampler = device(prepare_sampler(Xoshiro(41), LogTarget(logtarget; grad=gradient!), p, algorithm))
+            sampler = device(prepare_sampler(Threefry4x32(41), LogTarget(logtarget; grad=gradient!), p, algorithm))
             first = importance_sample!(sampler)
             saved = Array(first.samples)
             saved_weights = Array(first.logweights)

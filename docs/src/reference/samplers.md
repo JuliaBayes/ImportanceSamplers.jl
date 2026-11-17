@@ -15,6 +15,7 @@ CAIS
 LAIS
 HAIS
 FirstOrderGRAMIS
+current_rng
 ```
 
 ## Static MIS schemes

@@ -3,6 +3,7 @@ module LAISComparison
 using ImportanceSamplers, BenchmarkTools, Distributions, ForwardDiff, LinearAlgebra,
       Optim, Random, Statistics, TOML, SHA, Pkg, Printf
 import CUDA, MLDataDevices, LogDensityProblems
+using PureRNGs
 include("models.jl")
 
 const DRAWS = 2^18
@@ -35,7 +36,8 @@ end
 
 function pilot(model, fit, device, seed; draws=DRAWS)
     proposal = FactorStudentT(DOF,fit.location,1.2fit.factor)
-    prepared = prepare_sampler(Xoshiro(seed+100_000),logtarget,model.data,
+    rng = device === nothing ? Xoshiro(seed+100_000) : Threefry4x32(seed+100_000)
+    prepared = prepare_sampler(rng,logtarget,model.data,
         AMIS(proposal; rounds=PILOT_ROUNDS, round_size=draws÷PILOT_ROUNDS))
     device === nothing || (prepared = device(prepared))
     importance_sample!(prepared)
@@ -57,7 +59,8 @@ function produce(model, tuned, device, seed, c; draws=DRAWS)
             RandomWalkMetropolis(covariance)
         LAIS(bank; transition, rounds=c.rounds, round_size=draws÷c.rounds)
     end
-    prepared = prepare_sampler(Xoshiro(seed+200_000),logtarget,model.data,algorithm)
+    rng = device === nothing ? Xoshiro(seed+200_000) : Threefry4x32(seed+200_000)
+    prepared = prepare_sampler(rng,logtarget,model.data,algorithm)
     device === nothing || (prepared = device(prepared))
     samples = importance_sample!(prepared)
     return (; samples, estimate=Array(mean(samples)), prepared)

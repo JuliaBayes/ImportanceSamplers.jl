@@ -4,6 +4,7 @@ using DensityInterface
 using ImportanceSamplers
 using MLDataDevices
 using Random
+using PureRNGs
 
 const STATIC_MIS_SMOKE = "--smoke" in ARGS
 const STATIC_MIS_BENCHMARK_SEED = 0x737461746963626d
@@ -200,7 +201,7 @@ function cuda_result_transfer_record(bank, nsamples)
     physical = CUDA.device()
     device = MLDataDevices.CUDADevice{typeof(physical),Nothing}(physical)
     sampler = prepare_sampler(
-        Xoshiro(STATIC_MIS_BENCHMARK_SEED),
+        Threefry4x32(STATIC_MIS_BENCHMARK_SEED),
         benchmark_target,
         ImportanceSampling(
             bank;

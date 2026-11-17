@@ -1,4 +1,5 @@
 using BenchmarkTools
+using PureRNGs: Threefry4x32
 using CUDA
 using ImportanceSamplers
 using LinearAlgebra
@@ -260,7 +261,7 @@ function correctness_case(
         threaded=false,
     )
     gpu_source = prepare_sampler(
-        Xoshiro(STATIC_MIS_SEED + UInt(case_index)),
+        Threefry4x32(STATIC_MIS_SEED + UInt(case_index)),
         target,
         context,
         algorithm;
@@ -370,7 +371,7 @@ function factor_batch_case(device, ::Type{T}, scheme) where {T}
     bank = ProposalBank(proposals, masses)
     _, context, _ = static_mis_case(T, proposal_count, dimension)
     prepared = prepare_sampler(
-        Xoshiro(STATIC_MIS_SEED + 0x500),
+        Threefry4x32(STATIC_MIS_SEED + 0x500),
         static_mis_mixture_target,
         context,
         ImportanceSampling(bank; nsamples, mis_scheme=scheme);
@@ -408,7 +409,7 @@ end
 function benchmark_case(device, ::Type{T}, scheme, proposal_count, dimension, nsamples) where {T}
     bank, context, _ = static_mis_case(T, proposal_count, dimension)
     sampler = prepare_sampler(
-        Xoshiro(STATIC_MIS_SEED),
+        Threefry4x32(STATIC_MIS_SEED),
         static_mis_mixture_target,
         context,
         ImportanceSampling(bank; nsamples, mis_scheme=scheme.value);

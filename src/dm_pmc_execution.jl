@@ -20,8 +20,7 @@ function Base.showerror(io::IO, error::DMPMCRoundError)
         error.round,
         " during ",
         error.phase,
-        ": ",
-    )
+        ": ")
     showerror(io, error.cause)
 end
 
@@ -52,8 +51,7 @@ function _allocate_dm_pmc_workspace(bank, plan, ::Type{T}) where {T}
     round_samples = _allocate_packed_static_mis_samples(
         prototype,
         bank,
-        capacity,
-    )
+        capacity)
     round_logweights = similar(prototype, T, capacity)
     round_proposal_ids = similar(prototype, Int, capacity)
     solve_scratch = _allocate_mis_solve_scratch(prototype, bank, capacity)
@@ -63,8 +61,7 @@ function _allocate_dm_pmc_workspace(bank, plan, ::Type{T}) where {T}
     candidate_locations = _allocate_packed_static_mis_samples(
         prototype,
         bank,
-        _active_proposal_count(bank),
-    )
+        _active_proposal_count(bank))
     return _DMPMCWorkspace(
         round_samples,
         round_logweights,
@@ -88,29 +85,28 @@ end
 )
     slot = @index(Global, Linear)
     first_sample = 1
-    for prior_slot in 1:(slot - 1)
+    for prior_slot = 1:(slot - 1)
         first_sample += @inbounds counts[prior_slot, round]
     end
     last_sample = first_sample + @inbounds(counts[slot, round]) - 1
 
     maximum_logweight = eltype(logweights)(-Inf)
-    for sample_index in first_sample:last_sample
+    for sample_index = first_sample:last_sample
         maximum_logweight = max(maximum_logweight, @inbounds(logweights[sample_index]))
     end
     ancestor = 0
     if maximum_logweight != -Inf
         total = zero(eltype(logweights))
-        for sample_index in first_sample:last_sample
+        for sample_index = first_sample:last_sample
             total += exp(@inbounds(logweights[sample_index]) - maximum_logweight)
         end
         if isfinite(total) && total > zero(total)
             threshold = @inbounds(uniforms[slot]) * total
             cumulative = zero(total)
             ancestor = last_sample
-            for sample_index in first_sample:last_sample
+            for sample_index = first_sample:last_sample
                 cumulative += exp(
-                    @inbounds(logweights[sample_index]) - maximum_logweight,
-                )
+                    @inbounds(logweights[sample_index]) - maximum_logweight)
                 if threshold < cumulative
                     ancestor = sample_index
                     break
@@ -128,8 +124,7 @@ end
     proposal_maxima,
     logweights,
     counts,
-    round,
-)
+    round)
     proposal_slot = @index(Group, Linear)
     lane = @index(Local, Linear)
     @uniform lane_count = @groupsize()[1]
@@ -138,7 +133,7 @@ end
 
     if lane == 1
         first_sample = 1
-        for prior_slot in 1:(proposal_slot - 1)
+        for prior_slot = 1:(proposal_slot - 1)
             first_sample += @inbounds counts[prior_slot, round]
         end
         @inbounds group[1] = first_sample
@@ -147,7 +142,7 @@ end
     @synchronize()
 
     lane_maximum = eltype(logweights)(-Inf)
-    for sample_index in (@inbounds(group[1]) + lane - 1):lane_count:(@inbounds(group[2]))
+    for sample_index = (@inbounds(group[1]) + lane - 1):lane_count:(@inbounds(group[2]))
         lane_maximum = max(lane_maximum, @inbounds(logweights[sample_index]))
     end
     @inbounds maxima[lane] = lane_maximum
@@ -198,7 +193,7 @@ end
 
     if lane == 1
         first_sample = 1
-        for prior_slot in 1:(proposal_slot - 1)
+        for prior_slot = 1:(proposal_slot - 1)
             first_sample += @inbounds counts[prior_slot, round]
         end
         @inbounds group[1] = first_sample
@@ -213,7 +208,7 @@ end
     chunk_first = @inbounds(group[1]) + (lane - 1) * chunk_size
     chunk_last = min(chunk_first + chunk_size - 1, @inbounds(group[2]))
     lane_total = zero(eltype(scaled_weights))
-    for sample_index in chunk_first:chunk_last
+    for sample_index = chunk_first:chunk_last
         lane_total += @inbounds scaled_weights[sample_index]
     end
     @inbounds chunk_totals[lane] = lane_total
@@ -221,7 +216,7 @@ end
 
     if lane == 1
         total = zero(eltype(scaled_weights))
-        for other_lane in 1:lane_count
+        for other_lane = 1:lane_count
             total += @inbounds chunk_totals[other_lane]
         end
         if isfinite(total) && total > zero(total)
@@ -229,7 +224,7 @@ end
             prefix = zero(total)
             chosen_lane = min(lane_count, sample_count)
             remainder = @inbounds chunk_totals[chosen_lane]
-            for other_lane in 1:lane_count
+            for other_lane = 1:lane_count
                 next_prefix = prefix + @inbounds(chunk_totals[other_lane])
                 if draw < next_prefix
                     chosen_lane = other_lane
@@ -247,7 +242,7 @@ end
     if lane == @inbounds(group[3])
         cumulative = zero(eltype(scaled_weights))
         ancestor = chunk_last
-        for sample_index in chunk_first:chunk_last
+        for sample_index = chunk_first:chunk_last
             cumulative += @inbounds scaled_weights[sample_index]
             if @inbounds(threshold[1]) < cumulative
                 ancestor = sample_index
@@ -264,8 +259,11 @@ end
     end
 end
 
+_prepare_dm_pmc_resampling!(cdf, logweights, transfers, ::LocalResampling) = nothing
+_prepare_dm_pmc_resampling!(cdf, logweights, transfers, ::GlobalResampling) =
+    _resampling_cdf!(cdf, logweights, transfers)
+
 function _resample_dm_pmc_population!(
-    rng,
     cdf,
     uniforms,
     ancestors,
@@ -280,8 +278,6 @@ function _resample_dm_pmc_population!(
     transfers,
     ::GlobalResampling,
 )
-    _resampling_cdf!(cdf, logweights, transfers)
-    Random.rand!(rng, uniforms)
     _resample_and_gather!(
         cdf,
         logweights,
@@ -295,7 +291,6 @@ function _resample_dm_pmc_population!(
 end
 
 function _resample_dm_pmc_population!(
-    rng,
     scaled_weights,
     uniforms,
     ancestors,
@@ -310,7 +305,8 @@ function _resample_dm_pmc_population!(
     transfers,
     ::LocalResampling,
 )
-    _launch_local_resample!(rng, scaled_weights, uniforms, ancestors, source, destination,
+    _launch_local_resample!(
+        scaled_weights, uniforms, ancestors, source, destination,
         logweights, assignments, proposal_maxima, counts, round, execution)
     valid = minimum(ancestors) > 0
     _record_device_scalar_transfer!(transfers, ancestors, Int, Val(:local_resampling_validity))
@@ -318,11 +314,11 @@ function _resample_dm_pmc_population!(
     return nothing
 end
 
-function _launch_local_resample!(rng, scaled_weights, uniforms, ancestors, source, destination,
+function _launch_local_resample!(
+    scaled_weights, uniforms, ancestors, source, destination,
     logweights, assignments, proposal_maxima, counts, round, execution)
     backend = KernelAbstractions.get_backend(logweights)
     if backend isa KernelAbstractions.CPU
-        Random.rand!(rng, uniforms)
         kernel = _local_resample_locations_kernel!(backend)
         kernel(
             destination,
@@ -355,7 +351,6 @@ function _launch_local_resample!(rng, scaled_weights, uniforms, ancestors, sourc
             ndrange=length(logweights),
             workgroupsize=_native_workgroupsize(execution, length(logweights)),
         )
-        Random.rand!(rng, uniforms)
         select_kernel = _cooperative_local_resample_locations_kernel!(backend)
         select_kernel(
             destination,
@@ -389,8 +384,18 @@ function _advance_population!(
 )
     workspace = method_state.workspace
     buffers = sampler.random_buffers
-    _resample_dm_pmc_population!(
+    _prepare_dm_pmc_resampling!(
+        round_views.cdf,
+        round_views.logweights,
+        transfers,
+        sampler.algorithm.resampling
+    )
+    sampler.rng = _rand_uniform!(
         sampler.rng,
+        buffers.resampling_uniforms;
+        threaded = sampler.threaded,
+    )
+    _resample_dm_pmc_population!(
         round_views.cdf,
         buffers.resampling_uniforms,
         workspace.ancestors,

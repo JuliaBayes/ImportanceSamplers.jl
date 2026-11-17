@@ -61,10 +61,12 @@ function _before_population_round!(sampler,
                                    transfers) where {B,P,W,K<:_HamiltonianState}
     size = state.plan.schedule[round]
     _capture_population_round(sampler.algorithm, round, :warmup, size, round - 1) do
-        _warmup_hmc!(state.run_transition, sampler.rng, execution, transfers)
+        result = _warmup_hmc!(state.run_transition, sampler.rng, execution, transfers)
+        _retain_transition_rng!(sampler, result)
     end
     _capture_population_round(sampler.algorithm, round, :hmc, size, round - 1) do
-        _hmc_sweep!(state.run_transition, sampler.rng, execution, transfers)
+        result = _hmc_sweep!(state.run_transition, sampler.rng, execution, transfers)
+        _retain_transition_rng!(sampler, result)
     end
     return nothing
 end

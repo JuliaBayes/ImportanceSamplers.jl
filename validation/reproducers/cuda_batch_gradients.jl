@@ -1,4 +1,5 @@
-using Test, CUDA, ImportanceSamplers, Random, LinearAlgebra
+using Test, CUDA, ImportanceSamplers, LinearAlgebra
+using PureRNGs: Threefry4x32
 import MLDataDevices
 include(joinpath(@__DIR__, "..", "..", "test", "support", "batch_gradients.jl"))
 CUDA.allowscalar(false)
@@ -32,14 +33,14 @@ end
     )
     a=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(35),
+            Threefry4x32(35),
             LogTarget(support_batch_value; batch_grad = support_batch!),
             algorithm,
         ),
     )
     b=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(35),
+            Threefry4x32(35),
             LogTarget(support_batch_value; grad = support_batch_scalar!),
             algorithm,
         ),
@@ -69,15 +70,15 @@ end
         scalar = LogTarget(batch_score_value; grad = batch_score_scalar!)
         context = (; centre = T[0.2, -0.1, 0.4])
         actual =
-            BATCH_GRADIENT_DEVICE(prepare_sampler(Xoshiro(71), batch, context, algorithm))
+            BATCH_GRADIENT_DEVICE(prepare_sampler(Threefry4x32(71), batch, context, algorithm))
         expected =
-            BATCH_GRADIENT_DEVICE(prepare_sampler(Xoshiro(71), scalar, context, algorithm))
+            BATCH_GRADIENT_DEVICE(prepare_sampler(Threefry4x32(71), scalar, context, algorithm))
         tolerance = T === Float32 ? T(2e-3) : T(2e-10)
         for pass = 1:3
             if pass == 3
                 shifted=(; centre = T[-0.2, 0.3, 0.1])
-                actual=retarget(Xoshiro(72), actual, batch, shifted)
-                expected=retarget(Xoshiro(72), expected, scalar, shifted)
+                actual=retarget(Threefry4x32(72), actual, batch, shifted)
+                expected=retarget(Threefry4x32(72), expected, scalar, shifted)
             end
             a, b=importance_sample!(actual), importance_sample!(expected)
             @test Array(a.samples) ≈ Array(b.samples) rtol=tolerance atol=tolerance
@@ -102,7 +103,7 @@ end
     context=(; powers = [2.0, 3.0, 4.0])
     a=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(41),
+            Threefry4x32(41),
             LogTarget(named_batch_score_value; batch_grad = named_batch_score!),
             context,
             algorithm;
@@ -111,7 +112,7 @@ end
     )
     b=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(41),
+            Threefry4x32(41),
             LogTarget(named_batch_score_value; grad = named_batch_score_scalar!),
             context,
             algorithm;
@@ -139,7 +140,7 @@ end
     transform=QuadraticCoupling([0.3])
     a=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(42),
+            Threefry4x32(42),
             LogTarget(batch_score_value; batch_grad = batch_score!),
             context,
             algorithm;
@@ -148,7 +149,7 @@ end
     )
     b=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(42),
+            Threefry4x32(42),
             LogTarget(batch_score_value; grad = batch_score_scalar!),
             context,
             algorithm;
@@ -174,7 +175,7 @@ end
     context=(; centre = Float32[0.1, -0.2])
     a=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(73),
+            Threefry4x32(73),
             LogTarget(batch_score_value; batch_grad = batch_score!),
             context,
             algorithm,
@@ -182,7 +183,7 @@ end
     )
     b=BATCH_GRADIENT_DEVICE(
         prepare_sampler(
-            Xoshiro(73),
+            Threefry4x32(73),
             LogTarget(batch_score_value; grad = batch_score_scalar!),
             context,
             algorithm,

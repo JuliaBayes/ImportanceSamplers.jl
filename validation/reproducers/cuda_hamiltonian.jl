@@ -1,4 +1,5 @@
-using Test, CUDA, Enzyme, ImportanceSamplers, Random, LinearAlgebra
+using Test, CUDA, Enzyme, ImportanceSamplers, LinearAlgebra
+using PureRNGs: Threefry4x32
 import ADTypes, MLDataDevices
 
 CUDA.allowscalar(false)
@@ -37,14 +38,14 @@ end
         for mass in (I, Diagonal(T[1, 2, 3]), T[1 0.1 0; 0.1 2 0.2; 0 0.2 1])
             algorithm = hmc_cuda_algorithm(method, T, mass)
             context = (; centre=T[0.2, -0.3, 0.4])
-            generated = device(prepare_sampler(Xoshiro(231), automatic, context, algorithm))
-            reference = device(prepare_sampler(Xoshiro(231), explicit, context, algorithm))
+            generated = device(prepare_sampler(Threefry4x32(231), automatic, context, algorithm))
+            reference = device(prepare_sampler(Threefry4x32(231), explicit, context, algorithm))
             tolerance = T === Float32 ? T(2e-3) : T(2e-10)
             for pass in 1:3
                 if pass == 3
                     shifted = (; centre=T[-0.2, 0.3, -0.4])
-                    generated = retarget(Xoshiro(83), generated, automatic, shifted)
-                    reference = retarget(Xoshiro(83), reference, explicit, shifted)
+                    generated = retarget(Threefry4x32(83), generated, automatic, shifted)
+                    reference = retarget(Threefry4x32(83), reference, explicit, shifted)
                 end
                 actual, expected = importance_sample!(generated),
                                    importance_sample!(reference)
@@ -82,7 +83,7 @@ end
                                    for _ in 1:3]);
                      transition=HamiltonianMonteCarlo(; step_size=1.0f0, leapfrog_steps=5),
                      rounds=1, round_size=6)
-    result = importance_sample!(device(prepare_sampler(Xoshiro(35), target, algorithm)))
+    result = importance_sample!(device(prepare_sampler(Threefry4x32(35), target, algorithm)))
     @test result.diagnostics.transition.production_support_rejections == 3
     # Fixed-width Enzyme evaluates safe replacement columns at later steps.
     @test result.diagnostics.transition.production_target_evaluations == 15
@@ -96,7 +97,7 @@ end
         algorithm = hmc_cuda_algorithm(LAIS, Float32, I;
                                        warmup=2, dimension, count, steps)
         context = (; centre=zeros(Float32, dimension))
-        result = importance_sample!(device(prepare_sampler(Xoshiro(91), target, context,
+        result = importance_sample!(device(prepare_sampler(Threefry4x32(91), target, context,
                                                            algorithm)))
         transfers = result.diagnostics.transfers
         return (transfers.count, transfers.bytes)
@@ -118,7 +119,7 @@ end
                                                           step_size=0.1f0,
                                                           leapfrog_steps=3), rounds=2,
                          round_size=18)
-        result = importance_sample!(device(prepare_sampler(Xoshiro(88), target,
+        result = importance_sample!(device(prepare_sampler(Threefry4x32(88), target,
                                                            (; centre=zeros(Float32, 3)),
                                                            algorithm)))
         @test size(result.samples) == (3, 36)
@@ -145,7 +146,7 @@ end
                                                       step_size=0.1f0, leapfrog_steps=3),
                      rounds=2, round_size=18)
     layout = (scale=(1 => PositiveTransform()), offset=(2:3 => IdentityTransform()))
-    prepared = device(prepare_sampler(Xoshiro(92),
+    prepared = device(prepare_sampler(Threefry4x32(92),
                                       LogTarget(hmc_cuda_named_target;
                                                 grad=hmc_cuda_named_gradient!), algorithm;
                                       transform=layout))

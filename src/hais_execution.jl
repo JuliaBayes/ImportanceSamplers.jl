@@ -38,7 +38,8 @@ function _before_population_round!(sampler, state::_PreparedHAIS, target, round,
     if round == 1
         _capture_population_round(sampler.algorithm, round, :warmup,
                                   state.plan.schedule[round], 0) do
-            _warmup_hmc!(state.run_transition, sampler.rng, execution, transfers)
+            result = _warmup_hmc!(state.run_transition, sampler.rng, execution, transfers)
+            _retain_transition_rng!(sampler, result)
             copyto!(state.run_bank.locations, state.run_transition.centres)
         end
     end
@@ -82,7 +83,10 @@ end
 
 function _hais_cooperation_resample!(state, rng, execution)
     workspace = state.workspace
-    Random.rand!(rng, workspace.cooperation_uniforms)
+    rng = _rand_uniform!(rng, workspace.cooperation_uniforms;
+        threaded = _transition_threaded(execution)
+    )
+    try
     backend = KernelAbstractions.get_backend(workspace.ancestors)
     count = length(workspace.ancestors)
     _select_resampling_ancestors_kernel!(backend)(workspace.ancestors,
@@ -96,7 +100,10 @@ function _hais_cooperation_resample!(state, rng, execution)
     _gather_hmc_centres!(state.run_transition, workspace.ancestors)
     # Only locations change; each destination retains its own scale and stable ID.
     copyto!(state.run_bank.locations, state.run_transition.centres)
-    return nothing
+    return rng, nothing
+    catch failure
+        return rng, failure
+    end
 end
 
 function _advance_prepared_population!(::Nothing, sampler, state::_PreparedHAIS, views,
@@ -106,7 +113,8 @@ function _advance_prepared_population!(::Nothing, sampler, state::_PreparedHAIS,
     completed = round
     _capture_population_round(sampler.algorithm, round, :hmc, views.round_size,
                               completed) do
-        _hmc_sweep!(state.run_transition, sampler.rng, execution, transfers)
+        result = _hmc_sweep!(state.run_transition, sampler.rng, execution, transfers)
+        _retain_transition_rng!(sampler, result)
     end
     _capture_population_round(sampler.algorithm, round, :cooperation_weights,
                               views.round_size, completed) do
@@ -114,7 +122,8 @@ function _advance_prepared_population!(::Nothing, sampler, state::_PreparedHAIS,
     end
     _capture_population_round(sampler.algorithm, round, :cooperation_resampling,
                               views.round_size, completed) do
-        _hais_cooperation_resample!(state, sampler.rng, execution)
+        result = _hais_cooperation_resample!(state, sampler.rng, execution)
+        _retain_transition_rng!(sampler, result)
     end
     _capture_population_round(sampler.algorithm, round, :width_adaptation,
                               views.round_size, completed) do

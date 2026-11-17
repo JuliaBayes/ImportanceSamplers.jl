@@ -5,6 +5,7 @@ using LinearAlgebra
 using MLDataDevices
 using Pkg
 using Random
+using PureRNGs
 
 const DM_PMC_BENCHMARK_SMOKE = "--smoke" in ARGS
 const DM_PMC_BENCHMARK_CPU = !("--cuda-only" in ARGS)
@@ -118,7 +119,7 @@ function dm_pmc_prepare_cell(cell, device_kind, seed=DM_PMC_BENCHMARK_SEED)
         resampling=dm_pmc_resampling(Val(cell.resampling)),
     )
     source = prepare_sampler(
-        Xoshiro(seed),
+        device_kind === :cpu ? Xoshiro(seed) : Threefry4x32(seed),
         DMPMCNormalTarget{cell.scalar_type}(one(cell.scalar_type)),
         algorithm;
         threaded=true,

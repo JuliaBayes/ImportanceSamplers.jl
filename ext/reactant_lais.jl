@@ -58,21 +58,22 @@ function _compiled_transition_update(state::IS._RAMState{W,IS.ContinuousTuning})
 end
 
 function _prepare_population_adaptation(sampler, state::IS._PreparedLAIS)
+    client = Reactant.XLA.client(sampler.random_buffers.normals)
     target = IS._bind_resolved_target(sampler.target, IS._population_binding_sample(state.bank))
-    transition = _prepare_compiled_transition(state.run_transition, target, sampler.rng.rng)
+    transition = _prepare_compiled_transition(state.run_transition, target, sampler.rng)
     summaries = map(eachindex(state.plan.schedule)) do round
         phase = state -> _logweight_moments(IS._population_round_views(state, round).logweights)
-        Reactant.@compile phase(state)
+        Reactant.@compile client=client phase(state)
     end
     accepted = _transition_accepted(state.run_transition)
-    counts = Reactant.@compile sum(accepted)
+    counts = Reactant.@compile client=client sum(accepted)
     return (; transition, summaries, counts)
 end
 
 function IS._before_prepared_population_round!(plan::_CompiledPopulationExecution, sampler,
     state::IS._PreparedLAIS, target, round, execution, transfers)
     _run_compiled_transition!(plan.adaptation.transition, state.run_transition,
-        target, sampler.rng.rng, transfers)
+        target, sampler, transfers)
     return nothing
 end
 
@@ -97,6 +98,7 @@ _compiled_transition_diagnostics(state::IS._SampleMetropolisHastingsState, count
 
 function _prepare_compiled_transition(state::Union{IS._RandomWalkState,IS._RAMState}, target, rng)
     walk = _transition_walk(state)
+    client = Reactant.XLA.client(walk.normals)
     L = eltype(walk.logtargets)
     clear_phase = walk -> IS._reset_native_failure_scratch!(walk.failure_scratch)
     cache_phase = function (walk, target)
@@ -116,13 +118,15 @@ function _prepare_compiled_transition(state::Union{IS._RandomWalkState,IS._RAMSt
     move_phase = function (walk, target, rng, update)
         evaluator, _ = IS._native_target_evaluator(KA.get_backend(walk.normals),
             target, L, walk.failure_scratch.target_failures)
-        IS._launch_transition_move!(KA.get_backend(walk.normals), walk, evaluator, rng, update)
-        return nothing
+        rng, failure = IS._launch_transition_move!(KA.get_backend(walk.normals), walk, evaluator, rng, update
+        )
+        isnothing(failure) || throw(failure)
+        return rng
     end
     update = _compiled_transition_update(state)
-    clear = Reactant.@compile clear_phase(walk)
-    cache = Reactant.@compile cache_phase(walk, target)
-    move = Reactant.@compile move_phase(walk, target, rng, update)
+    clear = Reactant.@compile client=client clear_phase(walk)
+    cache = Reactant.@compile client=client cache_phase(walk, target)
+    move = Reactant.@compile client=client move_phase(walk, target, rng, update)
     warmup = _prepare_compiled_warmup(state, target, rng)
     return (; clear, cache, move, warmup)
 end
@@ -131,6 +135,7 @@ _prepare_compiled_warmup(state, target, rng) = nothing
 function _prepare_compiled_warmup(state::IS._RAMState{W,<:IS.WarmupTuning}, target, rng) where {W}
     remaining = state.tuning.steps - state.n_tuned
     remaining > 0 || return nothing
+    client = Reactant.XLA.client(state.walk.normals)
     normals, uniforms = IS._transition_warmup_buffers(state.walk, remaining)
     capacity = size(normals, 3)
     first_step = _transition_number(normals, state.n_tuned)
@@ -140,11 +145,13 @@ function _prepare_compiled_warmup(state::IS._RAMState{W,<:IS.WarmupTuning}, targ
             walk = state.walk
             evaluator, _ = IS._native_target_evaluator(KA.get_backend(walk.normals),
                 target, L, walk.failure_scratch.target_failures)
-            IS._launch_transition_warmup!(KA.get_backend(walk.normals), state,
-                evaluator, rng, normals, uniforms, first_step, steps)
-            return nothing
+            rng, failure = IS._launch_transition_warmup!(KA.get_backend(walk.normals), state,
+                evaluator, rng, normals, uniforms, first_step, steps
+            )
+            isnothing(failure) || throw(failure)
+            return rng
         end
-        Reactant.@compile phase(state, target, rng, normals, uniforms, first_step)
+        Reactant.@compile client=client phase(state, target, rng, normals, uniforms, first_step)
     end
     full = compile_chunk(capacity)
     tail_size = remaining % capacity
@@ -152,16 +159,18 @@ function _prepare_compiled_warmup(state::IS._RAMState{W,<:IS.WarmupTuning}, targ
     return (; normals, uniforms, capacity, full, tail)
 end
 
-_run_compiled_warmup!(::Nothing, state, target, rng, transfers) = nothing
-function _run_compiled_warmup!(plan, state, target, rng, transfers)
+_run_compiled_warmup!(::Nothing, state, target, sampler, transfers) = nothing
+function _run_compiled_warmup!(plan, state, target, sampler, transfers)
     while state.n_tuned < state.tuning.steps
         steps = min(plan.capacity, state.tuning.steps - state.n_tuned)
         first_step = _transition_number(plan.normals, state.n_tuned)
         IS._record_scalar_transfer!(transfers, Int)
         phase = steps == plan.capacity ? plan.full : plan.tail
-        phase(state, target, rng, plan.normals, plan.uniforms, first_step)
+        sampler.rng =
+            phase(state, target, sampler.rng, plan.normals, plan.uniforms, first_step)
         state.n_tuned += steps
         state.walk.steps += steps
+        IS._check_transition_failure!(state.walk, transfers)
     end
     return nothing
 end
@@ -169,7 +178,8 @@ end
 _finish_compiled_transition!(state) = nothing
 _finish_compiled_transition!(state::IS._RAMState{W,IS.ContinuousTuning}) where {W} = (state.n_tuned += 1)
 
-function _run_compiled_transition!(plan, state::Union{IS._RandomWalkState,IS._RAMState}, target, rng, transfers)
+function _run_compiled_transition!(plan, state::Union{IS._RandomWalkState,IS._RAMState}, target,
+    sampler, transfers)
     walk = _transition_walk(state)
     if walk.cache_valid
         plan.clear(walk)
@@ -179,10 +189,10 @@ function _run_compiled_transition!(plan, state::Union{IS._RandomWalkState,IS._RA
         walk.cache_valid = true
         walk.initial_evaluations += length(walk.logtargets)
     end
-    _run_compiled_warmup!(plan.warmup, state, target, rng, transfers)
+    _run_compiled_warmup!(plan.warmup, state, target, sampler, transfers)
     update = _compiled_transition_update(state)
     isnothing(update) || IS._record_scalar_transfer!(transfers, eltype(walk.normals))
-    plan.move(walk, target, rng, update)
+    sampler.rng = plan.move(walk, target, sampler.rng, update)
     walk.steps += 1
     KA.synchronize(KA.get_backend(walk.normals))
     IS._check_transition_failure!(walk, transfers)
@@ -191,6 +201,7 @@ function _run_compiled_transition!(plan, state::Union{IS._RandomWalkState,IS._RA
 end
 
 function _prepare_compiled_transition(state::IS._SampleMetropolisHastingsState, target, rng)
+    client = Reactant.XLA.client(state.normals)
     execution = IS._ThreadedCPUExecution()
     L = eltype(state.logratios)
     cache_phase = function (state, target)
@@ -199,14 +210,15 @@ function _prepare_compiled_transition(state::IS._SampleMetropolisHastingsState, 
         IS._launch_smh_cache!(state, evaluator, execution)
         return nothing
     end
-    cache = Reactant.@compile cache_phase(state, target)
+    cache = Reactant.@compile client=client cache_phase(state, target)
     compile_chunk = function (steps)
         phase = function (state, target, rng)
-            IS._smh_candidate_batch!(state, target, rng, execution, steps, L)
+            rng, failure = IS._smh_candidate_batch!(state, target, rng, execution, steps, L)
+            isnothing(failure) || throw(failure)
             IS._launch_smh_ordered!(KA.get_backend(state.normals), state, steps)
-            return nothing
+            return rng
         end
-        Reactant.@compile phase(state, target, rng)
+        Reactant.@compile client=client phase(state, target, rng)
     end
     full = compile_chunk(state.capacity)
     tail_size = state.moves % state.capacity
@@ -214,7 +226,8 @@ function _prepare_compiled_transition(state::IS._SampleMetropolisHastingsState, 
     return (; cache, full, tail)
 end
 
-function _run_compiled_transition!(plan, state::IS._SampleMetropolisHastingsState, target, rng, transfers)
+function _run_compiled_transition!(plan, state::IS._SampleMetropolisHastingsState, target,
+    sampler, transfers)
     if !state.cache_valid
         plan.cache(state, target)
         IS._check_smh_failures!(state, transfers)
@@ -225,7 +238,7 @@ function _run_compiled_transition!(plan, state::IS._SampleMetropolisHastingsStat
     while completed < state.moves
         steps = min(state.capacity, state.moves - completed)
         phase = steps == state.capacity ? plan.full : plan.tail
-        phase(state, target, rng)
+        sampler.rng = phase(state, target, sampler.rng)
         KA.synchronize(KA.get_backend(state.normals))
         IS._check_smh_failures!(state, transfers)
         state.production_evaluations += steps

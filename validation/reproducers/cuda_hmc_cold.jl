@@ -1,4 +1,5 @@
 using Test, CUDA, ImportanceSamplers, Random, LinearAlgebra
+using PureRNGs: Threefry4x32
 import DensityInterface, MLDataDevices
 
 CUDA.allowscalar(false)
@@ -57,7 +58,7 @@ cold_regression_score!(g, x, p) = (cold_regression(g, x, p); nothing)
     )
     target = LogTarget(cold_regression_value; grad = cold_regression_score!)
     device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(), nothing)
-    prepared = device(prepare_sampler(Xoshiro(705), target, context, algorithm))
+    prepared = device(prepare_sampler(Threefry4x32(705), target, context, algorithm))
     result = importance_sample!(prepared)
     CUDA.synchronize()
     samples, logweights = Array(result.samples), Array(result.logweights)

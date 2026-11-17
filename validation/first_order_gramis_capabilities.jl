@@ -3,7 +3,7 @@ using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
+using PureRNGs
 using Test
 
 include(joinpath(@__DIR__, "first_order_gramis_capability_contract.jl"))
@@ -111,7 +111,7 @@ function gram_is_cuda_preflight(::Type{T}) where {T}
     ))
     bank = first_order_gramis_capability_bank(T)
     source = prepare_sampler(
-        Random.Xoshiro(GRAMIS_CUDA_VALIDATION_SEED),
+        Threefry4x32(GRAMIS_CUDA_VALIDATION_SEED),
         first_order_gramis_capability_target(row),
         FirstOrderGRAMIS(
             bank;
@@ -165,7 +165,7 @@ function gram_is_cuda_sampler(
         grad=gradient,
     ) : first_order_gramis_capability_target(row)
     source = prepare_sampler(
-        Random.Xoshiro(GRAMIS_CUDA_EXECUTION_SEED),
+        Threefry4x32(GRAMIS_CUDA_EXECUTION_SEED),
         target,
         FirstOrderGRAMIS(
             bank;
@@ -301,7 +301,7 @@ CUDA.allowscalar(false)
         row.cpu.status === :supported || continue
         row.cuda.status === :rejected || continue
         source = prepare_sampler(
-            Random.Xoshiro(GRAMIS_CUDA_VALIDATION_SEED + row_index),
+            Threefry4x32(GRAMIS_CUDA_VALIDATION_SEED + row_index),
             first_order_gramis_capability_target(row),
             FirstOrderGRAMIS(
                 first_order_gramis_capability_bank(row.type);

@@ -1,6 +1,7 @@
 module CUDAAPISValidation
 
 using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, Random, Test
+using PureRNGs: Threefry4x32
 
 const IS = ImportanceSamplers
 
@@ -130,7 +131,7 @@ function check_local_zero_rollback(device)
     normal = [-0.5, 0.0, 0.5, -0.5, 0.0, 0.5]
     batches = CuArray(hcat(normal, reverse(normal), normal, fill(-100.0, 6)))
     source = prepare_sampler(
-        Xoshiro(101),
+        Threefry4x32(101),
         TruncatedTarget(),
         APIS(validation_bank(Float64, true); rounds=2, round_size=6),
     )
@@ -174,7 +175,7 @@ function main()
         check_local_zero_rollback(device)
         scalar_bank = validation_bank(Float32, true)
         scalar = device(prepare_sampler(
-            Xoshiro(102),
+            Threefry4x32(102),
             QuadraticTarget{Float32}(),
             APIS(scalar_bank; rounds=2, round_size=schedule),
         ))
@@ -203,7 +204,7 @@ function main()
 
         factor_bank = validation_bank(Float64, false)
         factor = device(prepare_sampler(
-            Xoshiro(103),
+            Threefry4x32(103),
             QuadraticTarget{Float64}(),
             APIS(factor_bank; rounds=2, round_size=schedule);
             factor_execution=BatchedFactorExecution(),

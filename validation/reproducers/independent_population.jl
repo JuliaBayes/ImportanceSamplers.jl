@@ -1,4 +1,5 @@
 using ImportanceSamplers, Random, Test, DensityInterface
+using PureRNGs: Threefry4x32
 using ImportanceSamplers.LogExpFunctions: logsumexp
 import MLDataDevices
 
@@ -54,7 +55,8 @@ function check_independent_population(;
                 )
             end
             for algorithm in algorithms
-                sampler = device(prepare_sampler(Xoshiro(2040), target, algorithm))
+                rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(2040) : Xoshiro(2040)
+                sampler = device(prepare_sampler(rng, target, algorithm))
                 result = importance_sample!(sampler)
                 learned = current_proposal(MLDataDevices.CPUDevice(), sampler)
                 samples, logs = Array(result.samples), Array(result.logweights)
@@ -129,14 +131,14 @@ function check_independent_population_precision(device)
     )
     @testset "Independent prepared precision on $(typeof(device))" begin
         for algorithm in algorithms
-            result = importance_sample!(device(prepare_sampler(Xoshiro(2043), q, algorithm)))
+            result = importance_sample!(device(prepare_sampler(Threefry4x32(2043), q, algorithm)))
             @test eltype(result.samples) === eltype(result.logweights) === Float32 &&
                   maximum(abs, Array(result.logweights)) <= 256eps(Float32)
         end
         laplace = IndependentLaplace([0.0], [1.0])
         p = device(
             prepare_sampler(
-                Xoshiro(2044),
+                Threefry4x32(2044),
                 laplace,
                 LAIS(
                     ProposalBank([laplace]);
@@ -155,10 +157,10 @@ function check_independent_population_precision(device)
         ]
         @test eltype(result.samples) === Float32 && Array(result.logweights) ≈ expected
         invalid = ProposalBank([BoxUniform([1.0], [nextfloat(1.0)])])
-        rng = Xoshiro(2045)
+        rng = Threefry4x32(2045)
         source = prepare_sampler(rng, Returns(0.0f0), ImportanceSampling(invalid; nsamples = 8))
-        snapshot = copy(rng)
+        snapshot = current_rng(source)
         @test_throws ArgumentError device(source)
-        @test rand(rng, UInt64) == rand(snapshot, UInt64)
+        @test current_rng(source) == snapshot
     end
 end

@@ -178,16 +178,16 @@ samples = importance_sample!(prepared)
 mean(samples)
 ```
 
-On CPU, this example uses `grad=`. Transfer the complete prepared sampler
-before its first execution to use `batch_grad=` on a supported accelerator.
+On CPU, this example uses `grad=`. To use `batch_grad=` on an accelerator,
+prepare a fresh sampler with a PureRNGs input and transfer it before execution.
 Use the [device setup](@ref devices-guide) to preserve the chosen precision.
 The matrix callback's operations must support that device.
 An explicit `batch_grad=` takes priority over scalar gradients and AD in accelerator score phases.
 
 ```julia
-using CUDA, MLDataDevices
+using CUDA, MLDataDevices, PureRNGs
 device = MLDataDevices.with_eltype(MLDataDevices.CUDADevice(),nothing)
-gpu_sampler = device(prepare_sampler(Xoshiro(21),target,p,algorithm))
+gpu_sampler = device(prepare_sampler(Threefry4x32(21),target,p,algorithm))
 gpu_samples = importance_sample!(gpu_sampler)
 ```
 
