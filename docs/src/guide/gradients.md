@@ -122,6 +122,10 @@ target = LogTarget(logtarget, ad)
 The supplied mode is preserved. The package batches scalar target gradients internally.
 It does not copy each sample or gradient to CPU.
 
+Targets with vector parameters must accept read-only `AbstractVector` inputs without
+requiring a concrete view type or pointer layout. Direct reductions use sequential
+accumulation. Other operations remain subject to the AD backend's device restrictions.
+
 `batch=` controls value-only evaluation. Automatic differentiation still uses
 the scalar target and may evaluate its primal.
 

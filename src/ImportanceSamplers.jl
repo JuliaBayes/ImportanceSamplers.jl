@@ -98,6 +98,7 @@ export AbstractImportanceSampler,
     psis,
     proposal_scale_factor,
     prepare_sampler,
+    RetainCoordinates,
     retarget,
     resample
 
@@ -158,6 +159,7 @@ include("statistics.jl")
 include("batched_targets.jl")
 include("fitted_transport.jl")
 include("batched_gradients.jl")
+include("retained_coordinates.jl")
 include("control_variates.jl")
 
 end # module ImportanceSamplers

@@ -59,7 +59,8 @@ function _with_result_transfer_counter(diagnostics::NamedTuple)
 end
 
 """
-    WeightedSamples(samples, logweights; provenance=NamedTuple(), diagnostics=NamedTuple())
+    WeightedSamples(samples, logweights; provenance=NamedTuple(), diagnostics=NamedTuple(),
+                    logtargets=nothing, retained=nothing)
 
 Construct a complete weighted-sample result with independent copies of the input arrays.
 
@@ -72,28 +73,41 @@ Scalar indexing and iteration return aligned named tuples with `sample`,
 `logweight`, and `provenance` fields. Range, integer-vector, and Boolean-mask
 indexing return a [`WeightedSampleView`](@ref).
 
+`logtargets` is `nothing` unless target values were retained, or an aligned
+vector on the same device. Samplers retain these values with `save_logtargets=true`.
+They are exact log densities in sampling coordinates, including the forward
+Jacobian for `transform=`, not necessarily densities of the returned logical
+samples. Views retain aligned target values without adding them to iteration records.
+
+`retained` is `nothing` unless a [`RetainCoordinates`](@ref) target saved mapped
+parameters and Jacobians. Views and device copies preserve their alignment.
+
 Apply an `MLDataDevices.AbstractDevice` to a complete result to create an
 independent copy on that device. Device-resident results must be transferred to
 CPU before scalar indexing, iteration, quantiles, or medians.
 """
-struct WeightedSamples{R,S,W<:AbstractVector,P<:NamedTuple,D<:NamedTuple} <:
+struct WeightedSamples{R,S,W<:AbstractVector,P<:NamedTuple,D<:NamedTuple,L,C} <:
        _AbstractWeightedSamples{R}
     samples::S
     logweights::W
     provenance::P
     diagnostics::D
+    logtargets::L
+    retained::C
 
     function WeightedSamples{R}(
         samples::S,
         logweights::W,
         provenance::P,
         diagnostics::D,
+        logtargets::L,
+        retained::C,
         token::_ValidatedResultToken,
-    ) where {R,S,W<:AbstractVector,P<:NamedTuple,D<:NamedTuple}
+    ) where {R,S,W<:AbstractVector,P<:NamedTuple,D<:NamedTuple,L,C}
         token === _VALIDATED_RESULT_TOKEN || throw(
             ArgumentError("invalid internal result-construction token"),
         )
-        return new{R,S,W,P,D}(samples, logweights, provenance, diagnostics)
+        return new{R,S,W,P,D,L,C}(samples, logweights, provenance, diagnostics, logtargets, retained)
     end
 end
 
@@ -109,24 +123,28 @@ Device-resident views retain device storage. Apply an
 `MLDataDevices.AbstractDevice` directly to create an independent aligned copy;
 transfer to CPU before scalar indexing or iteration.
 """
-struct WeightedSampleView{R,S,W<:AbstractVector,P<:NamedTuple} <:
+struct WeightedSampleView{R,S,W<:AbstractVector,P<:NamedTuple,L,C} <:
        _AbstractWeightedSamples{R}
     samples::S
     logweights::W
     provenance::P
     transfers::_ResultTransferCounter
+    logtargets::L
+    retained::C
 
     function WeightedSampleView{R}(
         samples::S,
         logweights::W,
         provenance::P,
         transfers::_ResultTransferCounter,
+        logtargets::L,
+        retained::C,
         token::_ValidatedResultToken,
-    ) where {R,S,W<:AbstractVector,P<:NamedTuple}
+    ) where {R,S,W<:AbstractVector,P<:NamedTuple,L,C}
         token === _VALIDATED_RESULT_TOKEN || throw(
             ArgumentError("invalid internal view-construction token"),
         )
-        return new{R,S,W,P}(samples, logweights, provenance, transfers)
+        return new{R,S,W,P,L,C}(samples, logweights, provenance, transfers, logtargets, retained)
     end
 end
 
@@ -148,6 +166,8 @@ function WeightedSamples(
     logweights::AbstractVector;
     provenance=NamedTuple(),
     diagnostics=NamedTuple(),
+    logtargets=nothing,
+    retained=nothing,
 )
     owned_samples = deepcopy(samples)
     owned_logweights = deepcopy(logweights)
@@ -158,6 +178,8 @@ function WeightedSamples(
         owned_logweights;
         provenance=owned_provenance,
         diagnostics=owned_diagnostics,
+        logtargets=deepcopy(logtargets),
+        retained=deepcopy(retained),
     )
 end
 
@@ -166,6 +188,8 @@ function _adopt_weighted_samples(
     logweights::AbstractVector;
     provenance=NamedTuple(),
     diagnostics=NamedTuple(),
+    logtargets=nothing,
+    retained=nothing,
 )
     return _adopt_weighted_samples(
         samples,
@@ -173,6 +197,8 @@ function _adopt_weighted_samples(
         Val(false);
         provenance=provenance,
         diagnostics=diagnostics,
+        logtargets=logtargets,
+        retained=retained,
     )
 end
 
@@ -181,6 +207,8 @@ function _adopt_validated_weighted_samples(
     logweights::AbstractVector;
     provenance=NamedTuple(),
     diagnostics=NamedTuple(),
+    logtargets=nothing,
+    retained=nothing,
 )
     return _adopt_weighted_samples(
         samples,
@@ -188,6 +216,8 @@ function _adopt_validated_weighted_samples(
         Val(true);
         provenance=provenance,
         diagnostics=diagnostics,
+        logtargets=logtargets,
+        retained=retained,
     )
 end
 
@@ -197,6 +227,8 @@ function _adopt_weighted_samples(
     logweights_validated::Val;
     provenance,
     diagnostics,
+    logtargets,
+    retained=nothing,
 )
     provenance isa NamedTuple || throw(
         ArgumentError("provenance must be a named tuple of aligned arrays"),
@@ -220,9 +252,20 @@ function _adopt_weighted_samples(
     )
     diagnostics = _with_result_transfer_counter(diagnostics)
     _validate_logweights(logweights, diagnostics.transfers, logweights_validated)
+    _validate_result_logtargets(logtargets, logweights, diagnostics.transfers, logweights_validated)
+    _validate_retained(retained, sample_count, logweight_device)
     _validate_diagnostics(diagnostics)
 
-    return _new_weighted_samples(samples, logweights, provenance, diagnostics)
+    return _new_weighted_samples(samples, logweights, provenance, diagnostics, logtargets, retained)
+end
+
+_validate_result_logtargets(::Nothing, logweights, transfers, validated) = nothing
+function _validate_result_logtargets(logtargets::AbstractVector, logweights, transfers, validated)
+    length(logtargets) == length(logweights) || throw(ArgumentError("sample and log-target counts must match"))
+    _storage_device(logtargets) == _storage_device(logweights) || throw(
+        ArgumentError("log targets and log weights must use the same device"))
+    _validate_logweights(logtargets, transfers, validated)
+    return nothing
 end
 
 function (device::MLDataDevices.AbstractDevice)(result::WeightedSamples)
@@ -230,7 +273,9 @@ function (device::MLDataDevices.AbstractDevice)(result::WeightedSamples)
     logweights = _transfer_result_storage(device, result.logweights)
     provenance = _transfer_result_storage(device, result.provenance)
     diagnostics = _transfer_result_storage(device, result.diagnostics)
-    return _new_weighted_samples(samples, logweights, provenance, diagnostics)
+    logtargets = _transfer_result_storage(device, result.logtargets)
+    retained = _transfer_result_storage(device, result.retained)
+    return _new_weighted_samples(samples, logweights, provenance, diagnostics, logtargets, retained)
 end
 
 function (device::MLDataDevices.AbstractDevice)(result::WeightedSampleView)
@@ -238,16 +283,20 @@ function (device::MLDataDevices.AbstractDevice)(result::WeightedSampleView)
     logweights = _transfer_result_storage(device, result.logweights)
     provenance = _transfer_result_storage(device, result.provenance)
     transfers = _transfer_result_storage(device, result.transfers)
-    return _new_weighted_sample_view(samples, logweights, provenance, transfers)
+    logtargets = _transfer_result_storage(device, result.logtargets)
+    retained = _transfer_result_storage(device, result.retained)
+    return _new_weighted_sample_view(samples, logweights, provenance, transfers, logtargets, retained)
 end
 
-function _new_weighted_sample_view(samples, logweights, provenance, transfers)
+function _new_weighted_sample_view(samples, logweights, provenance, transfers, logtargets, retained=nothing)
     R = _result_record_type(samples, logweights, provenance)
     return WeightedSampleView{R}(
         samples,
         logweights,
         provenance,
         transfers,
+        logtargets,
+        retained,
         _VALIDATED_RESULT_TOKEN,
     )
 end
@@ -274,13 +323,18 @@ function _transfer_result_storage(device, counter::_ResultTransferCounter)
 end
 _transfer_result_storage(device, value) = value
 
-function _new_weighted_samples(samples, logweights, provenance, diagnostics)
+_copy_result_logtargets(::Nothing) = nothing
+_copy_result_logtargets(values::AbstractVector) = copy(values)
+
+function _new_weighted_samples(samples, logweights, provenance, diagnostics, logtargets, retained=nothing)
     R = _result_record_type(samples, logweights, provenance)
     return WeightedSamples{R}(
         samples,
         logweights,
         provenance,
         diagnostics,
+        logtargets,
+        retained,
         _VALIDATED_RESULT_TOKEN,
     )
 end
@@ -524,6 +578,8 @@ function _weighted_sample_view(result, sample_indices)
         viewed_logweights,
         viewed_provenance,
         _result_transfers(result),
+        _logtarget_view(result.logtargets, sample_indices),
+        _retained_view(result.retained, sample_indices),
     )
 end
 

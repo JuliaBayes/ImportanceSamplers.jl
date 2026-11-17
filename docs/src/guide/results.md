@@ -54,6 +54,15 @@ Iteration returns the same aligned records.
 `samples.provenance` holds aligned identifiers when the method has proposals or rounds.
 `samples.diagnostics` contains run-level information.
 
+Pass `save_logtargets=true` to `prepare_sampler` or `importance_sample` to retain
+the exact target log densities used in weighting as `samples.logtargets`.
+These values are in sampling coordinates, including the forward log Jacobian
+when `transform=` is used, even when returned samples have logical coordinates.
+They are recorded during sampling without evaluating the target again.
+The default is `nothing`, with no additional sample-sized storage or work.
+Retained values remain aligned through slicing and explicit device copies;
+scalar indexing and iteration still return the same three-field records.
+
 Population methods expose `provenance.proposal_id`.
 Adaptive methods expose `provenance.round`.
 These are generating identifiers, not a request to recompute weights.

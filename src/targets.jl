@@ -10,8 +10,8 @@ _scalar_gradient(gradient::_BatchedGradient) = gradient.scalar
 
 """
     LogTarget(logdensity)
-    LogTarget(logdensity, adtype; grad=nothing, batch=nothing, batch_grad=nothing)
-    LogTarget(logdensity; grad=nothing, batch=nothing, batch_grad=nothing)
+    LogTarget(logdensity, adtype; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing)
+    LogTarget(logdensity; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing)
 
 Mark `logdensity` as a package callable target.
 
@@ -93,30 +93,39 @@ gradient fields with `g.field[]` and vector fields with `g.field[i]`. The packag
 adds the transform pullback and Jacobian derivative. Borrowed inputs and gradient
 buffers must not escape the callback. CPU automatic gradients use ordinary arrays
 in the composed target through DifferentiationInterface.
+
+Pass `retain=RetainCoordinates(...)` to save an expensive parameter map during
+returned importance draws. Trial and derivative evaluations keep the ordinary
+callable. See [`RetainCoordinates`](@ref) for the output-buffer contract.
 """
-struct LogTarget{F,A<:ADTypes.AbstractADType,G,B}
+struct LogTarget{F,A<:ADTypes.AbstractADType,G,B,R}
     logdensity::F
     adtype::A
     grad::G
     batch::B
+    retain::R
 end
 
-LogTarget(f, adtype::ADTypes.AbstractADType; grad=nothing, batch=nothing, batch_grad=nothing) =
-    LogTarget(f, adtype, _with_batch_gradient(grad, batch_grad), batch)
-LogTarget(f; grad=nothing, batch=nothing, batch_grad=nothing) =
-    LogTarget(f, ADTypes.NoAutoDiff(); grad, batch, batch_grad)
+LogTarget(f, adtype::ADTypes.AbstractADType; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing) =
+    LogTarget(f, adtype, _with_batch_gradient(grad, batch_grad), batch, retain)
+LogTarget(f; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing) =
+    LogTarget(f, ADTypes.NoAutoDiff(); grad, batch, batch_grad, retain)
 LogTarget(f, adtype, grad) = LogTarget(f, adtype, grad, nothing)
+LogTarget(f, adtype, grad, batch) = LogTarget(f, adtype, grad, batch, nothing)
 
 struct _NoTargetContext end
 
-struct _PreparedLogTarget{F,P,A<:ADTypes.AbstractADType,G,B}
+struct _PreparedLogTarget{F,P,A<:ADTypes.AbstractADType,G,B,R}
     logdensity::F
     context::P
     adtype::A
     gradient::G
     batch::B
+    retain::R
 end
 
+_PreparedLogTarget(f, p, adtype, gradient, batch) =
+    _PreparedLogTarget(f, p, adtype, gradient, batch, nothing)
 _PreparedLogTarget(f, p, adtype, gradient) =
     _PreparedLogTarget(f, p, adtype, gradient, nothing)
 
@@ -201,6 +210,7 @@ function _transfer_prepared_target(
         _copy_to_device(device, target.adtype),
         _copy_target_callable(device, target.gradient),
         _copy_target_callable(device, target.batch),
+        _copy_target_callable(device, target.retain),
     )
 end
 
@@ -211,6 +221,7 @@ function _target_has_opaque_host_closure(target::_PreparedLogTarget)
     return _has_opaque_host_closure(target.logdensity) ||
            _has_opaque_host_closure(target.gradient) ||
            _has_opaque_host_closure(target.batch) ||
+           _has_opaque_host_closure(target.retain) ||
            _has_opaque_host_closure(target.context)
 end
 
@@ -221,6 +232,7 @@ function _target_has_opaque_host_closure(
     return _target_callable_has_opaque_host_closure(target.logdensity, device) ||
            _target_callable_has_opaque_host_closure(target.gradient, device) ||
            _target_callable_has_opaque_host_closure(target.batch, device) ||
+           _target_callable_has_opaque_host_closure(target.retain, device) ||
            _has_opaque_host_closure(target.context)
 end
 
@@ -256,6 +268,7 @@ function _target_transfer_rewrites_opaque_closure(target::_PreparedLogTarget)
     return _field_transfer_rewrites_opaque_closure(target.logdensity) ||
            _field_transfer_rewrites_opaque_closure(target.gradient) ||
            _field_transfer_rewrites_opaque_closure(target.batch) ||
+           _field_transfer_rewrites_opaque_closure(target.retain) ||
            _field_transfer_rewrites_opaque_closure(target.context)
 end
 
@@ -358,6 +371,7 @@ function _prepare_target(target::LogTarget, proposal)
         target.adtype,
         target.grad,
         target.batch,
+        target.retain,
     )
 end
 
@@ -368,6 +382,7 @@ function _prepare_target(target::LogTarget, context, proposal)
         target.adtype,
         target.grad,
         target.batch,
+        target.retain,
     )
 end
 

@@ -268,6 +268,29 @@ struct _NativeCPUTarget{L,T,F}
     failures::F
 end
 
+struct _SavingTargetEvaluator{T,V}
+    evaluator::T
+    values::V
+end
+Adapt.@adapt_structure _SavingTargetEvaluator
+
+@inline function (target::_SavingTargetEvaluator)(sample, slot)
+    result = target.evaluator(sample, slot)
+    target.values[slot] = result[1]
+    return result
+end
+
+_save_target_evaluator(target, ::Nothing) = target
+_save_target_evaluator(target, values::AbstractVector) = _SavingTargetEvaluator(target, values)
+_target_values(target) = nothing
+_target_values(target::_SavingTargetEvaluator) = target.values
+
+_copy_logtarget_round!(::Nothing, values, indices) = nothing
+function _copy_logtarget_round!(output::AbstractVector, values, indices)
+    copyto!(view(output, indices), view(values, indices))
+    return nothing
+end
+
 const _NativeFusedNonidentityScalarTransform = Union{
     PositiveTransform,
     SoftplusTransform,
@@ -391,13 +414,13 @@ _owned_backend_rng(
 ) = throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
 
 function _importance_sample!(sampler, ::_SerialCPUExecution)
-    samples, logweights = _importance_sample_generic_cpu!(sampler, false)
-    return samples, logweights, (count=0, bytes=0)
+    samples, logweights, logtargets, retained = _importance_sample_generic_cpu!(sampler, false)
+    return samples, logweights, logtargets, retained, (count=0, bytes=0)
 end
 
 function _importance_sample!(sampler, ::_ThreadedCPUExecution)
-    samples, logweights = _importance_sample_generic_cpu!(sampler, true)
-    return samples, logweights, (count=0, bytes=0)
+    samples, logweights, logtargets, retained = _importance_sample_generic_cpu!(sampler, true)
+    return samples, logweights, logtargets, retained, (count=0, bytes=0)
 end
 
 function _importance_sample!(sampler, execution::_KernelExecution)
@@ -416,6 +439,9 @@ function _importance_sample!(sampler, execution::_KernelExecution)
     end
     log_type = _resolve_native_logweight_type(target, base, typeof(binding_sample))
     logweights = similar(normal_buffer, log_type, nsamples)
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, logweights, nsamples, binding_sample)
     failure_scratch = sampler.random_buffers.failure_scratch
     failure_record = failure_scratch.record
     target_failures = failure_scratch.target_failures
@@ -425,6 +451,8 @@ function _importance_sample!(sampler, execution::_KernelExecution)
         log_type,
         target_failures,
     )
+    target_evaluator = _save_retained_target(target_evaluator, logtargets, retention, retained,
+        KernelAbstractions.get_backend(normal_buffer), target_failures)
     _launch_native_batch!(samples, logweights, failure_record, buffers, target_evaluator,
         base, transform, execution, sampler.device, sampler.factor_execution)
     snapshot = _device_failure_snapshot(failure_record)
@@ -435,7 +463,7 @@ function _importance_sample!(sampler, execution::_KernelExecution)
         transform,
     )
     _record_reported_transfer!(transfers, snapshot.transfers.count, snapshot.transfers.bytes, Val(:failure_snapshot))
-    return samples, logweights, (count=transfers.count, bytes=transfers.bytes)
+    return samples, logweights, logtargets, retained, (count=transfers.count, bytes=transfers.bytes)
 end
 
 function _launch_native_batch!(samples, logweights, failure_record, buffers, target_evaluator,
@@ -504,6 +532,9 @@ function _preflight_native_kernel_target(
     samples = _allocate_native_samples(buffers.normal, proposal, 1)
     binding_sample = _native_binding_sample(samples)
     bound_target = _bind_resolved_target(target, binding_sample)
+    retention = _retention_plan(target)
+    retained = _allocate_retained(retention, samples, 1, binding_sample)
+    bound_target = _bind_retained_target(bound_target, retention, retained)
     base, _ = _native_fused_components(proposal)
     log_type = _resolve_native_logweight_type(
         bound_target,
@@ -805,7 +836,7 @@ end
 
 @inline function (evaluator::_NativeCPUTarget{L})(sample, slot) where {L}
     try
-        value = convert(L, evaluator.target(sample))
+        value = convert(L, _target_value(evaluator.target, sample, slot))
         reason = _native_target_reason(value)
         if !iszero(reason)
             cause = DomainError(value, "target log density may not be NaN or +Inf")

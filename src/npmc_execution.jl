@@ -131,7 +131,7 @@ function _preflight_accelerator_method(
     binding_sample = _native_binding_sample(workspace.samples)
     bound_target = _bind_resolved_target(target, binding_sample)
     T = eltype(workspace.logweights)
-    target_argument = _native_device_evaluator(bound_target, T)
+    target_argument = _native_device_evaluator(_preflight_retained_target(bound_target, target, workspace.logweights, binding_sample), T)
     backend = KernelAbstractions.get_backend(buffers.normal)
     kernel = _gaussian_round_launch_kernel!(backend)
     round = findmax(state.schedule)[2]

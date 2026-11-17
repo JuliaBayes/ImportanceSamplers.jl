@@ -79,6 +79,36 @@ Finite values and `-Inf` are valid. `-Inf` means zero target density.
 Match constants and arrays to the intended precision.
 For example, use `0.5f0` and `Float32` data with a single-precision model.
 
+## Retaining mapped parameters
+
+An adapter may evaluate a target through an expensive parameter map.
+[`RetainCoordinates`](@ref) saves that map's outputs during retained importance
+draws. It avoids repeating the map when constructing the final result.
+Ordinary use does not require this interface.
+
+```@example targets
+lognormal_coordinates(z) = -sum(abs2, z) / 2
+mapped(z) = (lognormal_coordinates(z), exp.(z), sum(z))
+retain = RetainCoordinates(mapped, zeros(2))
+mapped_target = LogTarget(lognormal_coordinates; retain)
+algorithm = ImportanceSampling(SphericalGaussian(zeros(2), 1.0); nsamples=5_000)
+result = importance_sample(Xoshiro(43), mapped_target, algorithm)
+
+x = result.retained.coordinates
+logdensity_x = result.logtargets .- result.retained.logjacobians
+```
+
+Here `z` has a Gaussian target and `x = exp.(z)` has the corresponding lognormal
+target. The saved Jacobian is `sum(z)`. The unnormalized weights remain those
+of the original Gaussian-coordinate estimator.
+
+The callback must return the same log target as the ordinary callable.
+It runs only for returned importance draws, not adaptation or MCMC trials.
+Its arrays are copied into result buffers, so it may return input views or scratch.
+Concurrent calls still require a thread-safe callback.
+The optional retained batch callback writes device buffers directly.
+See [`RetainCoordinates`](@ref) for its scalar, context and batch contracts.
+
 Scalar targets may run concurrently. Treat the input sample and context as read-only.
 Avoid hidden mutable scratch storage. Use an explicit [batch callback](@ref batch-guide)
 when evaluation should share work across samples.

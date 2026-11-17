@@ -52,7 +52,15 @@ _cuda_state_resident(device, state::ImportanceSamplers._HamiltonianState) =
 _cuda_state_resident(device, array::CUDA.AnyCuArray) =
     CUDA.device(array) == device
 _cuda_state_resident(device, range::AbstractRange) = true
-_cuda_state_resident(device, array::AbstractArray) = false
+_cuda_state_resident(device, array::Array) = false
+function _cuda_state_resident(device, array::AbstractArray)
+    # Only immutable wrappers can share checked storage or inline values.
+    # Raw pointers do not identify their device and are rejected below.
+    T = typeof(array)
+    return !ismutabletype(T) && fieldcount(T) > 0 &&
+           _cuda_fields_resident(device, array, Val(fieldcount(T)))
+end
+_cuda_state_resident(device, pointer::Union{Ptr,Core.LLVMPtr}) = false
 _cuda_state_resident(
     device,
     state::Union{Number,AbstractString,Symbol,Type,Module,Nothing},

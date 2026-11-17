@@ -12,6 +12,7 @@ This section lists signatures and exact contracts for lookup.
 
 ```@docs
 LogTarget
+RetainCoordinates
 ```
 
 ## Preparation and execution

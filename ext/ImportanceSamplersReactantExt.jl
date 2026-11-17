@@ -26,6 +26,8 @@ _batch_trace_samples(samples::NamedTuple) = map(_batch_trace_samples, samples)
 _separate_target(target) = target
 _separate_target(target::IS._NativeDeviceTarget{L}) where {L} =
     IS._NativeBatchTarget{L,typeof(target)}(target)
+_separate_target(target::IS._SavingTargetEvaluator) =
+    IS._save_target_evaluator(_separate_target(target.evaluator), target.values)
 
 KA.@kernel function _scalar_target_values_kernel!(logs, samples, target, failures, ready)
     index = KA.@index(Global, Linear)
@@ -132,6 +134,9 @@ end
 
 _copy_native_samples(samples::AbstractArray) = copy(samples)
 _copy_native_samples(samples::NamedTuple) = map(_copy_native_samples, samples)
+_copy_retained(::Nothing) = nothing
+_copy_retained(retained) = (coordinates=_copy_native_samples(retained.coordinates),
+    logjacobians=copy(retained.logjacobians))
 
 function (phase::_NativePhase)(rng, buffers, samples, logweights, target, proposal)
     IS._fill_random_buffers!(rng, buffers)
@@ -140,7 +145,8 @@ function (phase::_NativePhase)(rng, buffers, samples, logweights, target, propos
     base, transform = IS._native_fused_components(proposal)
     IS._launch_native_batch!(samples, logweights, record, buffers, target, base,
         transform, phase.execution, phase.device, phase.factor_execution)
-    return _copy_native_samples(samples), copy(logweights)
+    return _copy_native_samples(samples), copy(logweights), IS._copy_result_logtargets(IS._target_values(target)),
+        _copy_retained(IS._retained_output(target))
 end
 
 function _map_samples!(samples, layout, record)
@@ -168,7 +174,8 @@ function (phase::_NativePhase)(rng, buffers, samples, logweights, proposal_ids, 
     fill!(buffers.failure_scratch.record.storage, zero(UInt64))
     IS._launch_packed_static_mis!(samples, logweights, proposal_ids, buffers, target,
         state, phase.execution, phase.device, phase.factor_execution)
-    return copy(samples), copy(logweights), copy(proposal_ids)
+    return copy(samples), copy(logweights), copy(proposal_ids), IS._copy_result_logtargets(IS._target_values(target)),
+        _copy_retained(IS._retained_output(target))
 end
 
 function _prepare_execution(sampler, state::IS._PreparedStaticMIS)
@@ -181,6 +188,11 @@ function _prepare_execution(sampler, state::IS._PreparedStaticMIS)
     proposal_ids = similar(buffers.assignments, Int, count)
     target, _ = IS._native_target_evaluator(KA.get_backend(buffers.normal), bound, L,
         buffers.failure_scratch.target_failures)
+    retention = IS._retention_plan(sampler.target)
+    retained = IS._allocate_retained(retention, logweights, count, binding)
+    target = IS._save_retained_target(target,
+        IS._allocate_saved_logtargets(sampler.save_logtargets, logweights), retention, retained,
+        KA.get_backend(buffers.normal), buffers.failure_scratch.target_failures)
     phase = _NativePhase(sampler.device, sampler.factor_execution, IS._ThreadedCPUExecution())
     arguments = (sampler.rng.rng, buffers, samples, logweights, proposal_ids, target, state)
     compiled = Reactant.@compile phase(arguments...)
@@ -344,12 +356,17 @@ function _prepare_execution(sampler, state::IS._PreparedMomentSampler)
     round_ids = similar(workspace.logweights, Int, length(workspace.logweights))
     rng = sampler.rng.rng
     schedule, offsets = collect(state.schedule), collect(state.offsets)
+    retention = IS._retention_plan(sampler.target)
+    retained = IS._allocate_retained(retention, workspace.logweights, length(workspace.logweights), binding)
     draws = map(eachindex(state.schedule)) do round
         phase = _MomentDrawPhase(sampler.algorithm, sampler.device,
             sampler.factor_execution, IS._ThreadedCPUExecution(),
             schedule, offsets, round)
         logcounts = state.logcounts
-        Reactant.@compile phase(rng, workspace, history, logcounts, buffers, target, round_ids)
+        indices = offsets[round]:(offsets[round + 1] - 1)
+        retained_target = IS._save_retained_target(target, nothing, retention,
+            IS._retained_view(retained, indices), KA.get_backend(buffers.normal), buffers.failure_scratch.target_failures)
+        Reactant.@compile phase(rng, workspace, history, logcounts, buffers, retained_target, round_ids)
     end
     fits = map(eachindex(state.schedule)) do round
         phase = _MomentFitPhase(round, IS._moment_adaptation_count(sampler.algorithm, state, round))
@@ -414,7 +431,8 @@ function IS._prepare_backend_execution(sampler::IS._PreparedImportanceSampler{<:
     plan = _prepare_execution(sampler, sampler.method_state)
     return IS._PreparedImportanceSampler(sampler.rng, sampler.random_buffers,
         sampler.target, sampler.algorithm, sampler.method_state, sampler.device,
-        sampler.factor_execution, sampler.threaded, sampler.running, sampler.executed, plan)
+        sampler.factor_execution, sampler.threaded, sampler.running, sampler.executed, plan,
+        sampler.save_logtargets)
 end
 
 _prepare_execution(sampler, state) = nothing
@@ -430,6 +448,11 @@ function _prepare_execution(sampler, ::IS._SingleProposalMethodState)
     logweights = similar(buffers.normal, L, sampler.algorithm.nsamples)
     target, _ = IS._native_target_evaluator(KA.get_backend(buffers.normal), bound, L,
         buffers.failure_scratch.target_failures)
+    retention = IS._retention_plan(sampler.target)
+    retained = IS._allocate_retained(retention, logweights, sampler.algorithm.nsamples, binding)
+    target = IS._save_retained_target(target,
+        IS._allocate_saved_logtargets(sampler.save_logtargets, logweights), retention, retained,
+        KA.get_backend(buffers.normal), buffers.failure_scratch.target_failures)
     execution = IS._sampling_execution(proposal, true)
     phase = _NativePhase(sampler.device, sampler.factor_execution, execution)
     arguments = (sampler.rng.rng, buffers, samples, logweights, target, proposal)
@@ -465,21 +488,21 @@ function _compiled_native_transfers(sampler, transform)
 end
 
 function _compiled_native_result(sampler, plan, ::IS._SingleProposalMethodState, output, threaded)
-    samples, logweights = output
+    samples, logweights, logtargets, retained = output
     _, transform = IS._native_fused_components(sampler.algorithm.proposal)
     transfers = _compiled_native_transfers(sampler, transform)
     samples = _map_compiled_result(plan.map_result, sampler, samples, transfers)
     execution = IS._sampling_execution(sampler.algorithm.proposal, threaded)
-    return IS._single_proposal_result(sampler, execution, samples, logweights, transfers)
+    return IS._single_proposal_result(sampler, execution, samples, logweights, transfers, logtargets, retained)
 end
 
 function _compiled_native_result(sampler, plan, ::IS._PreparedStaticMIS, output, threaded)
-    samples, logweights, proposal_ids = output
+    samples, logweights, proposal_ids, logtargets, retained = output
     transfers = _compiled_native_transfers(sampler, IS._NoSampleTransform())
     samples = _map_compiled_result(plan.map_result, sampler, samples, transfers)
     execution = threaded ? IS._ThreadedCPUExecution() : IS._SerialCPUExecution()
     return IS._packed_static_mis_result(sampler, samples, logweights, proposal_ids,
-        execution, transfers)
+        execution, transfers, logtargets, retained)
 end
 
 struct _CompiledPopulationExecution{N,D,A,R,C,P,M}
@@ -521,10 +544,19 @@ function _prepare_population_execution(sampler, state)
     execution = IS._population_execution(sampler, true, state)
     device, factor_execution = sampler.device, sampler.factor_execution
     normals = Reactant.@compile IS._fill_population_normals!(rng, buffers)
+    retained_values = IS._allocate_saved_logtargets(sampler.save_logtargets,
+        state.workspace.round_logweights, last(state.plan.offsets) - 1)
+    retention = IS._retention_plan(sampler.target)
+    retained_output = IS._allocate_retained(retention, state.workspace.round_logweights, last(state.plan.offsets) - 1,
+        IS._population_binding_sample(state.bank))
     draws = map(eachindex(state.plan.schedule)) do round
+        indices = state.plan.offsets[round]:(state.plan.offsets[round + 1] - 1)
+        retained = IS._save_retained_target(target, IS._logtarget_view(
+            retained_values, indices), retention, IS._retained_view(retained_output, indices),
+            KA.get_backend(buffers.normals), buffers.failure_scratch.target_failures)
         phase = (state, buffers, target) -> IS._launch_population_round!(
             _population_draw_state(state), buffers, target, round, execution, device, factor_execution)
-        Reactant.@compile phase(state, buffers, target)
+        Reactant.@compile phase(state, buffers, retained)
     end
     adaptation = _prepare_population_adaptation(sampler, state)
     record = buffers.failure_scratch.record
@@ -1029,6 +1061,7 @@ function IS._prepare_accelerator_gradient(
     target::IS._PreparedLogTarget{F,P,A,Nothing},
     locations::Reactant.AnyConcreteRArray, values,
 ) where {F,P,A<:ADTypes.AutoEnzyme}
+    target = IS._without_retention(target)
     ADTypes.mode(target.adtype) isa Union{ADTypes.ReverseMode,ADTypes.ForwardOrReverseMode} ||
         IS._reject_cpu_gradient_on_accelerator(view(locations, :, 1))
     seeds = similar(values)
