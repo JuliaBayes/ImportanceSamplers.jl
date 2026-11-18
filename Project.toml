@@ -25,9 +25,6 @@ Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"
 
-[sources]
-PureRNGs = {rev = "dev", url = "https://github.com/BJMCox/PureRNGs.jl"}
-
 [extensions]
 ImportanceSamplersCUDAExt = "CUDA"
 ImportanceSamplersDistributionsExt = "Distributions"

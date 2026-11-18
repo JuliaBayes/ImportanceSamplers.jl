@@ -2,7 +2,7 @@
 
 julia_version = "1.13.3"
 manifest_format = "2.1"
-project_hash = "dcb472ba3cfdbe10ca859213781206afd0e3ab70"
+project_hash = "13f1643dfac4ba2238d7d245150d02e542952e9e"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -1281,9 +1281,8 @@ version = "1.4.0"
 
 [[deps.PureRNGs]]
 deps = ["MLDataDevices", "PrecompileTools", "Random"]
-git-tree-sha1 = "3bc01ff0257b1843ebf0bada1981bb476a5ac846"
-repo-rev = "dev"
-repo-url = "https://github.com/BJMCox/PureRNGs.jl"
+git-tree-sha1 = "e43572e1685cbc7ee43a4588a7e44109477bb19b"
+registries = "General"
 uuid = "2ccaadc3-3d9a-45d4-a2ec-95a2424790b7"
 version = "0.0.2"
 
