@@ -2,6 +2,8 @@ using ImportanceSamplers
 using LinearAlgebra
 using Pkg
 using Random
+using PureRNGs
+import MLDataDevices
 using Test
 
 include(joinpath(@__DIR__, "..", "amis_capabilities.jl"))
@@ -10,7 +12,7 @@ const AMIS_CPU_ORACLE_COMMAND =
     "include(\"reproducers/amis.jl\") in the validation project"
 const AMIS_CPU_ORACLE_SEED = 0x616d69736f726163
 
-mutable struct LiteralNormalRNG{T<:AbstractFloat} <: Random.AbstractRNG
+struct LiteralNormalRNG{T<:AbstractFloat} <: PureRNGs.AbstractPureRNG
     batches::Vector{Vector{T}}
     index::Int
 end
@@ -18,14 +20,16 @@ end
 LiteralNormalRNG(batches::Vector{Vector{T}}) where {T<:AbstractFloat} =
     LiteralNormalRNG{T}(batches, 1)
 
-function Random.randn!(rng::LiteralNormalRNG, destination::AbstractArray)
+(::MLDataDevices.CPUDevice)(rng::LiteralNormalRNG) = rng
+
+function PureRNGs.randn_next!(rng::LiteralNormalRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     source = rng.batches[rng.index]
     length(source) == length(destination) || throw(
         DimensionMismatch("literal normal batch does not match the prepared buffer"),
     )
     copyto!(destination, source)
-    rng.index += 1
-    return destination
+    return destination, LiteralNormalRNG(rng.batches, rng.index + 1)
 end
 
 struct LiteralGaussian{T,L,F}
@@ -442,7 +446,7 @@ function validate_scaling_case(rounds, dimension)
              (sample -> -T(0.5) * sum(abs2, sample) -
                         T(0.5) * T(dimension) * log(T(2pi)))
     sampler = prepare_sampler(
-        Xoshiro(AMIS_CPU_ORACLE_SEED + UInt(rounds + dimension)),
+        Threefry4x32(AMIS_CPU_ORACLE_SEED + UInt(rounds + dimension)),
         target,
         AMIS(proposal; rounds, round_size=schedule);
         threaded=false,
@@ -540,7 +544,7 @@ function validate_capability_rows()
     for row in AMIS_CAPABILITY_ROWS
         proposal = row.proposal(row.type)
         sampler = prepare_sampler(
-            Xoshiro(AMIS_CPU_ORACLE_SEED),
+            Threefry4x32(AMIS_CPU_ORACLE_SEED),
             CapabilityTarget{row.type}(),
             AMIS(proposal; rounds=2, round_size=[7, 9]);
             threaded=false,

@@ -3,7 +3,6 @@ module ImportanceSamplersMetalExt
 import ImportanceSamplers as IS
 import Metal
 import MLDataDevices
-import Random
 import LinearAlgebra
 
 # The Metal compiler miscompiles the combined unordered comparison emitted for

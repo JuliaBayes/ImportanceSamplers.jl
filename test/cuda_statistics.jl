@@ -2,7 +2,6 @@ using Test
 using CUDA
 using ImportanceSamplers
 using MLDataDevices
-using Random
 using Statistics
 
 CUDA.allowscalar(false)
@@ -36,22 +35,4 @@ end
         @test var(scalar) ≈ expected rtol=8eps(Float32)
         @test only(Array(var(matrix))) ≈ expected rtol=8eps(Float32)
     end
-end
-
-@testset "CUDA incompatible RNG rejection preserves the CPU stream" begin
-    device = MLDataDevices.CUDADevice{typeof(CUDA.device()),Nothing}(CUDA.device())
-    fetch(@async begin
-        Random.seed!(0x9114)
-        task_rng = Random.default_rng()
-        reference_rng = copy(task_rng)
-            algorithm = ImportanceSampling(SphericalGaussian(0.0f0, 1.0f0); nsamples=8)
-        target(x) = -abs2(x) / 2.0f0
-        source = prepare_sampler(task_rng, target, algorithm)
-            @test_throws SamplerDeviceError device(source)
-        reference = prepare_sampler(reference_rng, target, algorithm)
-
-            @test importance_sample!(source).samples ==
-                  importance_sample!(reference).samples
-            @test rand(task_rng, UInt64) == rand(reference_rng, UInt64)
-    end)
 end

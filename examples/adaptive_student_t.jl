@@ -1,4 +1,4 @@
-using ImportanceSamplers, LinearAlgebra, Random, Statistics
+using ImportanceSamplers, LinearAlgebra, PureRNGs, Random, Statistics
 
 # A curved density: X₁ = 3Z₁ and X₂ = Z₂ + 0.2(X₁² - 9), with independent
 # standard normal Z₁,Z₂. The Jacobian is 3, so this log density is normalized.
@@ -8,7 +8,9 @@ function banana_logtarget(x, p)
     return -(abs2(z1) + abs2(z2)) / 2 - log(2pi) - log(p.width)
 end
 
-function prepare_example(; seed=42, rounds=30, round_size=16_384, sampling_rng=nothing)
+function prepare_example(;
+    seed=42, rounds=30, round_size=16_384, sampling_rng=Threefry4x32(seed),
+)
     rng = Xoshiro(seed)
     data = (width=3.0, bend=0.2)
     centres = 0.5 .* randn(rng, 2, 16)
@@ -29,8 +31,7 @@ function prepare_example(; seed=42, rounds=30, round_size=16_384, sampling_rng=n
     # These illustrative settings are not a tuned optimum for this target.
     transition = RandomWalkMetropolis(Diagonal([9.0, 7.48]))
     algorithm = LAIS(bank; transition, rounds, round_size)
-    return prepare_sampler(isnothing(sampling_rng) ? rng : sampling_rng,
-        banana_logtarget, data, algorithm)
+    return prepare_sampler(sampling_rng, banana_logtarget, data, algorithm)
 end
 
 function main()

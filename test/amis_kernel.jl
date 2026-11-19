@@ -4,7 +4,6 @@ import DensityInterface
 import KernelAbstractions
 import LinearAlgebra
 import LogExpFunctions
-import Random
 
 const AMISKernelIS = ImportanceSamplers
 
@@ -12,7 +11,7 @@ mutable struct AMISKernelCountingTarget{T}
     calls::Vector{Int}
 end
 
-mutable struct AMISPrefilledRNG{T} <: Random.AbstractRNG
+struct AMISPrefilledRNG{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
@@ -20,18 +19,18 @@ end
 AMISPrefilledRNG(batches::Vector{Vector{T}}) where {T} =
     AMISPrefilledRNG{T}(batches, 1)
 
-function Random.randn!(rng::AMISPrefilledRNG, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::AMISPrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.batches[rng.index]
     length(batch) >= length(destination) || throw(
         DimensionMismatch("prefilled AMIS normal batch is too short"),
     )
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.index += 1
-    return destination
+    return destination, AMISPrefilledRNG(rng.batches, rng.index + 1)
 end
 
-Random.rand!(::AMISPrefilledRNG, destination::AbstractArray) =
-    fill!(destination, 0.5)
+PureRNGs.rand_next!(rng::AMISPrefilledRNG, destination::AbstractArray; threaded=false) =
+    fill!(destination, 0.5), rng
 
 mutable struct AMISCountingTarget{T}
     calls::Int
@@ -585,7 +584,7 @@ end
 end
 
 @testset "AMIS fused target failure clears stale round IDs" begin
-    prepared = prepare_sampler(Random.Xoshiro(1), Returns(0.0),
+    prepared = prepare_sampler(Threefry4x32(1), Returns(0.0),
         AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=2))
     state = prepared.method_state
     workspace = state.workspace

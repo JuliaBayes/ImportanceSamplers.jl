@@ -12,12 +12,12 @@ I=\int_{\mathbb R^3}\exp(-\lVert x\rVert^2)\,dx=\pi^{3/2}.
 ## Nonnegative integrands
 
 ```@example integration
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logintegrand(x) = -sum(abs2, x)
 proposal = SphericalGaussian(zeros(3), 1.0)
 samples = importance_sample(
-    Xoshiro(8), logintegrand,
+    Threefry4x32(8), logintegrand,
     ImportanceSampling(proposal; nsamples=20_000),
 )
 

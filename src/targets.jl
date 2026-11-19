@@ -336,7 +336,7 @@ end
 function _has_opaque_host_closure(
     target::Union{
         Number,
-        Random.AbstractRNG,
+        PureRNGs.AbstractPureRNG,
         AbstractString,
         Symbol,
         Nothing,

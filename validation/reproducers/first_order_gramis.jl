@@ -1,6 +1,7 @@
 using ImportanceSamplers
 using LinearAlgebra
-using Random
+using PureRNGs
+import MLDataDevices
 using Test
 import DensityInterface
 
@@ -204,7 +205,7 @@ function covariance_reproducer_state(::Type{T}) where {T}
         FactorGaussian(T[100], reshape(T[4], 1, 1)),
     ])
     sampler = prepare_sampler(
-        Xoshiro(0x434149534f524143),
+        Threefry4x32(0x434149534f524143),
         LogTarget(CausalTarget(); grad=causal_gradient!),
         FirstOrderGRAMIS(
             bank;
@@ -294,19 +295,21 @@ function validate_first_order_gramis_covariance_rules()
     )
 end
 
-mutable struct CausalPrefilledRNG{T} <: Random.AbstractRNG
+struct CausalPrefilledRNG{T} <: PureRNGs.AbstractPureRNG
     batches::Vector{Vector{T}}
     next_batch::Int
 end
 
-function Random.randn!(rng::CausalPrefilledRNG, destination::AbstractArray)
+(::MLDataDevices.CPUDevice)(rng::CausalPrefilledRNG) = rng
+
+function PureRNGs.randn_next!(rng::CausalPrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.batches[rng.next_batch]
     length(batch) == length(destination) || throw(
         DimensionMismatch("causal normal batch has the wrong length"),
     )
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.next_batch += 1
-    return destination
+    return destination, CausalPrefilledRNG(rng.batches, rng.next_batch + 1)
 end
 
 struct CausalTarget end

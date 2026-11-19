@@ -103,7 +103,7 @@ function tune_population(rng, device, model, bank, pilot; family=:student_t,
     logsumexp = IS.LogExpFunctions.logsumexp
     # A separate stream prevents the main sampler from replaying pilot draws.
     pilot_seed = rand(rng,UInt64)
-    sampling_rng = device === nothing ? Xoshiro(pilot_seed) : Threefry4x32(pilot_seed)
+    sampling_rng = Threefry4x32(pilot_seed)
     prepared = IS.prepare_sampler(sampling_rng,target,data,
         IS.ImportanceSampling(bank;nsamples=pilot.nsamples,mis_scheme=IS.RandomMixture()))
     device === nothing || (prepared = device(prepared))
@@ -178,7 +178,7 @@ function run_method(method, device, model, seed; nsamples=2^18, warmup=1024, nch
                 IS.LAIS(bank; transition, options...)
             end
         end
-        sampling_rng = device === nothing ? rng : Threefry4x32(seed)
+        sampling_rng = Threefry4x32(seed)
         prepared = IS.prepare_sampler(sampling_rng, target, data, algorithm)
         device === nothing || (prepared = device(prepared))
         result = IS.importance_sample!(prepared)

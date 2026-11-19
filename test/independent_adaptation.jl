@@ -2,7 +2,6 @@ import DensityInterface: logdensityof
 import Distributions
 import LogExpFunctions: logaddexp
 import MLDataDevices
-import Random
 import Statistics
 
 function independent_fit_oracle(family, samples, logweights, clipped)
@@ -27,7 +26,7 @@ end
         algorithm =
             method === ImportanceSampling ? method(q; nsamples = 128) :
             method(q; rounds = 1, round_size = 128)
-        result = importance_sample!(device(prepare_sampler(Random.Xoshiro(1913), q, algorithm)))
+        result = importance_sample!(device(prepare_sampler(Threefry4x32(1913), q, algorithm)))
         @test eltype(result.samples) === eltype(result.logweights) === Float32 &&
               maximum(abs, result.logweights) <= 64eps(Float32)
     end
@@ -63,7 +62,7 @@ end
     for (proposal, target, point, family) in cases, method in (AMIS, NPMC)
         count = 256
         first = prepare_sampler(
-            Random.Xoshiro(1901),
+            Threefry4x32(1901),
             target,
             method(proposal; rounds = 1, round_size = count),
         )
@@ -76,7 +75,7 @@ end
 
         sizes = [128, 256]
         prepared = prepare_sampler(
-            Random.Xoshiro(1901),
+            Threefry4x32(1901),
             target,
             method(proposal; rounds = 2, round_size = sizes),
         )
@@ -112,7 +111,7 @@ independent_switch_target(x, p) = p.valid[] ? logdensityof(p.law, x) : -Inf
     )
         p = (; law = proposal, valid = Ref(true))
         sampler = prepare_sampler(
-            Random.Xoshiro(1902),
+            Threefry4x32(1902),
             independent_switch_target,
             p,
             method(proposal; rounds = 2, round_size = 256),
@@ -129,7 +128,7 @@ independent_switch_target(x, p) = p.valid[] ? logdensityof(p.law, x) : -Inf
         @test logdensityof(current_proposal(sampler), point) == logdensityof(saved, point)
         p.valid[] = true
         @test all(isfinite, importance_sample!(sampler).logweights)
-        changed = retarget(Random.Xoshiro(1903), sampler, proposal)
+        changed = retarget(Threefry4x32(1903), sampler, proposal)
         @test logdensityof(current_proposal(changed), point) ==
               logdensityof(current_proposal(sampler), point)
     end
@@ -139,7 +138,7 @@ end
     for (proposal, method, sizes) in
         ((IndependentGamma(2.0, 1.0), AMIS, [1]), (IndependentLaplace(0.0, 1.0), NPMC, [16, 1]))
         sampler = prepare_sampler(
-            Random.Xoshiro(1904),
+            Threefry4x32(1904),
             proposal,
             method(proposal; rounds = length(sizes), round_size = sizes),
         )
@@ -159,8 +158,8 @@ end
 @testset "independent adaptive serial and threaded replay" begin
     for q in (IndependentGamma([2.0, 3.0], [1.0, 0.5]), IndependentLaplace([0.0, 1.0], [1.0, 0.5]))
         algorithm = AMIS(q; rounds = 3, round_size = [96, 128, 64])
-        serial = importance_sample(Random.Xoshiro(1905), q, algorithm; threaded = false)
-        threaded = importance_sample(Random.Xoshiro(1905), q, algorithm; threaded = true)
+        serial = importance_sample(Threefry4x32(1905), q, algorithm; threaded = false)
+        threaded = importance_sample(Threefry4x32(1905), q, algorithm; threaded = true)
         @test serial.samples == threaded.samples && serial.logweights == threaded.logweights
     end
 end

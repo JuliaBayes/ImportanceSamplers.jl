@@ -1,27 +1,25 @@
 module CUDALAISValidation
 
-using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, Random, Test
-using PureRNGs: Threefry4x32
+using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, PureRNGs, Test
 const IS = ImportanceSamplers
 include("../../test/support/lais.jl")
 
-Random.randn!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T}) where {T<:AbstractFloat} =
-    invoke(Random.randn!, Tuple{LAISScriptedRNG,AbstractArray}, rng, out)
-Random.rand!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T}) where {T<:AbstractFloat} =
-    invoke(Random.rand!, Tuple{LAISScriptedRNG,AbstractArray}, rng, out)
-
 # Present the same prescribed move buffers to the batched GPU implementation.
-function Random.randn!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,3}) where {T<:AbstractFloat}
+function PureRNGs.randn_next!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,3};
+    threaded=false,
+) where {T<:AbstractFloat}
     for step in axes(out, 3)
-        invoke(Random.randn!, Tuple{LAISScriptedRNG,AbstractArray}, rng, view(out, :, :, step))
+        _, rng = randn_next!(rng, view(out, :, :, step); threaded)
     end
-    return out
+    return out, rng
 end
-function Random.rand!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,2}) where {T<:AbstractFloat}
+function PureRNGs.rand_next!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,2};
+    threaded=false,
+) where {T<:AbstractFloat}
     for step in axes(out, 2)
-        invoke(Random.rand!, Tuple{LAISScriptedRNG,AbstractArray}, rng, view(out, :, step))
+        _, rng = rand_next!(rng, view(out, :, step); threaded)
     end
-    return out
+    return out, rng
 end
 
 function check_warmup_batch_boundary(device)

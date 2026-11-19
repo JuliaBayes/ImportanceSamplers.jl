@@ -1,6 +1,6 @@
 module NPMCBenchmark
 
-using BenchmarkTools, ImportanceSamplers, MLDataDevices, Random
+using BenchmarkTools, ImportanceSamplers, MLDataDevices
 using PureRNGs
 
 struct GaussianTarget{T} end
@@ -14,7 +14,7 @@ end
 
 function measure(device; method=NPMC, dimension=4, round_size=262_144, rounds=3,
                  T=Float32, threaded=true)
-    rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(42) : Xoshiro(42)
+    rng = Threefry4x32(42)
     source = prepare_sampler(rng, GaussianTarget{T}(),
         method(SphericalGaussian(zeros(T, dimension), T(2)); rounds, round_size);
         threaded)

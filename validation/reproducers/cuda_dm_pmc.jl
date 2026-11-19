@@ -4,7 +4,6 @@ using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -169,7 +168,7 @@ function parity_case(device, ::Type{T}, kind; zero_mass=false, schedule=[9, 11])
         round_size=schedule,
     )
     cpu = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         DMPMCQuadraticTarget{T}(),
         algorithm;
         threaded=true,
@@ -484,7 +483,7 @@ function static_factor_case(device, ::Type{T}) where {T}
         mis_scheme=StratifiedMixture(),
     )
     cpu = importance_sample(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         cuda_factor_mixture_target,
         context,
         algorithm;

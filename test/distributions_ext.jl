@@ -1,7 +1,6 @@
 import Distributions
 import DensityInterface
 import LinearAlgebra: Symmetric, cholesky
-import Random
 import Statistics: mean, var, cov
 
 @testset "native Gaussians convert to Distributions and prepare again" begin
@@ -20,7 +19,7 @@ import Statistics: mean, var, cov
         @test cov(distribution) ≈ cov(proposal)
         point = Float32[2, 1]
         @test Distributions.logpdf(distribution, point) ≈ DensityInterface.logdensityof(proposal, point)
-        prepared = prepare_sampler(Random.Xoshiro(0x52), distribution,
+        prepared = prepare_sampler(Threefry4x32(0x52), distribution,
             AMIS(distribution; rounds=1, round_size=16))
         snapshot = current_proposal(prepared)
         @test mean(snapshot) == mean(proposal) && cov(snapshot) ≈ cov(proposal)
@@ -32,7 +31,7 @@ import Statistics: mean, var, cov
     distribution = Distributions.MvNormal(illconditioned)
     @test Distributions.logpdf(distribution, Float32[0, 1e-4]) ≈
           DensityInterface.logdensityof(illconditioned, Float32[0, 1e-4])
-    roundtrip = current_proposal(prepare_sampler(Random.Xoshiro(0x53), distribution,
+    roundtrip = current_proposal(prepare_sampler(Threefry4x32(0x53), distribution,
         AMIS(distribution; rounds=1, round_size=16)))
     @test proposal_scale_factor(roundtrip) == proposal_scale_factor(illconditioned)
     # Covariance-based ecosystem representations must not silently change the law.
@@ -46,11 +45,11 @@ end
         algorithm = AMIS(proposal; rounds=1, round_size=32)
         target(sample) = Distributions.logpdf(proposal, sample)
 
-        result = importance_sample(Random.Xoshiro(0x4d91), target, algorithm)
+        result = importance_sample(Threefry4x32(0x4d91), target, algorithm)
 
         @test length(result) == 32
         @test all(isapprox(zero(T); atol=8eps(T)), result.logweights)
-        bank_result = importance_sample(Random.Xoshiro(0x4d91), target,
+        bank_result = importance_sample(Threefry4x32(0x4d91), target,
             ImportanceSampling(ProposalBank([proposal, proposal]); nsamples=32))
         @test eltype(bank_result.logweights) === T
         @test maximum(abs, bank_result.logweights) <= 16eps(T)
@@ -80,7 +79,7 @@ end
             algorithm = AMIS(proposal; rounds=1, round_size=64)
             target = sample -> Distributions.logpdf(proposal, sample)
 
-            result = importance_sample(Random.Xoshiro(0x74a3), target, algorithm)
+            result = importance_sample(Threefry4x32(0x74a3), target, algorithm)
 
             @test typeof(algorithm.proposal) === typeof(case.native)
             @test length(result) == 64
@@ -98,7 +97,7 @@ end
     algorithm = DeterministicMixturePMC(bank; rounds=1, round_size=64)
     target(sample) = -sum(abs2, sample) / 2
 
-    result = importance_sample(Random.Xoshiro(0x1c87), target, algorithm)
+    result = importance_sample(Threefry4x32(0x1c87), target, algorithm)
 
     @test length(result) == 64
     @test all(isfinite, result.logweights)
@@ -119,7 +118,7 @@ end
     for (index, case) in enumerate(scalar_cases)
         algorithm = ImportanceSampling(case.source; nsamples=64)
         result = importance_sample(
-            Random.Xoshiro(index),
+            Threefry4x32(index),
             sample -> Distributions.logpdf(case.source, sample),
             algorithm;
             threaded=false,
@@ -150,7 +149,7 @@ end
     for (index, case) in enumerate(multivariate_cases)
         algorithm = ImportanceSampling(case.source; nsamples=64)
         result = importance_sample(
-            Random.Xoshiro(100 + index),
+            Threefry4x32(100 + index),
             sample -> Distributions.logpdf(case.source, sample),
             algorithm;
             threaded=false,

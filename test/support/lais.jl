@@ -1,22 +1,24 @@
-import Random, LinearAlgebra
+import LinearAlgebra, MLDataDevices, PureRNGs
 
-mutable struct LAISScriptedRNG{N,U} <: Random.AbstractRNG
+struct LAISScriptedRNG{N,U} <: PureRNGs.AbstractPureRNG
     normals::N
     uniforms::U
     ni::Int
     ui::Int
 end
 
-function Random.randn!(rng::LAISScriptedRNG, out::AbstractArray)
+(::MLDataDevices.CPUDevice)(rng::LAISScriptedRNG) = rng
+
+function PureRNGs.randn_next!(rng::LAISScriptedRNG, out::AbstractArray; threaded=false)
+    isempty(out) && return out, rng
     copyto!(out, rng.normals[rng.ni])
-    rng.ni += 1
-    return out
+    return out, LAISScriptedRNG(rng.normals, rng.uniforms, rng.ni + 1, rng.ui)
 end
 
-function Random.rand!(rng::LAISScriptedRNG, out::AbstractArray)
+function PureRNGs.rand_next!(rng::LAISScriptedRNG, out::AbstractArray; threaded=false)
+    isempty(out) && return out, rng
     copyto!(out, rng.uniforms[rng.ui])
-    rng.ui += 1
-    return out
+    return out, LAISScriptedRNG(rng.normals, rng.uniforms, rng.ni, rng.ui + 1)
 end
 
 function lais_smh_oracle(centres, candidates, selection_uniforms,

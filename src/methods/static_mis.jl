@@ -204,7 +204,7 @@ function _compile_assignments!(rng, assignments, assignment, cdf)
             _capture_sampler_failure(
             :proposal_draw,
             sample_index) do
-                uniform, next_rng = _rand_scalar(draw_rng)
+                uniform, next_rng = PureRNGs.rand_next(draw_rng, Float64)
                 slot = _static_mis_assignment(
                 assignment,
                 cdf,

@@ -1,8 +1,6 @@
 using Test
 using ImportanceSamplers
-import Random
 
-include("support/dm_pmc.jl")
 
 const DMPMCKernelIS = ImportanceSamplers
 

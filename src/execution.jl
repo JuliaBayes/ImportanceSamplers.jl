@@ -387,15 +387,6 @@ _native_failure_scratch(
     },
 ) = buffers.failure_scratch
 
-function _rand_uniform!(
-    rng::Random.AbstractRNG, values; threaded = false)
-    isempty(values) || Random.rand!(rng, values)
-    return rng
-end
-function _rand_normal!(rng::Random.AbstractRNG, values; threaded = false)
-    isempty(values) || Random.randn!(rng, values)
-    return rng
-end
 function _rand_uniform!(rng, values; threaded = false)
     _, next_rng = PureRNGs.rand_next!(rng, values; threaded)
     return next_rng
@@ -404,13 +395,8 @@ function _rand_normal!(rng, values; threaded = false)
     _, next_rng = PureRNGs.randn_next!(rng, values; threaded)
     return next_rng
 end
-_rand_scalar(rng::Random.AbstractRNG) = (Random.rand(rng), rng)
-_rand_scalar(rng) = PureRNGs.rand_next(rng, Float64)
-_rand_proposal(rng::Random.AbstractRNG, proposal) = (Random.rand(rng, proposal), rng)
-_rand_proposal(rng, proposal) = PureRNGs.rand_next(rng, proposal)
-
 function _draw_proposal!(sampler, proposal)
-    sample, sampler.rng = _rand_proposal(sampler.rng, proposal)
+    sample, sampler.rng = PureRNGs.rand_next(sampler.rng, proposal)
     return sample
 end
 

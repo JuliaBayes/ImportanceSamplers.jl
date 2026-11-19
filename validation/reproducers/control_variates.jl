@@ -1,6 +1,7 @@
 module ControlVariateValidation
 
 using ImportanceSamplers, Random, Statistics, LinearAlgebra, Test
+using PureRNGs
 import MLDataDevices
 
 score(x) = -x + oftype(x, 2) * tanh(oftype(x, 2) * x)
@@ -34,13 +35,13 @@ function main(; device=MLDataDevices.cpu_device(), T=Float64)
         # Three-dimensional full-rank fit and real device-side production sampling.
         proposal = SphericalGaussian(zeros(T, 3), T(1.4))
         logtarget(x) = -sum(abs2, x) / 2
-        pilot = importance_sample(Xoshiro(8), logtarget,
+        pilot = importance_sample(Threefry4x32(8), logtarget,
                                   ImportanceSampling(proposal; nsamples=4096))
         host = fit_control_variate(x -> sum(abs2, x), pilot; scores=-pilot.samples)
         pilot = device(pilot)
         fit = fit_control_variate(x -> sum(abs2, x), pilot; scores=-pilot.samples)
         @test Array(fit.coefficients) ≈ host.coefficients rtol = 500eps(T) atol = 500eps(T)
-        prepared = prepare_sampler(Xoshiro(19), logtarget,
+        prepared = prepare_sampler(Threefry4x32(19), logtarget,
                                    ImportanceSampling(proposal; nsamples=4096))
         production = importance_sample!(device(prepared))
         adjusted = control_variate_mean(x -> sum(abs2, x), production, fit;

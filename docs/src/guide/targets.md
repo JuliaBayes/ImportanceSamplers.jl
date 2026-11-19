@@ -6,7 +6,7 @@ The proposal determines which parameters are sampled and their shape.
 ## Target context
 
 ```@example targets
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function logtarget(theta, p)
     return -sum(abs2, theta .- p.centre) / (2p.scale^2)
@@ -14,7 +14,7 @@ end
 
 p = (; centre=[1.0, -1.0, 0.5], scale=0.8)
 algorithm = ImportanceSampling(SphericalGaussian(zeros(3), 2.0); nsamples=5_000)
-samples = importance_sample(Xoshiro(42), logtarget, p, algorithm)
+samples = importance_sample(Threefry4x32(42), logtarget, p, algorithm)
 
 mean(samples)
 ```
@@ -34,7 +34,7 @@ Julia keyword arguments need an ordinary callable wrapper:
 model(theta; centre, scale) = -sum(abs2, theta .- centre) / (2scale^2)
 wrapped(theta, p) = model(theta; p...)
 
-other = importance_sample(Xoshiro(42), wrapped, p, algorithm)
+other = importance_sample(Threefry4x32(42), wrapped, p, algorithm)
 mean(other)
 ```
 
@@ -50,12 +50,12 @@ Objects implementing `DensityInterface.logdensityof` can serve as targets.
 For example, with Distributions.jl installed:
 
 ```julia
-using Distributions, ImportanceSamplers, Random
+using Distributions, ImportanceSamplers, PureRNGs
 
 target = MvNormal(zeros(3), ones(3))
 proposal = MvNormal(zeros(3), fill(1.5, 3))
 samples = importance_sample(
-    Xoshiro(42), target,
+    Threefry4x32(42), target,
     ImportanceSampling(proposal; nsamples=5_000),
 )
 ```
@@ -92,7 +92,7 @@ mapped(z) = (lognormal_coordinates(z), exp.(z), sum(z))
 retain = RetainCoordinates(mapped, zeros(2))
 mapped_target = LogTarget(lognormal_coordinates; retain)
 algorithm = ImportanceSampling(SphericalGaussian(zeros(2), 1.0); nsamples=5_000)
-result = importance_sample(Xoshiro(43), mapped_target, algorithm)
+result = importance_sample(Threefry4x32(43), mapped_target, algorithm)
 
 x = result.retained.coordinates
 logdensity_x = result.logtargets .- result.retained.logjacobians

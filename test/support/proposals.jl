@@ -1,6 +1,19 @@
-import Random
-import Random: rand, randn
 import DensityInterface
+import MLDataDevices
+
+abstract type TestScriptedRNG <: PureRNGs.AbstractPureRNG end
+
+(::MLDataDevices.CPUDevice)(rng::TestScriptedRNG) = rng
+
+function PureRNGs.rand_next!(rng::TestScriptedRNG, values::AbstractArray; threaded=false)
+    isempty(values) || error("unexpected uniform fill")
+    return values, rng
+end
+
+function PureRNGs.randn_next!(rng::TestScriptedRNG, values::AbstractArray; threaded=false)
+    isempty(values) || error("unexpected normal fill")
+    return values, rng
+end
 
 function check_static_mis_effective_coefficients(cdf, coefficient_sets...)
     boundaries = BigFloat.(cdf)
@@ -36,11 +49,12 @@ end
 TestScalarProposal(location::T) where {T<:AbstractFloat} =
     TestScalarProposal(location, Ref(0), T[])
 
-function rand(rng::Random.AbstractRNG, proposal::TestScalarProposal{T}) where {T}
-    sample = proposal.location + randn(rng, T)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestScalarProposal{T}) where {T}
+    offset, rng = randn_next(rng, T)
+    sample = proposal.location + offset
     proposal.draw_count[] += 1
     push!(proposal.history, sample)
-    return sample
+    return sample, rng
 end
 
 function DensityInterface.logdensityof(proposal::TestScalarProposal, sample::Real)
@@ -57,11 +71,12 @@ end
 TestVectorProposal(location::Vector{T}) where {T<:AbstractFloat} =
     TestVectorProposal(location, Ref(0), Vector{T}[])
 
-function rand(rng::Random.AbstractRNG, proposal::TestVectorProposal{T}) where {T}
-    sample = proposal.location + randn(rng, T, length(proposal.location))
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestVectorProposal{T}) where {T}
+    offset, rng = randn_next(rng, T, length(proposal.location))
+    sample = proposal.location + offset
     proposal.draw_count[] += 1
     push!(proposal.history, sample)
-    return sample
+    return sample, rng
 end
 
 function DensityInterface.logdensityof(proposal::TestVectorProposal, sample::AbstractVector)
@@ -78,14 +93,14 @@ end
 TestNamedProposal(::Type{T}=Float64) where {T<:AbstractFloat} =
     TestNamedProposal{T}(Ref(0), NamedTuple[])
 
-function rand(rng::Random.AbstractRNG, proposal::TestNamedProposal{T}) where {T}
-    sample = (
-        location=randn(rng, T),
-        state=(position=randn(rng, T, 2), scale=randn(rng, T)),
-    )
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestNamedProposal{T}) where {T}
+    location, rng = randn_next(rng, T)
+    position, rng = randn_next(rng, T, 2)
+    scale, rng = randn_next(rng, T)
+    sample = (; location, state=(; position, scale))
     proposal.draw_count[] += 1
     push!(proposal.history, sample)
-    return sample
+    return sample, rng
 end
 
 function DensityInterface.logdensityof(::TestNamedProposal{T}, sample::NamedTuple) where {T}
@@ -100,9 +115,11 @@ end
 
 TestAbstractElementVectorProposal() = TestAbstractElementVectorProposal(Ref(0))
 
-function rand(rng::Random.AbstractRNG, proposal::TestAbstractElementVectorProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestAbstractElementVectorProposal)
     proposal.draw_count[] += 1
-    return Real[rand(rng), Float32(rand(rng))]
+    first_value, rng = rand_next(rng, Float64)
+    second_value, rng = rand_next(rng, Float64)
+    return Real[first_value, Float32(second_value)], rng
 end
 
 function DensityInterface.logdensityof(
@@ -117,10 +134,10 @@ end
 
 TestChangingVectorLengthProposal() = TestChangingVectorLengthProposal(Ref(0))
 
-function rand(rng::Random.AbstractRNG, proposal::TestChangingVectorLengthProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestChangingVectorLengthProposal)
     proposal.draw_count[] += 1
     sample_length = isone(proposal.draw_count[]) ? 2 : 3
-    return randn(rng, sample_length)
+    return randn_next(rng, Float64, sample_length)
 end
 
 function DensityInterface.logdensityof(
@@ -135,10 +152,10 @@ end
 
 TestEmptyNamedProposal() = TestEmptyNamedProposal(Ref(0))
 
-function rand(rng::Random.AbstractRNG, proposal::TestEmptyNamedProposal)
-    rand(rng)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestEmptyNamedProposal)
+    _, rng = rand_next(rng, Float64)
     proposal.draw_count[] += 1
-    return NamedTuple()
+    return NamedTuple(), rng
 end
 
 DensityInterface.logdensityof(::TestEmptyNamedProposal, sample::NamedTuple) = 0.0
@@ -149,9 +166,10 @@ end
 
 TestNestedEmptyNamedProposal() = TestNestedEmptyNamedProposal(Ref(0))
 
-function rand(rng::Random.AbstractRNG, proposal::TestNestedEmptyNamedProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestNestedEmptyNamedProposal)
     proposal.draw_count[] += 1
-    return (value=rand(rng), empty=NamedTuple())
+    value, rng = rand_next(rng, Float64)
+    return (; value, empty=NamedTuple()), rng
 end
 
 function DensityInterface.logdensityof(
@@ -170,13 +188,13 @@ function TestReusedVectorBufferProposal(buffer::Vector{T}) where {T<:AbstractFlo
     return TestReusedVectorBufferProposal(buffer, Ref(0), Vector{T}[])
 end
 
-function rand(rng::Random.AbstractRNG, proposal::TestReusedVectorBufferProposal{T}) where {T}
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TestReusedVectorBufferProposal{T}) where {T}
     for sample_index in eachindex(proposal.buffer)
-        proposal.buffer[sample_index] = randn(rng, T)
+        proposal.buffer[sample_index], rng = randn_next(rng, T)
     end
     proposal.draw_count[] += 1
     push!(proposal.history, copy(proposal.buffer))
-    return proposal.buffer
+    return proposal.buffer, rng
 end
 
 function DensityInterface.logdensityof(

@@ -6,7 +6,7 @@ It uses a short adaptive run to fit a proposal, then draws from that fixed propo
 ## Data
 
 ```@example logistic
-using ImportanceSamplers, Random, Statistics, LinearAlgebra
+using ImportanceSamplers, PureRNGs, Random, Statistics, LinearAlgebra
 
 rng = Xoshiro(12)
 truth = [-0.4, 1.1, -0.8]
@@ -54,7 +54,7 @@ No wrapper is required.
 initial = SphericalStudentT(5.0, zeros(3), 2.0)
 pilot_rounds, pilot_round_size = 4, 2_000
 pilot = prepare_sampler(
-    Xoshiro(31), logposterior, p,
+    Threefry4x32(31), logposterior, p,
     AMIS(initial; rounds=pilot_rounds, round_size=pilot_round_size),
 )
 pilot_samples = importance_sample!(pilot)
@@ -92,7 +92,7 @@ Even a high fraction cannot detect an unvisited mode.
 
 ```@example logistic
 samples = importance_sample(
-    Xoshiro(32), logposterior, p,
+    Threefry4x32(32), logposterior, p,
     ImportanceSampling(learned; nsamples=20_000),
 )
 

@@ -1,6 +1,6 @@
 module ScoreTransportExperiment
 
-using BenchmarkTools, ImportanceSamplers, LinearAlgebra, Random, Statistics
+using BenchmarkTools, ImportanceSamplers, LinearAlgebra, Statistics
 using PureRNGs
 import MLDataDevices
 import ImportanceSamplers: AcceleratedKernels
@@ -184,7 +184,7 @@ function _workflow(model, method::Val{M}, n, pilot, d, seed, device, threaded) w
     initial = FactorStudentT(T(5), zeros(T, d), T(2) * Matrix{T}(I, d, d))
     prepared = device(
         prepare_sampler(
-            device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(seed) : Xoshiro(seed),
+            Threefry4x32(seed),
             logtarget,
             model,
             AMIS(initial; rounds = 4, round_size = pilot ÷ 4);
@@ -201,8 +201,7 @@ function _workflow(model, method::Val{M}, n, pilot, d, seed, device, threaded) w
     context = M === :none ? model : (; model, coefficients = host_coefficients)
     production = device(
         prepare_sampler(
-            device isa MLDataDevices.AbstractAcceleratorDevice ?
-                Threefry4x32(seed + 1_000_000) : Xoshiro(seed + 1_000_000),
+            Threefry4x32(seed + 1_000_000),
             target,
             context,
             ImportanceSampling(proposal; nsamples = n);
@@ -249,7 +248,7 @@ function full_amis_workflow(
     schedule = [total ÷ 4 + (r <= total % 4) for r = 1:4]
     prepared = device(
         prepare_sampler(
-            device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(seed) : Xoshiro(seed),
+            Threefry4x32(seed),
             logtarget,
             model,
             AMIS(initial; rounds = 4, round_size = schedule);

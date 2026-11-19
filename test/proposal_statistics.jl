@@ -1,6 +1,5 @@
 import Statistics: mean, cov, var, std
 import LinearAlgebra: Diagonal
-import Random
 
 @testset "native Gaussian moments and stored factors" begin
     scalar = SphericalGaussian(1.0f0, 2.0f0)
@@ -78,7 +77,7 @@ end
 @testset "proposal moments retain independent reusable snapshots" begin
     initial = FactorGaussian(Float32[1, -1], Float32[2 0; 1 3])
     prepared = prepare_sampler(
-        Random.Xoshiro(0x521),
+        Threefry4x32(0x521),
         x -> -sum(abs2, x) / 2,
         AMIS(initial; rounds = 1, round_size = 32),
     )

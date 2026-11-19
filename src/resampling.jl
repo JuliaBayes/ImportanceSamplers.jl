@@ -220,52 +220,11 @@ function _resampling_cdf!(
     return cdf
 end
 
-_resampling_rng(rng, ::MLDataDevices.AbstractCPUDevice) = rng
-function _resampling_rng(rng, device::MLDataDevices.AbstractAcceleratorDevice)
-    return _transfer_rng(device, rng)
-end
-
-"""
-    resample(rng, result, count; method=MultinomialResampling())
-    resample(rng, result; method=MultinomialResampling())
-
-Draw unweighted samples with replacement from normalized importance weights.
-The count-free form returns `length(result)` draws. Output carries no
-importance weights. Use this mutable RNG API for CPU results. For accelerator
-results, use [`resample_next`](@ref) with a PureRNGs input.
-"""
-function resample(
-    rng::Random.AbstractRNG,
-    result::_AbstractWeightedSamples,
-    count::Int;
-    method::AbstractResamplingMethod=MultinomialResampling(),
-)
-    count > 0 || throw(ArgumentError("resampling count must be positive"))
-    return _resample(rng, result, count, method)
-end
-
-function resample(
-    rng::Random.AbstractRNG,
-    result::_AbstractWeightedSamples;
-    method::AbstractResamplingMethod=MultinomialResampling(),
-)
-    return resample(rng, result, length(result); method=method)
-end
-
-function _resample(rng, result, count, ::MultinomialResampling)
-    samples, _ = _resample_next(
-        _resampling_rng(rng, _storage_device(result.logweights)),
-        result,
-        count,
-        MultinomialResampling()
-    )
-    return samples
-end
-
 """
     resample_next(rng, result, count=length(result); method=MultinomialResampling())
 
-Resample importance weights and return `(unweighted_samples, next_rng)`.
+Draw with replacement from normalized importance weights using a PureRNGs stream.
+Return `(unweighted_samples, next_rng)`.
 Samples stay on the result device. The immutable RNG continues on its input backend.
 For Reactant results, pass a compiled carrier from [`current_rng`](@ref) or
 `Reactant.to_rarray(rng)`. The returned continuation is also a compiled carrier.

@@ -5,7 +5,6 @@ using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
 include(joinpath(@__DIR__, "..", "static_mis_capabilities.jl"))
@@ -254,7 +253,7 @@ function correctness_case(
         mis_scheme=scheme.value,
     )
     cpu = prepare_sampler(
-        Xoshiro(STATIC_MIS_SEED + UInt(case_index)),
+        Threefry4x32(STATIC_MIS_SEED + UInt(case_index)),
         target,
         context,
         algorithm;

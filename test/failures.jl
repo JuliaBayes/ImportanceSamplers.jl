@@ -4,15 +4,13 @@ import DensityInterface
 import KernelAbstractions
 import LinearAlgebra
 import MLDataDevices
-import Random
-import Random: rand
 
 struct TestOffsetArray{T,N,A<:AbstractArray{T,N}} <: AbstractArray{T,N}
     parent::A
     offsets::NTuple{N,Int}
 end
 
-mutable struct AMISFailureRNG{T} <: Random.AbstractRNG
+struct AMISFailureRNG{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
@@ -20,11 +18,11 @@ end
 AMISFailureRNG(batches::Vector{Vector{T}}) where {T} =
     AMISFailureRNG{T}(batches, 1)
 
-function Random.randn!(rng::AMISFailureRNG, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::AMISFailureRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.batches[rng.index]
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.index += 1
-    return destination
+    return destination, AMISFailureRNG(rng.batches, rng.index + 1)
 end
 
 mutable struct AMISFailingTarget{T}
@@ -462,9 +460,9 @@ function ThreadFailureProposal(nsamples::Int; fail_density_at=0)
     )
 end
 
-function rand(::Random.AbstractRNG, proposal::ThreadFailureProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::ThreadFailureProposal)
     proposal.draw_index += 1
-    return Float64(mod1(proposal.draw_index, proposal.nsamples))
+    return Float64(mod1(proposal.draw_index, proposal.nsamples)), rng
 end
 
 function DensityInterface.logdensityof(
@@ -654,9 +652,9 @@ mutable struct UnprovablePreparedProposal
     draw_count::Int
 end
 
-function rand(::Random.AbstractRNG, proposal::UnprovablePreparedProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::UnprovablePreparedProposal)
     proposal.draw_count += 1
-    return Float64(proposal.draw_count)
+    return Float64(proposal.draw_count), rng
 end
 
 function DensityInterface.logdensityof(
@@ -665,12 +663,12 @@ function DensityInterface.logdensityof(
     return proposal.logdensity(sample)
 end
 
-function rand(::Random.AbstractRNG, proposal::FailureSequenceProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::FailureSequenceProposal)
     proposal.draw_index += 1
     proposal.draw_count += 1
     proposal.draw_index == proposal.fail_draw_at &&
         throw(PreparedProposalFailure(Float64(proposal.draw_index)))
-    return proposal.values[mod1(proposal.draw_index, length(proposal.values))]
+    return proposal.values[mod1(proposal.draw_index, length(proposal.values))], rng
 end
 
 function DensityInterface.logdensityof(
@@ -694,7 +692,7 @@ end
         proposal = FailureSequenceProposal([1.0, 2.0, 3.0], _ -> 0.0)
         target = sample -> sample == 2.0 ? bad_value : 0.0
         sampler = prepare_sampler(
-            Random.Xoshiro(808),
+            Threefry4x32(808),
             target,
             ImportanceSampling(proposal; nsamples=3);
             threaded=false,
@@ -715,7 +713,7 @@ end
             sample -> sample == 2.0 ? bad_value : 0.0,
         )
         sampler = prepare_sampler(
-            Random.Xoshiro(909),
+            Threefry4x32(909),
             _ -> 0.0,
             ImportanceSampling(proposal; nsamples=3);
             threaded=false,
@@ -732,7 +730,7 @@ end
 
     target_proposal = FailureSequenceProposal([1.0, 2.0, 3.0], _ -> 0.0)
     target_sampler = prepare_sampler(
-        Random.Xoshiro(1001),
+        Threefry4x32(1001),
         sample -> sample == 2.0 ? throw(PreparedTargetFailure(sample)) : 0.0,
         ImportanceSampling(target_proposal; nsamples=3);
         threaded=false,
@@ -751,7 +749,7 @@ end
         sample -> sample == 2.0 ? throw(PreparedProposalFailure(sample)) : 0.0,
     )
     density_sampler = prepare_sampler(
-        Random.Xoshiro(1002),
+        Threefry4x32(1002),
         _ -> 0.0,
         ImportanceSampling(density_proposal; nsamples=3);
         threaded=false,
@@ -770,7 +768,7 @@ end
         fail_draw_at=2,
     )
     draw_sampler = prepare_sampler(
-        Random.Xoshiro(1003),
+        Threefry4x32(1003),
         _ -> 0.0,
         ImportanceSampling(draw_proposal; nsamples=3);
         threaded=false,
@@ -786,7 +784,7 @@ end
 
     unprovable_target_proposal = FailureSequenceProposal([1.0], _ -> 0.0)
     unprovable_target_sampler = prepare_sampler(
-        Random.Xoshiro(1102),
+        Threefry4x32(1102),
         UnprovablePreparedTarget(_ -> 0.0),
         ImportanceSampling(unprovable_target_proposal; nsamples=1);
         threaded=false,
@@ -802,7 +800,7 @@ end
 
     incompatible_target_proposal = FailureSequenceProposal([1.0], _ -> 0.0)
     incompatible_target_sampler = prepare_sampler(
-        Random.Xoshiro(1104),
+        Threefry4x32(1104),
         IncompatiblePreparedTarget(),
         ImportanceSampling(incompatible_target_proposal; nsamples=1);
         threaded=false,
@@ -819,7 +817,7 @@ end
 
     unprovable_proposal = UnprovablePreparedProposal(_ -> 0.0, 0)
     unprovable_proposal_sampler = prepare_sampler(
-        Random.Xoshiro(1103),
+        Threefry4x32(1103),
         _ -> 0.0,
         ImportanceSampling(unprovable_proposal; nsamples=1);
         threaded=false,
@@ -835,7 +833,7 @@ end
 
     busy_proposal = FailureSequenceProposal([1.0], _ -> 0.0)
     busy_sampler = prepare_sampler(
-        Random.Xoshiro(1201),
+        Threefry4x32(1201),
         _ -> 0.0,
         ImportanceSampling(busy_proposal; nsamples=1);
         threaded=false,
@@ -855,7 +853,7 @@ end
         return 0.0
     end
     reentrant_sampler = prepare_sampler(
-        Random.Xoshiro(1202),
+        Threefry4x32(1202),
         reentrant_target,
         ImportanceSampling(reentrant_proposal; nsamples=1);
         threaded=false,
@@ -881,7 +879,7 @@ end
     fail_target = Ref(true)
     target = ThreadFailureTarget(target_tasks, fail_target, target_fail_at)
     target_sampler = prepare_sampler(
-        Random.Xoshiro(1501),
+        Threefry4x32(1501),
         target,
         ImportanceSampling(target_proposal; nsamples=nsamples);
         threaded=true,
@@ -903,7 +901,7 @@ end
     proposal_fail_at = 23
     proposal = ThreadFailureProposal(nsamples; fail_density_at=proposal_fail_at)
     proposal_sampler = prepare_sampler(
-        Random.Xoshiro(1502),
+        Threefry4x32(1502),
         _ -> 0.0,
         ImportanceSampling(proposal; nsamples=nsamples);
         threaded=true,

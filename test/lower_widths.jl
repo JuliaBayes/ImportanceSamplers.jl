@@ -1,5 +1,5 @@
 using Test, ImportanceSamplers
-import Random, LinearAlgebra, DensityInterface
+import LinearAlgebra, DensityInterface
 
 if !isdefined(@__MODULE__, :LAISScriptedRNG)
     include("support/lais.jl")
@@ -31,7 +31,7 @@ end
         g .= calls[] == 3 ? NaN : .-x
     end
     prepared = prepare_sampler(
-        Random.Xoshiro(132),
+        Threefry4x32(132),
         LogTarget(x -> -sum(abs2, x)/2; grad=gradient!),
         LAIS(ProposalBank([proposal]); transition, rounds=2, round_size=128, adapt_scales=true);
         threaded=false,
@@ -60,7 +60,7 @@ end
     target = LogTarget(x -> -sum(z -> z^4, x) / 4; grad=x -> .-x .^ 3)
     upper = HamiltonianMonteCarlo(; step_size=0.05, leapfrog_steps=2)
     prepared = prepare_sampler(
-        Random.Xoshiro(423),
+        Threefry4x32(423),
         target,
         HAIS(bank; transition=upper, rounds=1, round_size=256, adapt_scales=true),
     )
@@ -108,7 +108,7 @@ end
             round_size=256,
             adapt_scales=true,
         )
-        prepared = prepare_sampler(Random.Xoshiro(29), target, algorithm; threaded=false)
+        prepared = prepare_sampler(Threefry4x32(29), target, algorithm; threaded=false)
         result = importance_sample!(prepared)
         w = normalized_weights(result)
         x = vec(result.samples)
@@ -118,7 +118,7 @@ end
         expected = constructor(fitted.location, [scale])
         @test DensityInterface.logdensityof(fitted, [0.5]) ≈
               DensityInterface.logdensityof(expected, [0.5])
-        retargeted = retarget(Random.Xoshiro(31), prepared, target)
+        retargeted = retarget(Threefry4x32(31), prepared, target)
         @test DensityInterface.logdensityof(only(current_proposal(retargeted).proposals), [0.5]) ≈
               DensityInterface.logdensityof(fitted, [0.5])
     end

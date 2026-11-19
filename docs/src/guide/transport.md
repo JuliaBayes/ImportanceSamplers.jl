@@ -11,15 +11,15 @@ normals, then ``x_1=u`` and ``x_2=v+1.25(u^2-1)`` follow this target.
 Consequently, ``E[x_2^2]=1+2(1.25)^2=4.125``.
 
 ```@example transport
-using ImportanceSamplers, Random, Statistics, LinearAlgebra
+using ImportanceSamplers, PureRNGs, Statistics, LinearAlgebra
 
 logtarget(x) = -(x[1]^2 + (x[2] - 1.25*(x[1]^2-1))^2)/2 - log(2pi)
 initial = FactorStudentT(5.0, zeros(2), 2.0*Matrix{Float64}(I, 2, 2))
-pilot = importance_sample(Xoshiro(17), logtarget,
+pilot = importance_sample(Threefry4x32(17), logtarget,
     AMIS(initial; rounds=4, round_size=512))
 
 fit = fit_transport(pilot)
-production = prepare_sampler(Xoshiro(29), logtarget,
+production = prepare_sampler(Threefry4x32(29), logtarget,
     ImportanceSampling(fit.proposal; nsamples=16_384); transform=fit.transform)
 samples = importance_sample!(production)
 
@@ -101,7 +101,7 @@ an identity fallback.
 The same fit can initialize an adaptive sampler:
 
 ```julia
-prepared = prepare_sampler(Xoshiro(31), logtarget,
+prepared = prepare_sampler(Threefry4x32(31), logtarget,
     AMIS(fit.proposal; rounds=4, round_size=4096); transform=fit.transform)
 samples = importance_sample!(prepared)
 ```

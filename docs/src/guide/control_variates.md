@@ -11,7 +11,7 @@ Its second moment is exactly five. The following log target omits its irrelevant
 normalizing constant. Its score is `-x + 2tanh(2x)`.
 
 ```@example controls
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function logtarget(x)
     a, b = -(x[1]-2)^2/2, -(x[1]+2)^2/2
@@ -23,10 +23,10 @@ proposal = SphericalStudentT(7.0, zeros(1), 2.0)
 pilot_algorithm = ImportanceSampling(proposal; nsamples=4_096)
 production_algorithm = ImportanceSampling(proposal; nsamples=16_384)
 
-pilot = importance_sample(Xoshiro(11), logtarget, pilot_algorithm)
+pilot = importance_sample(Threefry4x32(11), logtarget, pilot_algorithm)
 fit = fit_control_variate(f, pilot; scores=score.(pilot.samples))
 
-production = importance_sample(Xoshiro(29), logtarget, production_algorithm)
+production = importance_sample(Threefry4x32(29), logtarget, production_algorithm)
 raw = mean(f, production)
 adjusted = control_variate_mean(f, production, fit;
     scores=score.(production.samples))
@@ -39,9 +39,9 @@ Repeated comparisons use independent complete workflows:
 
 ```@example controls
 errors = map(1:64) do repetition
-    pilot = importance_sample(Xoshiro(2repetition+100), logtarget, pilot_algorithm)
+    pilot = importance_sample(Threefry4x32(2repetition+100), logtarget, pilot_algorithm)
     fit = fit_control_variate(f, pilot; scores=score.(pilot.samples))
-    production = importance_sample(Xoshiro(2repetition+101), logtarget, production_algorithm)
+    production = importance_sample(Threefry4x32(2repetition+101), logtarget, production_algorithm)
     raw = mean(f, production)
     adjusted = control_variate_mean(f, production, fit;
         scores=score.(production.samples))

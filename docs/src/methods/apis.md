@@ -7,7 +7,7 @@ Gaussian, Student-t and Laplace scales stay fixed. Gamma retains coordinate vari
 ## Example
 
 ```@example apis
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 bank = ProposalBank([
@@ -15,7 +15,7 @@ bank = ProposalBank([
     SphericalStudentT(5.0, [ 2.0, 0.0], 1.0),
 ])
 prepared = prepare_sampler(
-    Xoshiro(42), logtarget,
+    Threefry4x32(42), logtarget,
     APIS(bank; rounds=4, round_size=2_000),
 )
 samples = importance_sample!(prepared)

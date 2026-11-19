@@ -1,11 +1,10 @@
 module CUDACAISValidation
 
 using CUDA
-using PureRNGs: Threefry4x32
+using PureRNGs
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
-using Random
 using Test
 
 const IS = ImportanceSamplers
@@ -30,15 +29,15 @@ function (::StandardVectorTarget{T})(x::AbstractVector) where {T}
     return -length(x) * log(T(2pi)) / T(2) - sum(abs2, x) / T(2)
 end
 
-mutable struct DeviceNormals{A} <: Random.AbstractRNG
+struct DeviceNormals{A} <: PureRNGs.AbstractPureRNG
     batches::A
     index::Int
 end
 
-function Random.randn!(rng::DeviceNormals, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::DeviceNormals, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, DeviceNormals(rng.batches, rng.index + 1)
 end
 
 function cuda_device()

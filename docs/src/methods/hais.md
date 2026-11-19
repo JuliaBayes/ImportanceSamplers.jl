@@ -15,7 +15,7 @@ Check weight concentration and mode coverage rather than acceptance alone.
 This three-dimensional target has quartic tails. Its coordinate means are zero.
 
 ```@example hais
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(z) = -sum(x -> x^4, z) / 4 - sum(abs2, z) / 2
 score!(g, z) = (g .= .-z.^3 .- z; nothing)
@@ -28,7 +28,7 @@ upper = HamiltonianMonteCarlo(;
     step_size=0.15, leapfrog_steps=8, tuning=WarmupTuning(32),
 )
 algorithm = HAIS(bank; transition=upper, rounds=5, round_size=2_000)
-prepared = prepare_sampler(Xoshiro(42), target, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), target, algorithm)
 samples = importance_sample!(prepared)
 
 (mean=mean(samples), draws=length(samples))
@@ -43,7 +43,7 @@ With ForwardDiff installed, select it explicitly instead of supplying `grad=`:
 ```julia
 using ADTypes, ForwardDiff
 ad_target = LogTarget(logtarget, AutoForwardDiff())
-ad_samples = importance_sample(Xoshiro(44), ad_target, algorithm)
+ad_samples = importance_sample(Threefry4x32(44), ad_target, algorithm)
 ```
 
 For native CUDA, transfer a fresh complete prepared sampler before its first run:
@@ -82,7 +82,7 @@ Use the same transition with [`LAIS`](@ref) to omit cooperation:
 
 ```@example hais
 independent = LAIS(bank; transition=upper, rounds=5, round_size=2_000)
-independent_samples = importance_sample(Xoshiro(43), target, independent)
+independent_samples = importance_sample(Threefry4x32(43), target, independent)
 mean(independent_samples)
 ```
 
@@ -102,7 +102,7 @@ Enable marginal-width fitting independently of the upper transition:
 ```@example hais
 adaptive = HAIS(bank; transition=upper, rounds=5, round_size=2_000,
                 adapt_scales=true)
-fitted = prepare_sampler(Xoshiro(46), target, adaptive)
+fitted = prepare_sampler(Threefry4x32(46), target, adaptive)
 adaptive_samples = importance_sample!(fitted)
 snapshot = current_proposal(fitted)
 mean(adaptive_samples)

@@ -2,15 +2,15 @@ using Test
 using ImportanceSamplers
 import LinearAlgebra, Random
 
-mutable struct CAISPrefilledNormals{T} <: Random.AbstractRNG
+struct CAISPrefilledNormals{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
 
-function Random.randn!(rng::CAISPrefilledNormals, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::CAISPrefilledNormals, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, rng.batches[rng.index])
-    rng.index += 1
-    return destination
+    return destination, CAISPrefilledNormals(rng.batches, rng.index + 1)
 end
 
 function cais_factor_logdensity(sample, location, factor)
@@ -61,7 +61,7 @@ end
         covariance_ess_threshold=5,
     )
     sampler = prepare_sampler(
-        Random.Xoshiro(1),
+        Threefry4x32(1),
         x -> -sum(abs2, x) / 2,
         algorithm;
         threaded=false,
@@ -139,7 +139,7 @@ end
 
 @testset "CAIS mixed-precision target scale invariance" begin
     runs = map((0.0, 1e10)) do offset
-        sampler = prepare_sampler(Random.Xoshiro(5),
+        sampler = prepare_sampler(Threefry4x32(5),
             (x, c) -> -100 * (Float64(x) - 2)^2 + c, offset,
             CAIS(ProposalBank([SphericalGaussian(0f0, 1f0)]); rounds=1, round_size=16))
         result = importance_sample!(sampler)
@@ -243,7 +243,7 @@ end
     initial_means = [[-1.0, 0.5], [1.25, -0.75]]
     initial_factors = [[1.1 0.0; 0.25 0.8], [0.7 0.0; -0.2 1.3]]
     schedule = [8, 10]
-    batches = [randn(Random.Xoshiro(seed), 20) for seed in (101, 102)]
+    batches = [Random.randn(Random.Xoshiro(seed), 20) for seed in (101, 102)]
     logtarget(x) = -(abs2(x[1] - 0.2) + abs2(x[2] + 0.3x[1])) / 2
     bank = ProposalBank([
         FactorGaussian(initial_means[1], initial_factors[1]),
@@ -328,7 +328,7 @@ end
 
 @testset "CAIS repeated calls own results and retarget final factors" begin
     schedule = [4, 4]
-    batches = [randn(Random.Xoshiro(seed), 8) for seed in 103:108]
+    batches = [Random.randn(Random.Xoshiro(seed), 8) for seed in 103:108]
     bank = ProposalBank([FactorGaussian([0.0, 0.0], [1.0 0.0; 0.2 0.8])])
     algorithm = CAIS(bank; rounds=2, round_size=schedule, covariance_ess_threshold=3)
     logtarget(x) = -(abs2(x[1] - 0.4) + abs2(x[2] + 0.2)) / 2
@@ -422,7 +422,7 @@ end
     @test failure.round == 2
     @test retained.location == committed.location
     @test retained.scale.scale == committed.scale.scale
-    @test rng.index == 5
+    @test current_rng(sampler).index == 5
 
     control = prepare_sampler(
         CAISPrefilledNormals(deepcopy(batches[5:6]), 1),

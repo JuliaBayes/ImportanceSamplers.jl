@@ -1,7 +1,7 @@
 using BenchmarkTools
 using DensityInterface
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 const SMOKE_MODE = "--smoke" in ARGS
 const BENCHMARK_SEED = 0x2d861e0f73a9bc45
@@ -18,11 +18,12 @@ struct GaussianProposal{T<:AbstractFloat}
     scale::T
 end
 
-function Random.rand(
-    rng::Random.AbstractRNG,
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG,
     proposal::GaussianProposal{T},
 ) where {T}
-    return proposal.mean + proposal.scale * randn(rng, T)
+    normal, next_rng = randn_next(rng, T)
+    return proposal.mean + proposal.scale * normal, next_rng
 end
 
 function DensityInterface.logdensityof(proposal::GaussianProposal, x::Real)
@@ -88,7 +89,7 @@ function main()
     println("preparations per timed evaluation: ", PREPARATION_BATCH_SIZE)
     println("No timing threshold is asserted; compare trials on controlled hardware.")
 
-    preparation_rng = Xoshiro(BENCHMARK_SEED)
+    preparation_rng = Threefry4x32(BENCHMARK_SEED)
     preparation = @benchmarkable prepare_batch(
         $preparation_rng,
         logtarget,
@@ -103,7 +104,7 @@ function main()
     )
 
     sampler = prepare_sampler(
-        Xoshiro(BENCHMARK_SEED),
+        Threefry4x32(BENCHMARK_SEED),
         logtarget,
         ALGORITHM;
         threaded=false,

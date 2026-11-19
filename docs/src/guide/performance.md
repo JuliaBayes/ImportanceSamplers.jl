@@ -29,12 +29,12 @@ Compare several budgets on the same workload.
 ## Factor execution
 
 ```@example performance
-using ImportanceSamplers, Random, LinearAlgebra
+using ImportanceSamplers, PureRNGs, LinearAlgebra
 
 proposal = FactorGaussian(zeros(3), Matrix{Float64}(I, 3, 3))
 algorithm = ImportanceSampling(proposal; nsamples=5_000)
 prepared = prepare_sampler(
-    Xoshiro(42), x -> -sum(abs2, x) / 2, algorithm;
+    Threefry4x32(42), x -> -sum(abs2, x) / 2, algorithm;
     factor_execution=BatchedFactorExecution(),
 )
 samples = importance_sample!(prepared)
@@ -100,10 +100,10 @@ method workspaces. They stay on the selected device; this is not CPU readback.
 Use BenchmarkTools in a benchmark environment:
 
 ```julia
-using BenchmarkTools, ImportanceSamplers, Random
+using BenchmarkTools, ImportanceSamplers, PureRNGs
 
 algorithm = ImportanceSampling(SphericalGaussian(zeros(3), 1.5); nsamples=100_000)
-prepared = prepare_sampler(Xoshiro(42), x -> -sum(abs2, x) / 2, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), x -> -sum(abs2, x) / 2, algorithm)
 importance_sample!(prepared) # Compile the path before timing.
 @benchmark importance_sample!($prepared)
 ```

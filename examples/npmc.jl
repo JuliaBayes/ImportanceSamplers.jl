@@ -1,4 +1,4 @@
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function npmc_logtarget(x)
     # The target mean is [1, -1], with correlation 0.8 and unit marginal variances.
@@ -10,7 +10,7 @@ end
 function main(; rounds=4, round_size=10_000)
     # A broad initial proposal covers the target before adaptation learns its shape.
     proposal = SphericalGaussian([-2.0, 2.0], 3.0)
-    prepared = prepare_sampler(Xoshiro(42), npmc_logtarget,
+    prepared = prepare_sampler(Threefry4x32(42), npmc_logtarget,
         NPMC(proposal; rounds, round_size))
 
     # Every round contributes samples. Clipped weights affect only the next proposal.

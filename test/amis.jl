@@ -2,7 +2,6 @@ using Test
 using ImportanceSamplers
 using LinearAlgebra: I
 import LinearAlgebra
-import Random
 
 const AMISIS = ImportanceSamplers
 
@@ -96,8 +95,7 @@ end
 end
 
 function assert_factor_amis_storage(proposal, expected_factor, ::Type{L}) where {L}
-    rng = Random.Xoshiro(0x6100)
-    expected_rng = copy(rng)
+    rng = Threefry4x32(0x6100)
     sampler = @inferred prepare_sampler(
         rng,
         AMISTarget{L}(),
@@ -145,7 +143,7 @@ function assert_factor_amis_storage(proposal, expected_factor, ::Type{L}) where 
     for value in (state, history, workspace, sampler.random_buffers)
         assert_concrete_amis_fields(value)
     end
-    @test rand(rng, UInt64) == rand(expected_rng, UInt64)
+    @test current_rng(sampler) == rng
     return sampler
 end
 
@@ -176,8 +174,7 @@ end
 @testset "AMIS fixed scalar storage" begin
     for T in (Float32, Float64)
         proposal = SphericalGaussian(T(1), T(2))
-        rng = Random.Xoshiro(0x6101)
-        expected_rng = copy(rng)
+        rng = Threefry4x32(0x6101)
         sampler = @inferred prepare_sampler(
             rng,
             AMISTarget{T}(),
@@ -207,7 +204,7 @@ end
         for value in (state, history, workspace, sampler.random_buffers)
             assert_concrete_amis_fields(value)
         end
-        @test rand(rng, UInt64) == rand(expected_rng, UInt64)
+        @test current_rng(sampler) == rng
     end
 end
 

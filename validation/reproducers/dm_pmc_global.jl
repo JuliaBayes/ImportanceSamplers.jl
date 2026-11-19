@@ -2,13 +2,14 @@ using ImportanceSamplers
 using LinearAlgebra
 using LogExpFunctions
 using Pkg
-using Random
+using PureRNGs
+import MLDataDevices
 using Test
 
 const DM_PMC_GLOBAL_COMMAND =
     "julia --project=validation validation/reproducers/dm_pmc_global.jl"
 
-mutable struct OraclePrefilledRNG{T<:AbstractFloat} <: Random.AbstractRNG
+struct OraclePrefilledRNG{T<:AbstractFloat} <: PureRNGs.AbstractPureRNG
     normal_batches::Vector{Vector{T}}
     uniform_batches::Vector{Vector{T}}
     normal_index::Int
@@ -18,24 +19,28 @@ end
 OraclePrefilledRNG(normal_batches::Vector{Vector{T}}, uniform_batches::Vector{Vector{T}}) where {T<:AbstractFloat} =
     OraclePrefilledRNG{T}(normal_batches, uniform_batches, 1, 1)
 
-function Random.randn!(rng::OraclePrefilledRNG, destination::AbstractArray)
+(::MLDataDevices.CPUDevice)(rng::OraclePrefilledRNG) = rng
+
+function PureRNGs.randn_next!(rng::OraclePrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     source = rng.normal_batches[rng.normal_index]
     length(source) == length(destination) || throw(
         DimensionMismatch("oracle normal batch length does not match the package buffer"),
     )
     copyto!(destination, source)
-    rng.normal_index += 1
-    return destination
+    return destination, OraclePrefilledRNG(rng.normal_batches, rng.uniform_batches,
+        rng.normal_index + 1, rng.uniform_index)
 end
 
-function Random.rand!(rng::OraclePrefilledRNG, destination::AbstractArray)
+function PureRNGs.rand_next!(rng::OraclePrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     source = rng.uniform_batches[rng.uniform_index]
     length(source) == length(destination) || throw(
         DimensionMismatch("oracle uniform batch length does not match the package buffer"),
     )
     copyto!(destination, source)
-    rng.uniform_index += 1
-    return destination
+    return destination, OraclePrefilledRNG(rng.normal_batches, rng.uniform_batches,
+        rng.normal_index, rng.uniform_index + 1)
 end
 
 struct OracleGaussian{T<:AbstractFloat}

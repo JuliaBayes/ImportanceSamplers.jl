@@ -1,4 +1,4 @@
-# Keep derivative metadata out of the legacy custom-transition interface.
+# Keep derivative metadata out of the custom-transition interface.
 function _validate_lais_transition(config::HamiltonianMonteCarlo, bank, rounds, schedule)
     count = length(bank.proposals)
     budget = _adaptive_sample_budget(rounds, schedule)

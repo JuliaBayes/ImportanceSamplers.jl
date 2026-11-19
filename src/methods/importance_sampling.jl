@@ -24,8 +24,7 @@ Generic CPU proposals need one draw operation and the normalized density for the
 
 | Operation | Requirement |
 |:--|:--|
-| `Random.rand(rng, proposal)` | Mutable CPU RNGs: return a scalar, vector, or named tuple with consistent shape and leaf types |
-| `PureRNGs.rand_next(rng, proposal)` | Immutable CPU RNGs: return `(sample, next_rng)` with the same sample contract |
+| `PureRNGs.rand_next(rng, proposal)` | Return `(sample, next_rng)`. Samples must have a consistent scalar, vector, or named-tuple layout and leaf types |
 | `DensityInterface.logdensityof(proposal, sample)` | Return the normalized log density of the draw law |
 
 `nsamples` must be a positive `Int` and is the exact number of samples
@@ -154,6 +153,8 @@ function Base.showerror(io::IO, error::SamplerDeviceError)
         "the requested device backend is unavailable or nonfunctional"
     elseif error.reason === :accelerator_rng_unavailable
         "accelerator random-buffer support is not available"
+    elseif error.reason === :native_rng_required
+        "the RNG must be a native PureRNGs generator"
     elseif error.reason === :device_residency_mismatch
         "prepared state is not resident on the requested device"
     elseif error.reason === :scalar_policy_unspecified
@@ -184,8 +185,6 @@ function Base.showerror(io::IO, error::SamplerDeviceError)
         "use CPUDevice() or Reactant on a supported GPU"
     elseif error.reason === :prepared_migration_unsupported
         "accelerator-resident prepared samplers cannot be transferred"
-    elseif error.reason === :rng_not_cloneable
-        "the prepared RNG does not provide an independent copy"
     else
         "the requested device is unsupported"
     end
@@ -308,6 +307,8 @@ _logtarget_view(values::AbstractVector, indices) = view(values, indices)
 
 _prepare_backend_execution(sampler) = sampler
 
+const _SamplingRNG = Union{PureRNGs.AbstractPureRNG,Random.AbstractRNG}
+
 """
     prepare_sampler(rng, logtarget, algorithm;
                     transform=nothing, factor_execution=nothing, threaded=true,
@@ -351,11 +352,11 @@ selects the two-argument callable form.
 | DensityInterface object | `DensityInterface.DensityKind(target)` advertising a density, and `DensityInterface.logdensityof(target, sample)` | None required |
 | LogDensityProblems object | `LogDensityProblems.capabilities`, `LogDensityProblems.dimension`, and `LogDensityProblems.logdensity` | First-order capability and `LogDensityProblems.logdensity_and_gradient` for gradient methods |
 
-The prepared sampler retains and advances the supplied RNG. Native immutable
-PureRNGs inputs preserve their supplied state and return their continuation
-through [`current_rng`](@ref). Reusing the same input snapshot repeats its stream.
-Mutable `Random.AbstractRNG` inputs remain supported on CPU. Do not consume a
-mutable RNG elsewhere while using its sampler. A prepared sampler is mutable and
+Prefer a native PureRNGs generator. Preparation preserves its key and position.
+An explicit `Random.AbstractRNG` supplies one `UInt64` seed for a new
+`PureRNGs.Philox4x32` stream. There is no default RNG.
+Read the continued stream through [`current_rng`](@ref).
+Reusing the same input snapshot repeats its stream. A prepared sampler is mutable and
 non-reentrant. Repeated calls to [`importance_sample!`](@ref) create separate,
 noncumulative results with separate arrays.
 
@@ -380,7 +381,7 @@ narrowing those weights. Its default remains fused; explicit batching uses
 a separate denominator buffer in the logweight precision.
 """
 Base.@constprop :aggressive function prepare_sampler(
-    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
+    rng::_SamplingRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -405,7 +406,7 @@ Base.@constprop :aggressive function prepare_sampler(
 end
 
 Base.@constprop :aggressive function prepare_sampler(
-    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
+    rng::_SamplingRNG,
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;
@@ -455,7 +456,7 @@ Base.@constprop :aggressive function _prepare_importance_sampler(
         method_state,
         sample_budget)
     return _PreparedImportanceSampler(
-        _cpu_rng(rng),
+        _cpu_rng(_native_sampling_rng(rng)),
         random_buffers,
         prepared_target,
         algorithm,
@@ -517,9 +518,13 @@ end
 
 _accelerator_method_state_limit(method_state) = nothing
 
+_native_sampling_rng(rng) = rng
+_native_sampling_rng(rng::Random.AbstractRNG) =
+    PureRNGs.Philox4x32(Random.rand(rng, UInt64))
+
 _cpu_rng(rng) = rng
 _cpu_rng(rng::PureRNGs.AbstractPureRNG) = MLDataDevices.CPUDevice()(rng)
-_clone_rng(device, rng::PureRNGs.AbstractPureRNG) = device(rng)
+_clone_rng(device, rng::PureRNGs.AbstractPureRNG) = rng
 
 """
     current_rng(sampler)
@@ -528,17 +533,6 @@ Return an independent snapshot of a prepared sampler's current random stream.
 Reusing a pure snapshot repeats its stream. Split it explicitly for independent runs.
 """
 current_rng(sampler::_PreparedImportanceSampler) = _clone_rng(sampler.device, sampler.rng)
-
-function _clone_rng(device, rng::Random.AbstractRNG)
-    cloned = try
-        copy(rng)
-    catch
-        throw(SamplerDeviceError(device, :rng_not_cloneable))
-    end
-    cloned isa Random.AbstractRNG && cloned !== rng || throw(
-        SamplerDeviceError(device, :rng_not_cloneable))
-    return cloned
-end
 
 _backend_functional(device) = MLDataDevices.functional(device)
 _with_backend_device(f, device) = f()
@@ -581,14 +575,6 @@ function _transfer_prepared_sampler(
     device::MLDataDevices.AbstractCPUDevice,
     sampler::_PreparedImportanceSampler,
 )
-    return _transfer_prepared_sampler(device, sampler, Val(true))
-end
-
-function _transfer_prepared_sampler(
-    device::MLDataDevices.AbstractCPUDevice,
-    sampler::_PreparedImportanceSampler,
-    ::Val{clone_rng},
-) where {clone_rng}
     sampler.device isa MLDataDevices.AbstractAcceleratorDevice && throw(
         SamplerDeviceError(device, :prepared_migration_unsupported))
     sampler.executed && throw(SamplerAlreadyExecutedError())
@@ -607,7 +593,7 @@ function _transfer_prepared_sampler(
         _algorithm_sample_budget(algorithm),
     )
     return _PreparedImportanceSampler(
-        clone_rng ? _clone_rng(device, sampler.rng) : sampler.rng,
+        sampler.rng,
         random_buffers,
         transferred_target,
         algorithm,
@@ -625,14 +611,6 @@ function _transfer_prepared_sampler(
     device::MLDataDevices.AbstractAcceleratorDevice,
     sampler::_PreparedImportanceSampler,
 )
-    return _transfer_prepared_sampler(device, sampler, Val(true))
-end
-
-function _transfer_prepared_sampler(
-    device::MLDataDevices.AbstractAcceleratorDevice,
-    sampler::_PreparedImportanceSampler,
-    ::Val{clone_rng},
-) where {clone_rng}
     sampler.device isa MLDataDevices.AbstractAcceleratorDevice && throw(
         SamplerDeviceError(device, :prepared_migration_unsupported))
     if applicable(Base.eltype, device) && Base.eltype(device) === Missing
@@ -647,11 +625,7 @@ function _transfer_prepared_sampler(
         SamplerDeviceError(device, :backend_unavailable))
     source = _accelerator_precision_source(device, sampler)
     isnothing(source) && (source = _accelerator_product_source(sampler))
-    if !isnothing(source)
-        product_destination = _transfer_prepared_sampler(device, source, Val(clone_rng))
-        sampler.rng = source.rng
-        return product_destination
-    end
+    isnothing(source) || return _transfer_prepared_sampler(device, source)
     proposal_limit = _accelerator_proposal_limit(
         _algorithm_proposal(sampler.algorithm))
     isnothing(proposal_limit) || throw(SamplerDeviceError(device, proposal_limit))
@@ -744,16 +718,9 @@ _restore_retarget_device(
 function _restore_retarget_device(
     _source,
     sampler,
-    device::MLDataDevices.AbstractCPUDevice)
-    return _transfer_prepared_sampler(device, sampler, Val(false))
-end
-
-function _restore_retarget_device(
-    _source,
-    sampler,
-    device::MLDataDevices.AbstractAcceleratorDevice,
+    device::Union{MLDataDevices.AbstractCPUDevice,MLDataDevices.AbstractAcceleratorDevice},
 )
-    return _transfer_prepared_sampler(device, sampler, Val(false))
+    return _transfer_prepared_sampler(device, sampler)
 end
 
 function _retarget_algorithm(sampler::_PreparedImportanceSampler)
@@ -769,18 +736,17 @@ _transfer_rng(device, rng::PureRNGs.AbstractPureRNG) = device(rng)
 _transfer_rng(device, rng) = throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
 _validate_transfer_rng(device, rng::PureRNGs.AbstractPureRNG) = nothing
 _validate_transfer_rng(device, rng) =
-    throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
+    throw(SamplerDeviceError(device, :native_rng_required))
 
 function _retarget_sampler(rng, sampler, target)
     sampler.running && throw(SamplerBusyError())
-    rng isa Random.AbstractRNG &&
-        rng === sampler.rng && throw(
-        ArgumentError("retarget requires an RNG distinct from the source sampler's RNG"),
-    )
+    algorithm = _retarget_algorithm(sampler)
+    rng = _native_sampling_rng(rng)
+    _validate_transfer_rng(sampler.device, rng)
     prepared = _prepare_importance_sampler(
         rng,
         target,
-        _retarget_algorithm(sampler),
+        algorithm,
         sampler.factor_execution,
         _prepared_target_layout(sampler.target),
         sampler.threaded,
@@ -802,10 +768,10 @@ adaptation history, workspaces, diagnostics, and failure buffers. Samples,
 weights, and normalizer state from the source are never reused. The source
 sampler remains unchanged and usable.
 
-The returned sampler retains and advances the supplied RNG. Accelerator setup
-requires a native PureRNGs generator and preserves its key and position without
-reseeding. A mutable RNG must differ from the source sampler's RNG. An explicit
-immutable continuation is valid, but equal snapshots do not give independent streams.
+Prefer a native PureRNGs generator or a compatible Reactant stream snapshot.
+The returned sampler advances that stream without reseeding. Equal snapshots
+do not produce independent streams. An explicit `Random.AbstractRNG` seeds a
+new stream once, as in [`prepare_sampler`](@ref).
 
 Retargeting supports prepared [`DeterministicMixturePMC`](@ref), [`APIS`](@ref),
 [`CAIS`](@ref), [`NPMC`](@ref), [`LAIS`](@ref), [`AMIS`](@ref), and [`FirstOrderGRAMIS`](@ref) samplers.
@@ -872,7 +838,7 @@ The result stores the algorithm's canonical raw log weights. Use
 for the complete estimator's log normalizer.
 """
 Base.@constprop :aggressive function importance_sample(
-    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
+    rng::_SamplingRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -893,7 +859,7 @@ Base.@constprop :aggressive function importance_sample(
 end
 
 Base.@constprop :aggressive function importance_sample(
-    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG},
+    rng::_SamplingRNG,
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;

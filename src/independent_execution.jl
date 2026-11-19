@@ -23,7 +23,7 @@ function _accelerator_precision_source(device, sampler::_PreparedImportanceSampl
         _independent_source_precision(_algorithm_proposal(sampler.algorithm), sampler.method_state)
     (isnothing(source_precision) || source_precision === T) && return nothing
     cpu = MLDataDevices.with_eltype(MLDataDevices.CPUDevice(), T)
-    return _transfer_prepared_sampler(cpu, sampler, Val(false))
+    return _transfer_prepared_sampler(cpu, sampler)
 end
 
 _copy_dm_pmc_active_proposal(device, proposal::_NativeIndependentProposal) =

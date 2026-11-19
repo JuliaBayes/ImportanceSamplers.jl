@@ -6,7 +6,7 @@ An optional batch callback evaluates many draws with shared matrix operations or
 ## Batched linear regression
 
 ```@example batch
-using ImportanceSamplers, Random, Statistics, LinearAlgebra
+using ImportanceSamplers, PureRNGs, Random, Statistics, LinearAlgebra
 
 function logtarget(beta, p)
     value = -sum(abs2, beta) / 8
@@ -34,7 +34,7 @@ p = (; X, y)
 proposal = SphericalGaussian(X \ y, 0.3)
 target = LogTarget(logtarget; batch=batch!)
 samples = importance_sample(
-    rng, target, p,
+    Threefry4x32(43), target, p,
     ImportanceSampling(proposal; nsamples=5_000),
 )
 

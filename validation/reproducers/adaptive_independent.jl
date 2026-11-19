@@ -1,4 +1,4 @@
-using ImportanceSamplers, Random, Statistics, Test
+using ImportanceSamplers, Statistics, Test
 using PureRNGs: Threefry4x32
 import DensityInterface: logdensityof
 import MLDataDevices
@@ -16,7 +16,7 @@ function check_adaptive_independent(;
     )
     @testset "adaptive independent on $(typeof(device)), $T" begin
         for (target, factory) in cases, method in (AMIS, NPMC)
-            rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(1910) : Xoshiro(1910)
+            rng = Threefry4x32(1910)
             sampler = device(
                 prepare_sampler(
                     rng,
@@ -77,7 +77,7 @@ function adaptive_independent_batch!(values, samples, p)
 end
 
 function check_adaptive_independent_batch(; device = MLDataDevices.CPUDevice(), T = Float32)
-    rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(1914) : Xoshiro(1914)
+    rng = Threefry4x32(1914)
     q = IndependentLaplace(T[0, 1], T[1, 0.5])
     p = T[0.5, -0.5]
     target = LogTarget(adaptive_independent_scalar_target; batch = adaptive_independent_batch!)
@@ -96,7 +96,7 @@ function check_adaptive_independent_edges(; device = MLDataDevices.CPUDevice(), 
         for (q, method) in
             ((IndependentGamma(T(2), T(1)), AMIS), (IndependentLaplace(T(0), T(1)), NPMC))
             context = (; law = q, active = T[1])
-            rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(1911) : Xoshiro(1911)
+            rng = Threefry4x32(1911)
             sampler = device(
                 prepare_sampler(
                     rng,

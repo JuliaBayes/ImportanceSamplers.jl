@@ -102,7 +102,6 @@ export AbstractImportanceSampler,
     prepare_sampler,
     RetainCoordinates,
     retarget,
-    resample,
     resample_next
 
 include("proposals.jl")

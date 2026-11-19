@@ -1,4 +1,4 @@
-using Test, Random, LinearAlgebra, ImportanceSamplers
+using Test, LinearAlgebra, ImportanceSamplers
 import MLDataDevices
 
 @testset "Retained scalar coordinates use generic and native IS/MIS draws" begin
@@ -13,8 +13,8 @@ import MLDataDevices
         target(x) = -abs2(x)
         retain(x) = (target(x), 2x, log(2.0f0))
         configured = LogTarget(target; retain = RetainCoordinates(retain, 0.0))
-        expected = importance_sample(Xoshiro(851), target, algorithm; threaded = false)
-        result = importance_sample(Xoshiro(851), configured, algorithm; threaded = false)
+        expected = importance_sample(Threefry4x32(851), target, algorithm; threaded = false)
+        result = importance_sample(Threefry4x32(851), configured, algorithm; threaded = false)
         @test (result.samples, result.logweights, result.provenance) ==
               (expected.samples, expected.logweights, expected.provenance)
         @test (
@@ -49,8 +49,8 @@ end
             retain = RetainCoordinates(retain, zeros(2)),
         )
         baseline =
-            importance_sample(Xoshiro(852), LogTarget(target; grad = gradient!), algorithm)
-        result = importance_sample(Xoshiro(852), configured, algorithm)
+            importance_sample(Threefry4x32(852), LogTarget(target; grad = gradient!), algorithm)
+        result = importance_sample(Threefry4x32(852), configured, algorithm)
         @test (result.samples, result.logweights, result.provenance) ==
               (baseline.samples, baseline.logweights, baseline.provenance)
         @test calls[] == length(result)
@@ -72,9 +72,9 @@ end
     policy = RetainCoordinates(retain, (; scale = 0.0); batch = batch!)
     configured = LogTarget(target; retain = policy)
     result =
-        importance_sample(Xoshiro(853), configured, (; rate = 2.0), algorithm; transform)
+        importance_sample(Threefry4x32(853), configured, (; rate = 2.0), algorithm; transform)
     scalar = importance_sample(
-        Xoshiro(853),
+        Threefry4x32(853),
         LogTarget(target; retain = RetainCoordinates(retain, (; scale = 0.0))),
         (; rate = 2.0),
         algorithm;
@@ -91,7 +91,7 @@ end
     target(x) = -sum(abs2, x)
     policy = RetainCoordinates(x -> (target(x), x, 0.0), zeros(2))
     sampler = prepare_sampler(
-        Xoshiro(854),
+        Threefry4x32(854),
         LogTarget(target; retain = policy),
         ImportanceSampling(SphericalGaussian(zeros(2), 1.0); nsamples = 32),
     )

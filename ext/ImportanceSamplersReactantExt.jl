@@ -2,7 +2,6 @@ module ImportanceSamplersReactantExt
 
 import ImportanceSamplers as IS
 import Reactant
-import Random
 import PureRNGs
 import MLDataDevices
 import ADTypes
@@ -118,7 +117,6 @@ function IS._transfer_rng(device::MLDataDevices.ReactantDevice, rng)
     return deepcopy(rng)
 end
 IS._clone_rng(::MLDataDevices.ReactantDevice, rng::PureRNGs.AbstractPureRNG) = rng
-IS._clone_rng(::MLDataDevices.ReactantDevice, rng::Random.AbstractRNG) = copy(rng)
 function IS._clone_rng(device::MLDataDevices.ReactantDevice, rng)
     IS._validate_transfer_rng(device, rng)
     return deepcopy(rng)
@@ -201,27 +199,6 @@ function IS._rand_normal!(rng, values::SubArray{<:Reactant.TracedRNumber}; threa
     copyto!(values, traced)
     return rng
 end
-
-IS._rand_uniform!(
-    rng::Random.AbstractRNG,
-    values::Reactant.ConcreteRArray;
-    threaded = false
-) = invoke(IS._rand_uniform!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
-IS._rand_normal!(
-    rng::Random.AbstractRNG,
-    values::Reactant.ConcreteRArray;
-    threaded = false
-) = invoke(IS._rand_normal!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
-IS._rand_uniform!(
-    rng::Random.AbstractRNG,
-    values::SubArray{<:Reactant.TracedRNumber};
-    threaded = false
-) = invoke(IS._rand_uniform!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
-IS._rand_normal!(
-    rng::Random.AbstractRNG,
-    values::SubArray{<:Reactant.TracedRNumber};
-    threaded = false
-) = invoke(IS._rand_normal!, Tuple{Random.AbstractRNG,Any}, rng, values; threaded)
 
 function IS._resample_next_on_device(
     device::MLDataDevices.ReactantDevice,

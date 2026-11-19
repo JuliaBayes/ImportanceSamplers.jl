@@ -1,5 +1,5 @@
 using Test, ImportanceSamplers
-import Random, LinearAlgebra, Statistics
+import LinearAlgebra, Statistics
 
 include("support/lais.jl")
 
@@ -49,7 +49,8 @@ include("support/lais.jl")
         initial_target_evaluations=2, warmup_target_evaluations=0,
         production_target_evaluations=6, warmup_proposals=0,
         production_proposals=6, accepted=oracle.accepted)
-    @test (rng.ni, rng.ui) == (5, 3)
+    next_rng = current_rng(sampler)
+    @test (next_rng.ni, next_rng.ui) == (5, 3)
 end
 
 @testset "Sample Metropolis-Hastings reduces to independence MH at one centre" begin
@@ -311,7 +312,7 @@ end
         max(left, right) + log1p(exp(-abs(left - right)))
     end
     bank = ProposalBank([SphericalGaussian(-2.0, 1.5), SphericalGaussian(1.0, 1.5)])
-    result = importance_sample!(prepare_sampler(Random.Xoshiro(302), logtarget,
+    result = importance_sample!(prepare_sampler(Threefry4x32(302), logtarget,
         LAIS(bank; transition=RAM(0.5; tuning=ContinuousTuning()), rounds=3, round_size=4096)))
     weights = exp.(result.logweights)
     for (power, exact) in ((0, 1.0), (1, 0.1), (2, 3.1))

@@ -1,13 +1,13 @@
 import DensityInterface: logdensityof
 import Distributions
-import Random
 import Statistics
 
-struct LaplaceEndpointRNG{T} <: Random.AbstractRNG
+struct LaplaceEndpointRNG{T} <: TestScriptedRNG
     value::T
 end
-Random.rand(rng::LaplaceEndpointRNG{T}, ::Type{T}) where {T} = rng.value
-Random.rand!(rng::LaplaceEndpointRNG, values::AbstractArray) = fill!(values, rng.value)
+PureRNGs.rand_next(rng::LaplaceEndpointRNG{T}, ::Type{T}) where {T} = rng.value, rng
+PureRNGs.rand_next!(rng::LaplaceEndpointRNG, values::AbstractArray; threaded=false) =
+    fill!(values, rng.value), rng
 
 @testset "Laplace density, independent sampling law and parameter ownership" begin
     location, scale = Float32[-1, 2], Float32[0.5, 1.5]
@@ -21,7 +21,7 @@ Random.rand!(rng::LaplaceEndpointRNG, values::AbstractArray) = fill!(values, rng
 
     # Seed 1720, 20,000 draws. Mean/variance tolerances exceed six analytic SEs.
     result = importance_sample(
-        Random.Xoshiro(1720),
+        Threefry4x32(1720),
         proposal,
         ImportanceSampling(proposal; nsamples = 20_000),
     )
@@ -39,7 +39,7 @@ end
     for T in (Float32, Float64)
         proposal = IndependentLaplace(T(1), T(2))
         for uniform in (zero(T), T(0.5), one(T))
-            @test rand(LaplaceEndpointRNG(uniform), proposal) == one(T)
+            @test first(rand_next(LaplaceEndpointRNG(uniform), proposal)) == one(T)
             result = importance_sample(
                 LaplaceEndpointRNG(uniform),
                 proposal,
@@ -47,9 +47,9 @@ end
             )
             @test result.samples == fill(one(T), 2) && all(iszero, result.logweights)
         end
-        @test rand(LaplaceEndpointRNG(T(0.25)), proposal) ≈ one(T) - T(2) * log(T(2))
-        @test rand(LaplaceEndpointRNG(T(0.75)), proposal) ≈ one(T) + T(2) * log(T(2))
-        @test isfinite(rand(LaplaceEndpointRNG(prevfloat(one(T))), proposal))
+        @test first(rand_next(LaplaceEndpointRNG(T(0.25)), proposal)) ≈ one(T) - T(2) * log(T(2))
+        @test first(rand_next(LaplaceEndpointRNG(T(0.75)), proposal)) ≈ one(T) + T(2) * log(T(2))
+        @test isfinite(first(rand_next(LaplaceEndpointRNG(prevfloat(one(T))), proposal)))
     end
     bound = floatmax(Float64)
     extreme = IndependentLaplace(-bound, bound)
@@ -82,7 +82,7 @@ end
     bank = ProposalBank(proposals, masses)
     for scheme in (StratifiedMixture(), StandardMIS())
         result = importance_sample(
-            Random.Xoshiro(1721),
+            Threefry4x32(1721),
             target,
             ImportanceSampling(bank; nsamples = 256, mis_scheme = scheme),
         )
@@ -102,7 +102,7 @@ end
     proposal = TransformedProposal(IndependentLaplace(0.5f0, 0.7f0), PositiveTransform())
     oracle = Distributions.Laplace(0.5f0, 0.7f0)
     result = importance_sample(
-        Random.Xoshiro(1722),
+        Threefry4x32(1722),
         _ -> 0.0f0,
         ImportanceSampling(proposal; nsamples = 128),
     )
