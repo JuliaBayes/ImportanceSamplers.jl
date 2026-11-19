@@ -1,8 +1,6 @@
 import DensityInterface
 import LinearAlgebra
 import MLDataDevices
-import Random
-import Random: rand
 
 @testset "Student-t population precision conversion and family safety" begin
     gaussian = SphericalGaussian([0.0, 0.0], 1.0)
@@ -11,7 +9,7 @@ import Random: rand
         @test_throws ArgumentError FirstOrderGRAMIS(ProposalBank(proposals);
             rounds=1, round_size=32, repulsion_strength=0.0)
     end
-    prepared = prepare_sampler(Random.Xoshiro(43), x -> -sum(abs2, x) / 2,
+    prepared = prepare_sampler(Threefry4x32(43), x -> -sum(abs2, x) / 2,
         APIS(ProposalBank([student]); rounds=2, round_size=64))
     converted = MLDataDevices.cpu_device(Float32)(prepared)
     result = importance_sample!(converted)
@@ -27,7 +25,7 @@ end
     masses = [0.3, 0.7]
     bank = ProposalBank([SphericalStudentT(dofs[j], locations[j], 1.0) for j in 1:2], masses)
     target(x) = -sum(abs2, x) / 2
-    result = importance_sample(Random.Xoshiro(41), target, ImportanceSampling(bank; nsamples=128))
+    result = importance_sample(Threefry4x32(41), target, ImportanceSampling(bank; nsamples=128))
     expected = map(eachcol(result.samples)) do x
         density = sum(masses[j] / (2pi) *
             (1 + sum(abs2, x - locations[j]) / dofs[j])^(-(dofs[j] + 2) / 2) for j in 1:2)
@@ -54,7 +52,7 @@ end
         scale_factor = Matrix(LinearAlgebra.cholesky(LinearAlgebra.Symmetric((nu - 2) / nu * covariance)).L)
         return mu, scale_factor, covariance
     end
-    sampler = prepare_sampler(Random.Xoshiro(42), target,
+    sampler = prepare_sampler(Threefry4x32(42), target,
         AMIS(FactorStudentT(nu, location, factor); rounds=2, round_size=[64, 96]))
     result = importance_sample!(sampler)
     first_samples = result.samples[:, 1:64]
@@ -327,19 +325,21 @@ end
         proposal = FactorStudentT(dof, Float32[1, -2], Float32[1.25 0; 0.4 0.8])
         algorithm = ImportanceSampling(proposal; nsamples = 64)
         target = x -> -Float64(sum(abs2, x)) / 2
-        fused_rng, batched_rng = Random.Xoshiro(42), Random.Xoshiro(42)
-        fused = importance_sample(
+        fused_rng, batched_rng = Threefry4x32(42), Threefry4x32(42)
+        fused_sampler = prepare_sampler(
             fused_rng,
             target,
             algorithm;
             factor_execution = FusedFactorExecution(),
         )
-        batched = importance_sample(
+        batched_sampler = prepare_sampler(
             batched_rng,
             target,
             algorithm;
             factor_execution = BatchedFactorExecution(),
         )
+        fused = importance_sample!(fused_sampler)
+        batched = importance_sample!(batched_sampler)
         @test batched.samples ≈ fused.samples rtol=8eps(Float32)
         expected = map(eachcol(batched.samples)) do x
             # Two-dimensional Student-t normalization is 1 / (2π * det(L)).
@@ -354,13 +354,13 @@ end
             target(x) - logq
         end
         @test batched.logweights ≈ expected rtol=32eps(Float32)
-        @test rand(batched_rng, UInt64) == rand(fused_rng, UInt64)
+        @test current_rng(batched_sampler) == current_rng(fused_sampler)
     end
 
     proposal = FactorStudentT(1.0, zeros(2), [1.0e-200 0; 1.0e-200 1.0])
     batch = LogTarget(x -> 0.0; batch = (out, samples) -> fill!(out, 0.0))
     result = importance_sample(
-        Random.Xoshiro(12),
+        Threefry4x32(12),
         batch,
         ImportanceSampling(TransformedProposal(proposal, IdentityTransform()); nsamples = 8);
         factor_execution = BatchedFactorExecution(),
@@ -380,7 +380,7 @@ end
         FactorStudentT(1f0, fill(1f20, 2), Matrix{Float32}(LinearAlgebra.I, 2, 2))]
     algorithm = ImportanceSampling(ProposalBank(proposals); nsamples=8)
     for execution in (FusedFactorExecution(), BatchedFactorExecution())
-        result = importance_sample(Random.Xoshiro(8), _ -> 0f0, algorithm; factor_execution=execution)
+        result = importance_sample(Threefry4x32(8), _ -> 0f0, algorithm; factor_execution=execution)
         expected = map(eachcol(result.samples)) do point
             logs = map(q -> DensityInterface.logdensityof(q, point), proposals)
             maximum_log = maximum(logs)
@@ -394,7 +394,7 @@ end
     proposal = TransformedProposal(
         FactorStudentT(1f0, Float32[15, 0], Float32[1f-40 0; 0 1]),
         (bounded=1 => IntervalTransform(0f0, 1f0), free=2 => IdentityTransform()))
-    result = importance_sample(Random.Xoshiro(1), _ -> 0f0,
+    result = importance_sample(Threefry4x32(1), _ -> 0f0,
         ImportanceSampling(proposal; nsamples=2))
     @test result.logweights ≈ [-DensityInterface.logdensityof(proposal, entry.sample) for entry in result]
 end
@@ -410,8 +410,8 @@ end
     for T in (Float32, Float64)
         scalar = SphericalStudentT(T(7), T(1), T(2))
         factor = FactorStudentT(T(8), T[1, -2], T[1.25 0; 0.4 0.8])
-        scalar_draw = @inferred rand(Random.Xoshiro(41), scalar)
-        factor_draw = @inferred rand(Random.Xoshiro(42), factor)
+        scalar_draw, _ = @inferred rand_next(Threefry4x32(41), scalar)
+        factor_draw, _ = @inferred rand_next(Threefry4x32(42), factor)
         @test scalar_draw isa T
         @test factor_draw isa Vector{T}
         @test @inferred(DensityInterface.logdensityof(scalar, scalar_draw)) isa T
@@ -462,12 +462,12 @@ end
         diagonal = @inferred DiagonalGaussian(T[1, 2], T[0.5, 2])
         factor = @inferred FactorGaussian(T[1, 2], T[1 0; 0.25 2])
 
-        scalar_draw = @inferred rand(Random.Xoshiro(11), scalar)
+        scalar_draw, _ = @inferred rand_next(Threefry4x32(11), scalar)
         @test scalar_draw isa T
         @test @inferred(DensityInterface.logdensityof(scalar, scalar_draw)) isa T
 
         for proposal in (spherical, diagonal, factor)
-            draw = @inferred rand(Random.Xoshiro(12), proposal)
+            draw, _ = @inferred rand_next(Threefry4x32(12), proposal)
             @test draw isa Vector{T}
             @test length(draw) == 2
             @test @inferred(DensityInterface.logdensityof(proposal, draw)) isa T
@@ -476,11 +476,11 @@ end
 end
 
 function _draw_matrix(rng, proposal, nsamples)
-    first_draw = rand(rng, proposal)
+    first_draw, rng = rand_next(rng, proposal)
     draws = Matrix{eltype(first_draw)}(undef, length(first_draw), nsamples)
     draws[:, 1] = first_draw
     for sample_index in 2:nsamples
-        draws[:, sample_index] = rand(rng, proposal)
+        draws[:, sample_index], rng = rand_next(rng, proposal)
     end
     return draws
 end
@@ -498,7 +498,7 @@ end
     location = Float64[1, -2]
     factor = Float64[1.25 0; 0.4 0.8]
     proposal = FactorStudentT(dof, location, factor)
-    draws = _draw_matrix(Random.Xoshiro(0x71c9), proposal, 40_000)
+    draws = _draw_matrix(Threefry4x32(0x71c9), proposal, 40_000)
     observed_mean, observed_covariance = _empirical_mean_covariance(draws)
     expected_covariance = dof / (dof - 2) * factor * transpose(factor)
     @test observed_mean ≈ location atol = 0.035
@@ -508,7 +508,7 @@ end
         sample -> DensityInterface.logdensityof(proposal, sample)
     end
     result = importance_sample(
-        Random.Xoshiro(0x0bc3),
+        Threefry4x32(0x0bc3),
         target,
         ImportanceSampling(proposal; nsamples=128);
         threaded=false,
@@ -520,8 +520,11 @@ end
     nsamples = 30_000
 
     scalar = SphericalGaussian(1.5, 2.0)
-    scalar_rng = Random.Xoshiro(10_000)
-    scalar_draws = [rand(scalar_rng, scalar) for _ in 1:nsamples]
+    scalar_rng = Threefry4x32(10_000)
+    scalar_draws = map(1:nsamples) do _
+        draw, scalar_rng = rand_next(scalar_rng, scalar)
+        draw
+    end
     @test sum(scalar_draws) / nsamples ≈ 1.5 atol = 0.04
     scalar_mean = sum(scalar_draws) / nsamples
     scalar_variance = sum(x -> abs2(x - scalar_mean), scalar_draws) / (nsamples - 1)
@@ -548,7 +551,7 @@ end
         ),
     )
     for (proposal, expected_mean, expected_covariance, seed) in cases
-        draws = _draw_matrix(Random.Xoshiro(seed), proposal, nsamples)
+        draws = _draw_matrix(Threefry4x32(seed), proposal, nsamples)
         observed_mean, observed_covariance = _empirical_mean_covariance(draws)
         @test observed_mean ≈ expected_mean atol = 0.04
         @test observed_covariance ≈ expected_covariance atol = 0.07
@@ -567,7 +570,7 @@ end
             sample -> DensityInterface.logdensityof(proposal, sample)
         end
         result = importance_sample(
-            Random.Xoshiro(index),
+            Threefry4x32(index),
             target,
             ImportanceSampling(proposal; nsamples=32);
             threaded=false,
@@ -583,7 +586,7 @@ end
         return -0.5 * (abs2(solved_first) + abs2(solved_second))
     end
     normalizer_result = importance_sample(
-        Random.Xoshiro(99),
+        Threefry4x32(99),
         unnormalized_standard_kernel,
         ImportanceSampling(factor; nsamples=32);
         threaded=false,

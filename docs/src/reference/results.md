@@ -39,6 +39,5 @@ control_variate_mean
 ```@docs
 AbstractResamplingMethod
 MultinomialResampling
-resample
 resample_next
 ```

@@ -1,5 +1,4 @@
 using Test, ImportanceSamplers, PureRNGs
-import Random
 
 struct ContinuationTestTransition <: AbstractMCMCTransition end
 
@@ -33,17 +32,6 @@ ImportanceSamplers.retarget_transition(::ContinuationTestTransition, state, dest
 function ImportanceSamplers.transition!(
     state::ContinuationTestState,
     target,
-    rng::Random.AbstractRNG,
-    execution,
-    transfers,
-)
-    state.centres .+= Random.randn(rng, length(state.centres))
-    state.steps += 1
-    return nothing
-end
-function ImportanceSamplers.transition!(
-    state::ContinuationTestState,
-    target,
     rng::PureRNGs.AbstractPureRNG,
     execution,
     transfers,
@@ -60,35 +48,23 @@ function transition_reference_fill(rng, normals, uniforms; T = Float32)
     return rng
 end
 
-@testset "Custom transitions retain pure and original mutable CPU contracts" begin
+@testset "Custom transitions return the continued stream" begin
     algorithm = LAIS(
         ProposalBank([SphericalGaussian(0.0, 1.0)]);
         transition = ContinuationTestTransition(),
         rounds = 1,
         round_size = 3,
     )
-    for initial in (Threefry4x32(83), Random.Xoshiro(83))
-        sampler = prepare_sampler(initial, Returns(0.0), algorithm; threaded = false)
-        reference = deepcopy(initial)
-        centre = 0.0
-        for call = 1:2
-            if reference isa Random.AbstractRNG
-                centre += only(Random.randn(reference, 1))
-                lower = Random.randn(reference, 3)
-            else
-                upper, reference = PureRNGs.randn_next(reference, Float64, 1)
-                centre += only(upper)
-                lower, reference = PureRNGs.randn_next(reference, Float64, 3)
-            end
-            result = importance_sample!(sampler)
-            @test result.samples ≈ centre .+ lower
-            snapshot = current_rng(sampler)
-            if reference isa Random.AbstractRNG
-                @test Random.rand(snapshot, 3) == Random.rand(deepcopy(reference), 3)
-            else
-                @test snapshot == reference
-            end
-        end
+    reference = Threefry4x32(83)
+    sampler = prepare_sampler(reference, Returns(0.0), algorithm; threaded=false)
+    centre = 0.0
+    for _ in 1:2
+        upper, reference = randn_next(reference, Float64, 1)
+        centre += only(upper)
+        lower, reference = randn_next(reference, Float64, 3)
+        result = importance_sample!(sampler)
+        @test result.samples ≈ centre .+ lower
+        @test current_rng(sampler) == reference
     end
 end
 

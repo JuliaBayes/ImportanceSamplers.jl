@@ -119,8 +119,7 @@ function algorithms(case, total; T=Float64, rounds=4)
 end
 
 function fresh(device, case, algorithm, seed, threaded)
-    rng = device isa ImportanceSamplers.MLDataDevices.AbstractAcceleratorDevice ?
-        Threefry4x32(seed) : Xoshiro(seed)
+    rng = Threefry4x32(seed)
     prepared = prepare_sampler(rng,
         LogTarget(case.target; grad=case.gradient), case.context, algorithm; threaded)
     # Default preparation already owns CPU storage. Do not rebuild it just to

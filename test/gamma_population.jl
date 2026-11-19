@@ -1,6 +1,5 @@
 import DensityInterface: logdensityof
 import LogExpFunctions: logsumexp
-import Random
 import MLDataDevices
 
 @testset "Independent populations rebuild at explicit CPU precision" begin
@@ -8,7 +7,7 @@ import MLDataDevices
     for q in (IndependentGamma([prevfloat(32.0)], [1.0]), IndependentLaplace([0.0], [1.0]))
         p = device(
             prepare_sampler(
-                Random.Xoshiro(2042),
+                Threefry4x32(2042),
                 q,
                 APIS(ProposalBank([q]); rounds = 1, round_size = 128),
             ),
@@ -27,7 +26,7 @@ gamma_population_logmixture(proposals, masses, x) =
     bank = ProposalBank(proposals)
     target = IndependentGamma([3.0, 4.0], [0.6, 0.4])
     sampler = prepare_sampler(
-        Random.Xoshiro(2032),
+        Threefry4x32(2032),
         target,
         APIS(bank; rounds = 2, round_size = [128, 192]),
     )
@@ -62,7 +61,7 @@ end
     bank = ProposalBank([IndependentGamma(2.0f0, 0.5f0), IndependentGamma(4.0f0, 0.5f0)])
     target = IndependentGamma(3.0f0, 0.6f0)
     sampler = prepare_sampler(
-        Random.Xoshiro(2033),
+        Threefry4x32(2033),
         target,
         DeterministicMixturePMC(bank; rounds = 1, round_size = 128, resampling = LocalResampling()),
     )
@@ -82,20 +81,26 @@ end
     @test next.logweights ≈ expected rtol=64eps(Float32) atol=64eps(Float32)
 end
 
-mutable struct GammaPopulationExtremeRNG <: Random.AbstractRNG
-    rng::Random.Xoshiro
-    extreme::Bool
+struct GammaPopulationExtremeRNG{R} <: TestScriptedRNG
+    rng::R
+    extreme::Base.RefValue{Bool}
 end
-function Random.randn!(rng::GammaPopulationExtremeRNG, values::AbstractArray)
-    return rng.extreme ? fill!(values, 1e102) : Random.randn!(rng.rng, values)
+
+function PureRNGs.randn_next!(rng::GammaPopulationExtremeRNG, values::AbstractArray; threaded=false)
+    rng.extreme[] && return fill!(values, 1e102), rng
+    _, next = randn_next!(rng.rng, values; threaded)
+    return values, GammaPopulationExtremeRNG(next, rng.extreme)
 end
-function Random.rand!(rng::GammaPopulationExtremeRNG, values::AbstractArray)
-    return rng.extreme ? fill!(values, 0.0) : Random.rand!(rng.rng, values)
+
+function PureRNGs.rand_next!(rng::GammaPopulationExtremeRNG, values::AbstractArray; threaded=false)
+    rng.extreme[] && return fill!(values, 0.0), rng
+    _, next = rand_next!(rng.rng, values; threaded)
+    return values, GammaPopulationExtremeRNG(next, rng.extreme)
 end
 
 @testset "Unrepresentable Gamma population fits retain committed density caches" begin
     q = IndependentGamma(2.0, 0.5)
-    rng = GammaPopulationExtremeRNG(Random.Xoshiro(2034), false)
+    rng = GammaPopulationExtremeRNG(Threefry4x32(2034), Ref(false))
     sampler = prepare_sampler(
         rng,
         x -> x > 0 ? -2log1p(x) : -Inf,
@@ -104,7 +109,7 @@ end
     result = importance_sample!(sampler)
     saved = current_proposal(sampler)
     weights = copy(result.logweights)
-    rng.extreme = true
+    rng.extreme[] = true
     failure = try
         importance_sample!(sampler)
     catch error
@@ -115,6 +120,6 @@ end
           failure.cause isa DomainError
     @test logdensityof(only(current_proposal(sampler).proposals), 1.0) ==
           logdensityof(only(saved.proposals), 1.0)
-    rng.extreme = false
+    rng.extreme[] = false
     @test all(isfinite, importance_sample!(sampler).logweights) && result.logweights == weights
 end

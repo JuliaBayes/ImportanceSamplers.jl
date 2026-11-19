@@ -1,4 +1,4 @@
-using Test, ImportanceSamplers, Random
+using Test, ImportanceSamplers
 import ADTypes, ForwardDiff, MLDataDevices
 include("support/batch_gradients.jl")
 
@@ -15,12 +15,12 @@ include("support/batch_gradients.jl")
         transition = HamiltonianMonteCarlo(; step_size = 0.1f0, leapfrog_steps = 2),
     )
     actual=importance_sample(
-        Xoshiro(18),
+        Threefry4x32(18),
         LogTarget(value; batch_grad = callback),
         algorithm,
     )
     expected=importance_sample(
-        Xoshiro(18),
+        Threefry4x32(18),
         LogTarget(value; grad = (g, x)->(g .= .-x)),
         algorithm,
     )
@@ -46,12 +46,12 @@ end
     device=MLDataDevices.cpu_device(Float32)
     a=device(
         prepare_sampler(
-            Xoshiro(17),
+            Threefry4x32(17),
             LogTarget(value; grad = scalar, batch_grad = callback),
             algorithm,
         ),
     )
-    b=device(prepare_sampler(Xoshiro(17), LogTarget(value; grad = scalar), algorithm))
+    b=device(prepare_sampler(Threefry4x32(17), LogTarget(value; grad = scalar), algorithm))
     actual, expected=importance_sample!(a), importance_sample!(b)
     @test actual.samples ≈ expected.samples
     @test actual.logweights ≈ expected.logweights
@@ -71,9 +71,9 @@ end
         transition = HamiltonianMonteCarlo(; step_size = 0.1, leapfrog_steps = 2),
     )
     actual =
-        importance_sample(Xoshiro(19), LogTarget(value; batch_grad = callback), algorithm)
+        importance_sample(Threefry4x32(19), LogTarget(value; batch_grad = callback), algorithm)
     expected = importance_sample(
-        Xoshiro(19),
+        Threefry4x32(19),
         LogTarget(value; grad = (g, x)->(g .= .-x)),
         algorithm,
     )
@@ -93,13 +93,13 @@ end
     for (ad, gradient) in
         ((ADTypes.NoAutoDiff(), batch_score_scalar!), (ADTypes.AutoForwardDiff(), nothing))
         actual = importance_sample(
-            Xoshiro(20),
+            Threefry4x32(20),
             LogTarget(batch_score_value, ad; grad = gradient, batch_grad = gpu_only),
             context,
             algorithm,
         )
         expected = importance_sample(
-            Xoshiro(20),
+            Threefry4x32(20),
             LogTarget(batch_score_value, ad; grad = gradient),
             context,
             algorithm,
@@ -123,12 +123,12 @@ end
     )
     batch = LogTarget(batch_score_value; batch_grad = batch_score!)
     scalar = LogTarget(batch_score_value; grad = batch_score_scalar!)
-    a = prepare_sampler(Xoshiro(71), batch, (; centre = [0.2, -0.1, 0.4]), algorithm)
-    b = prepare_sampler(Xoshiro(71), scalar, (; centre = [0.2, -0.1, 0.4]), algorithm)
+    a = prepare_sampler(Threefry4x32(71), batch, (; centre = [0.2, -0.1, 0.4]), algorithm)
+    b = prepare_sampler(Threefry4x32(71), scalar, (; centre = [0.2, -0.1, 0.4]), algorithm)
     for pass = 1:3
         if pass == 3
-            a = retarget(Xoshiro(72), a, batch, (; centre = [-0.2, 0.3, 0.1]))
-            b = retarget(Xoshiro(72), b, scalar, (; centre = [-0.2, 0.3, 0.1]))
+            a = retarget(Threefry4x32(72), a, batch, (; centre = [-0.2, 0.3, 0.1]))
+            b = retarget(Threefry4x32(72), b, scalar, (; centre = [-0.2, 0.3, 0.1]))
         end
         actual, expected = importance_sample!(a), importance_sample!(b)
         @test actual.samples ≈ expected.samples
@@ -152,8 +152,8 @@ end
     context = (; powers = [2.0, 3.0, 4.0])
     batch = LogTarget(named_batch_score_value; batch_grad = named_batch_score!)
     scalar = LogTarget(named_batch_score_value; grad = named_batch_score_scalar!)
-    actual = importance_sample(Xoshiro(41), batch, context, algorithm; transform)
-    expected = importance_sample(Xoshiro(41), scalar, context, algorithm; transform)
+    actual = importance_sample(Threefry4x32(41), batch, context, algorithm; transform)
+    expected = importance_sample(Threefry4x32(41), scalar, context, algorithm; transform)
     @test all(
         name -> getproperty(actual.samples, name) ≈ getproperty(expected.samples, name),
         keys(actual.samples),
@@ -172,14 +172,14 @@ end
     transform = QuadraticCoupling([0.3])
     context = (; centre = [0.2, -0.1, 0.4])
     actual = importance_sample(
-        Xoshiro(42),
+        Threefry4x32(42),
         LogTarget(batch_score_value; batch_grad = batch_score!),
         context,
         algorithm;
         transform,
     )
     expected = importance_sample(
-        Xoshiro(42),
+        Threefry4x32(42),
         LogTarget(batch_score_value; grad = batch_score_scalar!),
         context,
         algorithm;
@@ -208,7 +208,7 @@ end
     )
     context = (; centre = zeros(3))
     prepared = prepare_sampler(
-        Xoshiro(61),
+        Threefry4x32(61),
         LogTarget(batch_score_value; batch_grad = callback),
         context,
         algorithm;
@@ -217,14 +217,14 @@ end
     @test_throws LAISRoundError importance_sample!(prepared)
     @test only(current_proposal(prepared).proposals).location == zeros(3)
     repaired = retarget(
-        Xoshiro(62),
+        Threefry4x32(62),
         prepared,
         LogTarget(batch_score_value; batch_grad = batch_score!),
         context,
     )
     actual = importance_sample!(repaired)
     expected = importance_sample(
-        Xoshiro(62),
+        Threefry4x32(62),
         LogTarget(batch_score_value; grad = batch_score_scalar!),
         context,
         algorithm;

@@ -1,5 +1,5 @@
 using Test, ImportanceSamplers
-import Random, LinearAlgebra, Statistics
+import LinearAlgebra, Statistics
 
 if !isdefined(@__MODULE__, :LAISScriptedRNG)
     include("support/lais.jl")
@@ -57,7 +57,7 @@ end
     algorithm = LAIS(ProposalBank([SphericalGaussian([1.0], 1.0)]);
                      transition=HamiltonianMonteCarlo(; step_size=0.1, leapfrog_steps=3),
                      rounds=2, round_size=2)
-    prepared = prepare_sampler(Random.Xoshiro(53), target, algorithm; threaded=false)
+    prepared = prepare_sampler(Threefry4x32(53), target, algorithm; threaded=false)
     @test_throws LAISRoundError importance_sample!(prepared)
     @test only(current_proposal(prepared).proposals).location == [1.0]
     retry = importance_sample!(prepared)
@@ -119,8 +119,8 @@ end
                                                       step_size=0.1, leapfrog_steps=4,
                                                       tuning=WarmupTuning(12)),
                      rounds=3, round_size=64)
-    serial = prepare_sampler(Random.Xoshiro(72), target, algorithm; threaded=false)
-    parallel = prepare_sampler(Random.Xoshiro(72), target, algorithm; threaded=true)
+    serial = prepare_sampler(Threefry4x32(72), target, algorithm; threaded=false)
+    parallel = prepare_sampler(Threefry4x32(72), target, algorithm; threaded=true)
     first = importance_sample!(serial)
     other = importance_sample!(parallel)
     @test first.samples == other.samples
@@ -133,7 +133,7 @@ end
     @test second.diagnostics.transition.initial_gradient_evaluations == 0
     @test second.diagnostics.transition.step_size == step
     @test first.samples == retained
-    changed = retarget(Random.Xoshiro(73), serial, target)
+    changed = retarget(Threefry4x32(73), serial, target)
     @test importance_sample!(changed).diagnostics.transition.warmup_proposals == 24
 end
 
@@ -146,17 +146,17 @@ end
                      rounds=1, round_size=16)
     explicit = LogTarget(x -> -sum(abs2, x) / 2; grad=x -> -x)
     automatic = LogTarget(x -> -sum(abs2, x) / 2, ADTypes.AutoForwardDiff())
-    a = importance_sample(Random.Xoshiro(32), explicit, algorithm)
-    b = importance_sample(Random.Xoshiro(32), automatic, algorithm)
+    a = importance_sample(Threefry4x32(32), explicit, algorithm)
+    b = importance_sample(Threefry4x32(32), automatic, algorithm)
     @test a.samples ≈ b.samples
     @test a.logweights ≈ b.logweights
     logical = LogTarget(theta -> -theta.rate;
                         grad=(g, theta) -> (g.rate[] = -one(theta.rate)))
     latent = LogTarget(z -> -exp(z[1]) + z[1];
                        grad=(g, z) -> (g[1] = 1 - exp(z[1])))
-    named = importance_sample(Random.Xoshiro(48), logical, algorithm;
+    named = importance_sample(Threefry4x32(48), logical, algorithm;
                               transform=(rate=(1 => PositiveTransform()),))
-    flat = importance_sample(Random.Xoshiro(48), latent, algorithm)
+    flat = importance_sample(Threefry4x32(48), latent, algorithm)
     @test vec(named.samples.rate) ≈ exp.(vec(flat.samples))
     @test named.logweights ≈ flat.logweights
     calls = Ref(0)
@@ -171,7 +171,7 @@ end
     two = LAIS(ProposalBank([SphericalGaussian([0.0, 1.0], 1.0)]);
                transition=HamiltonianMonteCarlo(; step_size=0.2, leapfrog_steps=2),
                rounds=1, round_size=2)
-    prepared = prepare_sampler(Random.Xoshiro(19), incomplete, two;
+    prepared = prepare_sampler(Threefry4x32(19), incomplete, two;
                                transform=(left=1, right=2), threaded=false)
     @test_throws LAISRoundError importance_sample!(prepared)
     @test only(current_proposal(prepared).proposals).location == [0.0, 1.0]

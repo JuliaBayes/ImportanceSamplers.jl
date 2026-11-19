@@ -53,28 +53,6 @@ _default_mass_type(proposal::_LaplaceProposal) = typeof(proposal.lognormalizer)
     return location + scale * standardized
 end
 
-function _laplace_draw(rng, location::T, scale::T) where {T}
-    value = _laplace_coordinate(location, scale, Random.rand(rng, T))
-    isfinite(value) ||
-        throw(DomainError(value, "Laplace draw is not finite in the chosen precision"))
-    return value
-end
-
-Random.rand(
-    rng::Random.AbstractRNG,
-    proposal::_LaplaceProposal{T},
-) where {T<:_NativeGaussianFloat} = _laplace_draw(rng, proposal.location, proposal.scale)
-
-function Random.rand(
-    rng::Random.AbstractRNG,
-    proposal::_LaplaceProposal{<:AbstractVector{T}},
-) where {T}
-    return [
-        _laplace_draw(rng, proposal.location[i], proposal.scale[i]) for
-        i in eachindex(proposal.location)
-    ]
-end
-
 function DensityInterface.logdensityof(proposal::_LaplaceProposal, sample)
     dimension = _proposal_dimension(proposal)
     length(sample) == dimension ||

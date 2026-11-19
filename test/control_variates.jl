@@ -40,7 +40,7 @@ end
         pilot = WeightedSamples(x, log.(T[1 / 6, 2 / 3, 1 / 6]))
         f(x) = T(3) * x[1]^2 + T(2) * x[1] + T(5)
         fit = fit_control_variate(f, pilot; scores=-x, ridge=0)
-        production = importance_sample(Xoshiro(17), x -> -sum(abs2, x) / 2,
+        production = importance_sample(Threefry4x32(17), x -> -sum(abs2, x) / 2,
                                        ImportanceSampling(SphericalGaussian(zeros(T, 1),
                                                                             T(1.4));
                                                           nsamples=128))

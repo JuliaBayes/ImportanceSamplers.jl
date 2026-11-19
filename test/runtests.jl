@@ -1,7 +1,9 @@
 using Test
 using ImportanceSamplers
+using PureRNGs
 
 include("support/proposals.jl")
+include("support/dm_pmc.jl")
 
 test_files = if isempty(ARGS)
     [

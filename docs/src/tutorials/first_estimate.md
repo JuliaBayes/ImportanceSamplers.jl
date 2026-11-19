@@ -6,7 +6,7 @@ The preparation and estimation interface is shared by all samplers.
 ## Log target
 
 ```@example first
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 nothing # hide
@@ -23,7 +23,7 @@ The omitted normalizing constant does not affect weighted means or variances.
 ```@example first
 proposal = SphericalGaussian(zeros(3), 1.5)
 algorithm = ImportanceSampling(proposal; nsamples=20_000)
-samples = importance_sample(Xoshiro(42), logtarget, algorithm)
+samples = importance_sample(Threefry4x32(42), logtarget, algorithm)
 
 (size(samples.samples), length(samples.logweights))
 ```
@@ -31,7 +31,7 @@ samples = importance_sample(Xoshiro(42), logtarget, algorithm)
 The proposal determines the sample dimension. Its second argument is a standard
 deviation, not a variance. This proposal is wider than the target.
 
-`Xoshiro(42)` fixes the random stream for this execution environment.
+`Threefry4x32(42)` fixes the random stream for this execution environment.
 `nsamples` belongs to the algorithm and specifies the exact output count.
 
 The result stores one sample per column: `samples.samples[:, i]` is the

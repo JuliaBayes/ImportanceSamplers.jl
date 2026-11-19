@@ -48,13 +48,6 @@ function _retain_transition_rng!(sampler, result::Tuple)
     return nothing
 end
 
-# The original extension contract remains available for mutable CPU RNGs.
-function _retain_transition_rng!(sampler, ::Nothing)
-    sampler.rng isa Random.AbstractRNG ||
-        throw(ArgumentError("a pure-RNG transition must return (next_rng, failure)"))
-    return nothing
-end
-
 function _advance_population!(sampler, state::_PreparedLAIS, views, round, execution, transfers)
     _adapt_lower_widths!(state.workspace.widths, state, views, round, execution)
     return nothing

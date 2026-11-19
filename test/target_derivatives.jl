@@ -2,7 +2,6 @@ import ADTypes
 import DensityInterface
 import LogDensityProblems
 import MLDataDevices
-import Random
 import LinearAlgebra
 
 const ISD = ImportanceSamplers
@@ -143,7 +142,7 @@ end
     @test bound([0.25, -0.5]) == 2.84375
 
     sampler = prepare_sampler(
-        Random.Xoshiro(0x101),
+        Threefry4x32(0x101),
         target,
         context,
         ImportanceSampling(proposal; nsamples=1);
@@ -162,7 +161,7 @@ end
     sample = [0.25, -0.5]
 
     explicit = prepare_sampler(
-        Random.Xoshiro(0x102),
+        Threefry4x32(0x102),
         LogTarget(f; grad=g!),
         ImportanceSampling(proposal; nsamples=1);
         threaded=false,
@@ -175,7 +174,7 @@ end
     @test explicit_value(sample) == 0.84375
 
     generated = prepare_sampler(
-        Random.Xoshiro(0x103),
+        Threefry4x32(0x103),
         LogTarget(f, ADTypes.AutoForwardDiff()),
         ImportanceSampling(proposal; nsamples=1);
         threaded=false,
@@ -522,11 +521,11 @@ end
     factor = 0.4*Matrix{Float64}(LinearAlgebra.I,9,9)
     bank = ProposalBank([FactorGaussian(zeros(9),factor),FactorGaussian(fill(0.1,9),factor)])
     algorithm = FirstOrderGRAMIS(bank; rounds=2,round_size=256,repulsion_strength=0.0)
-    explicit = prepare_sampler(Random.Xoshiro(73),LogTarget(logtarget;grad=named_gradient!),
+    explicit = prepare_sampler(Threefry4x32(73),LogTarget(logtarget;grad=named_gradient!),
         algorithm;transform=layout,threaded=true)
-    automatic = prepare_sampler(Random.Xoshiro(73),LogTarget(logtarget,ADTypes.AutoForwardDiff()),
+    automatic = prepare_sampler(Threefry4x32(73),LogTarget(logtarget,ADTypes.AutoForwardDiff()),
         algorithm;transform=layout,threaded=false)
-    flat = prepare_sampler(Random.Xoshiro(73),LogTarget(flat_logtarget;grad=flat_gradient!),
+    flat = prepare_sampler(Threefry4x32(73),LogTarget(flat_logtarget;grad=flat_gradient!),
         algorithm;threaded=false)
     for _ in 1:2
         expected = importance_sample!(flat)

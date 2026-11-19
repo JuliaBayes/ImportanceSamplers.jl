@@ -6,7 +6,7 @@ It uses a current-population mixture denominator and retains configured widths.
 ## Example
 
 ```@example dmpmc
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function logtarget(x)
     a = log(0.3) - (abs2(x[1] + 3) + abs2(x[2])) / 2
@@ -22,7 +22,7 @@ algorithm = DeterministicMixturePMC(
     bank; rounds=4, round_size=2_000,
     resampling=LocalResampling(),
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 (

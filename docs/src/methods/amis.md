@@ -6,7 +6,7 @@ Each new generating proposal changes the weights of both new and earlier samples
 ## Example
 
 ```@example amis
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function logtarget(x)
     a = x[1] - 1
@@ -18,7 +18,7 @@ algorithm = AMIS(
     SphericalStudentT(5.0, zeros(2), 2.0);
     rounds=4, round_size=2_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 (count=length(samples), mean=mean(samples), covariance=cov(samples))

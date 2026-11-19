@@ -5,7 +5,7 @@
 ### Added
 
 - Native PureRNGs continuation across sampling, adaptation, transitions, and resampling.
-- `current_rng` snapshots prepared streams; `resample_next` returns resampled values and the continued stream.
+- `current_rng` snapshots prepared streams.
 - Retain mapped coordinates and Jacobians during importance draws without recording adaptation or MCMC trials.
 - Optional `save_logtargets=true` retains sampling-coordinate target log densities without reevaluation.
 - Native fixed-length HMC transitions and Hamiltonian adaptive importance sampling.
@@ -18,8 +18,9 @@
 
 ### Changed
 
-- Accelerator preparation requires PureRNGs inputs and preserves their key and stream position without reseeding. Mutable `Random.AbstractRNG` inputs remain supported on CPU.
-- Document the immutable custom-proposal interface, `PureRNGs.rand_next(rng, proposal)`, returning `(sample, next_rng)`.
+- Sampling and retargeting require a native PureRNGs generator on every backend. Device transfer preserves its key and stream position without reseeding.
+- `resample_next` replaces `resample` and returns draws and the continued generator.
+- Custom proposals implement `PureRNGs.rand_next(rng, proposal)`, returning `(sample, next_rng)`.
 - Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
 
 ### Fixed

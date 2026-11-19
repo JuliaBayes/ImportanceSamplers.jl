@@ -6,7 +6,7 @@ It tempers fitting weights when their concentration would make covariance estima
 ## Example
 
 ```@example cais
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -(abs2(x[1] - 1) + abs2((x[2] + 1 - 0.8(x[1] - 1)) / 0.6)) / 2
 bank = ProposalBank([
@@ -14,7 +14,7 @@ bank = ProposalBank([
     SphericalGaussian([ 1.0, 0.0], 2.0),
 ])
 prepared = prepare_sampler(
-    Xoshiro(42), logtarget,
+    Threefry4x32(42), logtarget,
     CAIS(bank; rounds=4, round_size=2_000),
 )
 samples = importance_sample!(prepared)

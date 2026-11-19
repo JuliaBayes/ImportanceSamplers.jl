@@ -2,7 +2,6 @@ import KernelAbstractions
 import KernelAbstractions: @index, @kernel
 import LinearAlgebra
 import MLDataDevices
-import Random
 import PureRNGs
 
 struct FusedQuadraticTarget{T}
@@ -72,7 +71,8 @@ struct FixedOverflowProposal{T}
     sample::T
 end
 
-Random.rand(::Random.AbstractRNG, proposal::FixedOverflowProposal) = proposal.sample
+PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::FixedOverflowProposal) =
+    proposal.sample, rng
 DensityInterface.logdensityof(proposal::FixedOverflowProposal{T}, ::T) where {T} =
     -floatmax(T)
 
@@ -114,50 +114,57 @@ function (target::NativeResetTarget)(sample::Float64)::Float64
     return -abs2(sample)
 end
 
-mutable struct PrefilledNormalRNG{T} <: Random.AbstractRNG
+struct PrefilledNormalRNG{T} <: TestScriptedRNG
     values::Vector{T}
     index::Int
 end
 
-function _next_prefilled_normal!(rng::PrefilledNormalRNG)
-    rng.index += 1
-    return rng.values[rng.index]
+function PureRNGs.randn_next(rng::PrefilledNormalRNG{T}, ::Type{T}) where {T}
+    index = rng.index + 1
+    return rng.values[index], PrefilledNormalRNG(rng.values, index)
 end
 
-Random.randn(rng::PrefilledNormalRNG{Float32}, ::Type{Float32}) =
-    _next_prefilled_normal!(rng)
-Random.randn(rng::PrefilledNormalRNG{Float64}, ::Type{Float64}) =
-    _next_prefilled_normal!(rng)
+function PureRNGs.randn_next!(rng::PrefilledNormalRNG, values::AbstractArray; threaded=false)
+    copyto!(values, 1, rng.values, rng.index + 1, length(values))
+    return values, PrefilledNormalRNG(rng.values, rng.index + length(values))
+end
 
-mutable struct PrefilledRadialRNG{T} <: Random.AbstractRNG
+PureRNGs.randn_next(rng::PrefilledNormalRNG{T}, ::Type{T}, length::Int) where {T} =
+    randn_next!(rng, Vector{T}(undef, length))
+
+struct PrefilledRadialRNG{T} <: TestScriptedRNG
     uniforms::Vector{T}
     normals::Vector{T}
 end
 
-function Random.rand!(rng::PrefilledRadialRNG, values::AbstractArray)
+function PureRNGs.rand_next!(rng::PrefilledRadialRNG, values::AbstractArray; threaded=false)
+    isempty(values) && return values, rng
     copyto!(values, rng.uniforms)
-    return values
+    return values, rng
 end
 
-function Random.randn!(rng::PrefilledRadialRNG, values::AbstractArray)
+function PureRNGs.randn_next!(rng::PrefilledRadialRNG, values::AbstractArray; threaded=false)
+    isempty(values) && return values, rng
     copyto!(values, rng.normals)
-    return values
+    return values, rng
 end
 
-mutable struct BulkFillRecorder <: Random.AbstractRNG
+struct BulkFillRecorder <: TestScriptedRNG
     calls::Vector{Symbol}
 end
 
-function Random.rand!(rng::BulkFillRecorder, values::AbstractArray)
+function PureRNGs.rand_next!(rng::BulkFillRecorder, values::AbstractArray; threaded=false)
+    isempty(values) && return values, rng
     push!(rng.calls, :uniform)
     fill!(values, 0.25)
-    return values
+    return values, rng
 end
 
-function Random.randn!(rng::BulkFillRecorder, values::AbstractArray)
+function PureRNGs.randn_next!(rng::BulkFillRecorder, values::AbstractArray; threaded=false)
+    isempty(values) && return values, rng
     push!(rng.calls, :normal)
     fill!(values, -0.25)
-    return values
+    return values, rng
 end
 
 struct OwnedBufferAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
@@ -359,7 +366,7 @@ end
         zeros(Float32, dimension),
         Matrix{Float32}(LinearAlgebra.I, dimension, dimension),
     )
-    mixed = prepare_sampler(Random.Xoshiro(41), x -> 1e8 + 0.1,
+    mixed = prepare_sampler(Threefry4x32(41), x -> 1e8 + 0.1,
         ImportanceSampling(ProposalBank([factor32, factor32]); nsamples=32);
         factor_execution=BatchedFactorExecution())
     weights = importance_sample!(mixed)
@@ -673,7 +680,7 @@ end
         for threaded in (false, true)
             generic_failure = _caught_kernel_execution_error() do
                 importance_sample(
-                    Random.Xoshiro(0x9301),
+                    Threefry4x32(0x9301),
                     NativeMaximumTarget{T}(),
                     ImportanceSampling(FixedOverflowProposal(zero(T)); nsamples=2);
                     threaded,
@@ -804,7 +811,7 @@ end
 @testset "native random buffers are bulk-filled and reused" begin
     proposal = SphericalGaussian(0.25, 1.5)
     algorithm = ImportanceSampling(proposal; nsamples=32)
-    rng = Random.Xoshiro(0x9109)
+    rng = Threefry4x32(0x9109)
     sampler = prepare_sampler(
         rng,
         FusedQuadraticTarget(0.75),
@@ -822,7 +829,7 @@ end
 
     replay = @inferred importance_sample!(
         prepare_sampler(
-            Random.Xoshiro(0x9109),
+            Threefry4x32(0x9109),
             FusedQuadraticTarget(0.75),
             algorithm;
             threaded=false,
@@ -839,7 +846,7 @@ end
             nsamples=nsamples,
         )
         sampler = prepare_sampler(
-            Random.Xoshiro(0x9150 + nsamples),
+            Threefry4x32(0x9150 + nsamples),
             FusedQuadraticTarget(0.75),
             algorithm;
             threaded=false,
@@ -1009,13 +1016,13 @@ end
         nsamples=1_000,
     )
     serial = prepare_sampler(
-        Random.Xoshiro(0x9151),
+        Threefry4x32(0x9151),
         FusedVectorTarget(0.75),
         algorithm;
         threaded=false,
     )
     threaded = prepare_sampler(
-        Random.Xoshiro(0x9151),
+        Threefry4x32(0x9151),
         FusedVectorTarget(0.75),
         algorithm;
         threaded=true,
@@ -1080,23 +1087,6 @@ end
         @test getfield(destination_buffers, :normal) === normal_buffer
         @test getfield(source, :rng) == source_rng
     end
-end
-
-@testset "mutable CPU RNG accelerator rejection preserves its source stream" begin
-    fetch(@async begin
-        Random.seed!(0x9114)
-        algorithm = ImportanceSampling(SphericalGaussian(0.25, 1.5); nsamples=8)
-        target = FusedQuadraticTarget(0.75)
-        for source_rng in (Random.Xoshiro(0x9112), Random.default_rng())
-            expected_source = copy(source_rng)
-            source = prepare_sampler(source_rng, target, algorithm)
-            error = _caught_kernel_execution_error(() -> OwnedBufferAccelerator()(source))
-            @test error isa SamplerDeviceError
-            @test error.reason === :accelerator_rng_unavailable
-            @test importance_sample!(source).samples ==
-                  importance_sample(expected_source, target, algorithm).samples
-        end
-    end)
 end
 
 @testset "accelerator launch policy is independent of host threads" begin

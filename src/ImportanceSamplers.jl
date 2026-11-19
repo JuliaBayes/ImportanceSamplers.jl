@@ -13,7 +13,6 @@ import LogDensityProblems
 import LogExpFunctions
 import MLDataDevices
 import PureRNGs
-import Random
 import Statistics
 import SpecialFunctions
 
@@ -102,7 +101,6 @@ export AbstractImportanceSampler,
     prepare_sampler,
     RetainCoordinates,
     retarget,
-    resample,
     resample_next
 
 include("proposals.jl")

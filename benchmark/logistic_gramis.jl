@@ -89,8 +89,7 @@ function measure(device; observations=1000, round_size=65536, proposals=8, trial
     rng = Xoshiro(0x4752414d49534c52)
     bank = ProposalBank([SphericalGaussian(0.5randn(rng, 3), 1.5) for _ in 1:proposals])
     algorithm = FirstOrderGRAMIS(bank; rounds=4, round_size, repulsion_strength=0.0)
-    sampling_rng = device isa MLDataDevices.AbstractAcceleratorDevice ?
-        Threefry4x32(0x4752414d49534c52) : rng
+    sampling_rng = Threefry4x32(0x4752414d49534c52)
     preparation = @timed device(prepare_sampler(sampling_rng,
         LogTarget(Example.logistic_logtarget; grad=gradient!), context, algorithm))
     sampler = preparation.value

@@ -1,10 +1,9 @@
 using CUDA
-using PureRNGs: Threefry4x32
+using PureRNGs
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -17,7 +16,7 @@ struct AMISQuadraticTarget{T} end
 struct AMISZeroTarget{T} end
 struct AMISZeroSampleFailureTarget{T} end
 
-mutable struct AMISPrefilledDeviceRNG{B} <: Random.AbstractRNG
+struct AMISPrefilledDeviceRNG{B} <: PureRNGs.AbstractPureRNG
     batches::B
     index::Int
 end
@@ -31,10 +30,10 @@ function (::AMISZeroSampleFailureTarget{T})(sample)::T where {T}
     return iszero(value) ? T(NaN) : zero(T)
 end
 
-function Random.randn!(rng::AMISPrefilledDeviceRNG, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::AMISPrefilledDeviceRNG, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, AMISPrefilledDeviceRNG(rng.batches, rng.index + 1)
 end
 
 @inline function (::AMISQuadraticTarget{T})(sample::Real) where {T}
@@ -616,7 +615,7 @@ function degenerate_scalar_covariance_case(device)
         threaded,
     )
 
-    cpu = make_source(Xoshiro(AMIS_CUDA_SEED + 0x200); threaded=false)
+    cpu = make_source(Threefry4x32(AMIS_CUDA_SEED + 0x200); threaded=false)
     cpu_before = current_proposal(cpu)
     cpu_failure = try
         importance_sample!(cpu)
@@ -771,7 +770,7 @@ function factor_overflow_transaction_case(device, ::Type{T}) where {T}
     )
     failure_transfers = assert_amis_factorization_failure_transfers(failure, T)
     @test proposal_bits(after_failure) == before_bits
-    @test rng.index == 2
+    @test current_rng(prepared).index == 2
     @test !running_after_failure
     @test iszero(failure_storage[3])
     @test failure_snapshot.count == 1
@@ -792,7 +791,7 @@ function factor_overflow_transaction_case(device, ::Type{T}) where {T}
     recovery = importance_sample!(prepared)
     CUDA.synchronize()
     @test recovery isa WeightedSamples
-    @test rng.index == 3
+    @test current_rng(prepared).index == 3
     @test !prepared.running
     @test CUDA.device() == caller
     @test all(isfinite, Array(recovery.logweights))
@@ -891,7 +890,7 @@ function combined_sample_fit_failure_case(device, ::Type{T}) where {T}
     @test failure_snapshot.reason_bits == IS._NATIVE_TARGET_NAN
     @test iszero(failure_storage[3])
     @test after_bits == before_bits
-    @test rng.index == 2
+    @test current_rng(prepared).index == 2
     @test !prepared.running
     @test prepared.method_state.workspace.samples isa CUDA.AnyCuArray
     @test prepared.method_state.workspace.covariance isa CUDA.AnyCuArray
@@ -900,7 +899,7 @@ function combined_sample_fit_failure_case(device, ::Type{T}) where {T}
     recovery = importance_sample!(prepared)
     CUDA.synchronize()
     @test recovery isa WeightedSamples
-    @test rng.index == 3
+    @test current_rng(prepared).index == 3
     @test !prepared.running
     @test CUDA.device() == caller
     @test all(isfinite, Array(recovery.logweights))

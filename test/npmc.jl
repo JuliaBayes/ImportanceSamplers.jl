@@ -2,14 +2,14 @@ using Test, ImportanceSamplers
 import Random, LinearAlgebra, DensityInterface, Statistics
 
 # The RNG seam belongs to the test. Both executions consume the same round buffers.
-mutable struct NPMCNormals{T} <: Random.AbstractRNG
+struct NPMCNormals{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
-function Random.randn!(rng::NPMCNormals, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::NPMCNormals, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, rng.batches[rng.index])
-    rng.index += 1
-    return destination
+    return destination, NPMCNormals(rng.batches, rng.index + 1)
 end
 
 function npmc_oracle(result, initial, batches, schedule, logtarget)
@@ -67,7 +67,7 @@ end
 
 @testset "NPMC learns correlation and preserves log-scale invariance" begin
     initial = FactorGaussian([-1.0, 1.0], [2.0 0.0; 0.3 1.5])
-    batches = [randn(Random.Xoshiro(seed), 32) for seed in (71, 72)]
+    batches = [Random.randn(Random.Xoshiro(seed), 32) for seed in (71, 72)]
     logtarget(x) = -0.5 * (abs2(x[1]) + abs2(x[2] - 0.8x[1]))
     algorithm = NPMC(initial; rounds=2, round_size=16)
     serial = prepare_sampler(NPMCNormals(batches, 1), logtarget, algorithm; threaded=false)
@@ -112,7 +112,7 @@ end
 
 @testset "NPMC repeated calls retain proposals and own results" begin
     logtarget(x) = -abs2(x) / 2
-    sampler = prepare_sampler(Random.Xoshiro(71), logtarget,
+    sampler = prepare_sampler(Threefry4x32(71), logtarget,
         NPMC(SphericalGaussian(-1.0, 2.0); rounds=2, round_size=64))
     result = importance_sample!(sampler)
     saved_samples, saved_logs = copy(result.samples), copy(result.logweights)
@@ -122,7 +122,7 @@ end
         DensityInterface.logdensityof(proposal, x) for x in next_result.samples[1:64]]
     @test result.samples == saved_samples
     @test result.logweights == saved_logs
-    retargeted = retarget(Random.Xoshiro(72), sampler, logtarget)
+    retargeted = retarget(Threefry4x32(72), sampler, logtarget)
     @test current_proposal(retargeted).location == current_proposal(sampler).location
 end
 

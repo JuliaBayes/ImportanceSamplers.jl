@@ -1,6 +1,6 @@
 module APISBenchmark
 
-using BenchmarkTools, ImportanceSamplers, MLDataDevices, Random
+using BenchmarkTools, ImportanceSamplers, MLDataDevices
 using PureRNGs
 
 struct GaussianTarget{T} end
@@ -29,7 +29,7 @@ function measure(
     ]
     masses = ones(T, proposal_count)
     source = prepare_sampler(
-        device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(42) : Xoshiro(42),
+        Threefry4x32(42),
         GaussianTarget{T}(),
         APIS(ProposalBank(proposals, masses); rounds, round_size);
         threaded,

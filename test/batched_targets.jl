@@ -1,7 +1,8 @@
-using Test, Random, Statistics
+using Test, Statistics
 
-struct BatchOverflowNormals <: Random.AbstractRNG end
-Random.randn!(::BatchOverflowNormals, destination::AbstractArray) = fill!(destination, 2)
+struct BatchOverflowNormals <: TestScriptedRNG end
+PureRNGs.randn_next!(rng::BatchOverflowNormals, destination::AbstractArray; threaded=false) =
+    fill!(destination, 2), rng
 
 @testset "failed draws never reach a batch callback" begin
     calls = Ref(0)
@@ -30,7 +31,7 @@ end
     end
     bank = ProposalBank([FactorGaussian([x, -x], [2.0 0.0; 0.2 1.7]) for x in (-0.7, 0.7)])
     algorithm = FirstOrderGRAMIS(bank; rounds=1, round_size=64, repulsion_strength=0.0)
-    @test_throws FirstOrderGRAMISRoundError importance_sample(Xoshiro(31),
+    @test_throws FirstOrderGRAMISRoundError importance_sample(Threefry4x32(31),
         LogTarget(scalar; grad=grad!, batch=batch!), algorithm; threaded=false)
     @test small_calls[] == 2
 end
@@ -46,9 +47,9 @@ end
     end
     algorithm = ImportanceSampling(TestVectorProposal(zeros(2)); nsamples=32)
     context = [0.2, -0.3]
-    expected = importance_sample(Xoshiro(12), scalar, context, algorithm; threaded=false)
+    expected = importance_sample(Threefry4x32(12), scalar, context, algorithm; threaded=false)
     target = LogTarget(scalar; batch=batch!)
-    actual = importance_sample(Xoshiro(12), target, context, algorithm; threaded=true)
+    actual = importance_sample(Threefry4x32(12), target, context, algorithm; threaded=true)
     @test actual.samples == expected.samples
     @test actual.samples == only(batches)
     @test actual.logweights ≈ expected.logweights
@@ -63,7 +64,7 @@ end
     end
     p = (centre=[0.1, -0.2], fail=Ref(false))
     algorithm = AMIS(FactorGaussian(zeros(2), [1.5 0.0; 0.2 1.2]); rounds=2, round_size=64)
-    sampler = prepare_sampler(Xoshiro(22), LogTarget(scalar; batch=batch!), p, algorithm; threaded=false)
+    sampler = prepare_sampler(Threefry4x32(22), LogTarget(scalar; batch=batch!), p, algorithm; threaded=false)
     previous = importance_sample!(sampler)
     saved_samples, saved_weights = copy(previous.samples), copy(previous.logweights)
     proposal = current_proposal(sampler)
@@ -90,9 +91,9 @@ end
     end
     bank = ProposalBank([FactorGaussian([x, -x], [2.0 0.0; 0.2 1.7]) for x in (-0.7, 0.7)])
     algorithm = FirstOrderGRAMIS(bank; rounds=2, round_size=64, repulsion_strength=0.0)
-    expected = importance_sample(Xoshiro(31), LogTarget(scalar; grad=grad!), algorithm; threaded=false)
+    expected = importance_sample(Threefry4x32(31), LogTarget(scalar; grad=grad!), algorithm; threaded=false)
     scalar_calls[] = 0
-    actual = importance_sample(Xoshiro(31), LogTarget(scalar; grad=grad!, batch=batch!), algorithm; threaded=false)
+    actual = importance_sample(Threefry4x32(31), LogTarget(scalar; grad=grad!, batch=batch!), algorithm; threaded=false)
     @test actual.samples ≈ expected.samples
     @test actual.logweights ≈ expected.logweights
     @test scalar_calls[] == 0
@@ -110,8 +111,8 @@ end
     for transition in (RandomWalkMetropolis(0.3), RAM(0.3; tuning=WarmupTuning(3)),
         SampleMetropolisHastings(SphericalGaussian(zeros(2), 1.5); moves=3))
         algorithm = LAIS(bank; transition, rounds=2, round_size=32)
-        a = prepare_sampler(Xoshiro(24), scalar, algorithm; threaded=false)
-        b = prepare_sampler(Xoshiro(24), LogTarget(scalar; batch=batch!), algorithm; threaded=false)
+        a = prepare_sampler(Threefry4x32(24), scalar, algorithm; threaded=false)
+        b = prepare_sampler(Threefry4x32(24), LogTarget(scalar; batch=batch!), algorithm; threaded=false)
         for _ in 1:2
             empty!(widths)
             expected, actual = importance_sample!(a), importance_sample!(b)
@@ -132,8 +133,8 @@ end
     end
     transform = (mixture=1:2 => SimplexTransform(3), scale=3 => PositiveTransform(), offset=4 => IdentityTransform())
     algorithm = ImportanceSampling(SphericalGaussian(zeros(4), 0.5); nsamples=32)
-    expected = importance_sample(Xoshiro(18), scalar, 2.0, algorithm; transform, threaded=false)
-    actual = importance_sample(Xoshiro(18), LogTarget(scalar; batch=batch!), 2.0,
+    expected = importance_sample(Threefry4x32(18), scalar, 2.0, algorithm; transform, threaded=false)
+    actual = importance_sample(Threefry4x32(18), LogTarget(scalar; batch=batch!), 2.0,
         algorithm; transform, threaded=false)
     @test actual.samples == expected.samples
     @test actual.samples == only(batches)
@@ -161,8 +162,8 @@ end
     for (algorithm, expected_widths) in algorithms
         empty!(widths)
         empty!(batches)
-        expected = importance_sample(Xoshiro(14), scalar, algorithm; threaded=false)
-        actual = importance_sample(Xoshiro(14), LogTarget(scalar; batch=batch!),
+        expected = importance_sample(Threefry4x32(14), scalar, algorithm; threaded=false)
+        actual = importance_sample(Threefry4x32(14), LogTarget(scalar; batch=batch!),
             algorithm; threaded=false)
         @test actual.samples ≈ expected.samples
         @test actual.samples == hcat(batches...)

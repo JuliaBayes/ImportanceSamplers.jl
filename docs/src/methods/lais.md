@@ -11,7 +11,7 @@ the distinct HAIS method, which adds cooperative centre selection.
 ## Random-walk Metropolis
 
 ```@example lais
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 bank = ProposalBank([
@@ -22,7 +22,7 @@ algorithm = LAIS(
     bank; transition=RandomWalkMetropolis(0.5),
     rounds=10, round_size=1_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 (mean=mean(samples), draws=length(samples))
@@ -42,7 +42,7 @@ tuned_algorithm = LAIS(
     bank; transition=RAM(0.5; tuning=WarmupTuning(100)),
     rounds=10, round_size=1_000,
 )
-tuned = prepare_sampler(Xoshiro(43), logtarget, tuned_algorithm)
+tuned = prepare_sampler(Threefry4x32(43), logtarget, tuned_algorithm)
 tuned_samples = importance_sample!(tuned)
 
 mean(tuned_samples)
@@ -74,7 +74,7 @@ interacting_algorithm = LAIS(
     bank; transition=upper,
     rounds=10, round_size=1_000,
 )
-interacting = importance_sample(Xoshiro(44), logtarget, interacting_algorithm)
+interacting = importance_sample(Threefry4x32(44), logtarget, interacting_algorithm)
 
 mean(interacting)
 ```

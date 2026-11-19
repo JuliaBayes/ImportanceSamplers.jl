@@ -1,5 +1,16 @@
 using PureRNGs
 import MLDataDevices
+import Random
+
+@testset "Mutable RNGs are rejected across sampling entry points" begin
+    rng = Random.Xoshiro(42)
+    target = x -> -sum(abs2, x) / 2
+    algorithm = AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=4)
+    sampler = prepare_sampler(Threefry4x32(42), target, algorithm)
+    @test_throws MethodError prepare_sampler(rng, target, algorithm)
+    @test_throws MethodError importance_sample(rng, target, algorithm)
+    @test_throws SamplerDeviceError retarget(rng, sampler, target)
+end
 
 @testset "Native random stream lifecycle" begin
     rng = Threefry4x32(42)

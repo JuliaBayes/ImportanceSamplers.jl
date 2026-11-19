@@ -3,7 +3,6 @@ using CUDA
 using DensityInterface
 using ImportanceSamplers
 using MLDataDevices
-using Random
 using PureRNGs
 
 const STATIC_MIS_SMOKE = "--smoke" in ARGS
@@ -28,8 +27,11 @@ struct BenchmarkGaussian{T<:AbstractFloat}
     density_evaluations::Base.RefValue{Int}
 end
 
-function Random.rand(rng::Random.AbstractRNG, proposal::BenchmarkGaussian{T}) where {T}
-    return proposal.location .+ proposal.scale .* randn(rng, T, length(proposal.location))
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG, proposal::BenchmarkGaussian{T},
+) where {T}
+    normal, next_rng = randn_next(rng, T, length(proposal.location))
+    return proposal.location .+ proposal.scale .* normal, next_rng
 end
 
 function DensityInterface.logdensityof(proposal::BenchmarkGaussian, sample)
@@ -135,7 +137,7 @@ function benchmark_cpu_case(
         nsamples,
         mis_scheme=scheme_case.value,
     )
-    preparation_rng = Xoshiro(STATIC_MIS_BENCHMARK_SEED)
+    preparation_rng = Threefry4x32(STATIC_MIS_BENCHMARK_SEED)
     preparation = @benchmarkable prepare_sampler(
         $preparation_rng,
         benchmark_target,
@@ -145,7 +147,7 @@ function benchmark_cpu_case(
     preparation_record = trial_record(run_trial(preparation))
 
     sampler = prepare_sampler(
-        Xoshiro(STATIC_MIS_BENCHMARK_SEED),
+        Threefry4x32(STATIC_MIS_BENCHMARK_SEED),
         benchmark_target,
         algorithm;
         threaded=false,
@@ -158,7 +160,7 @@ function benchmark_cpu_case(
     )
 
     summary_sampler = prepare_sampler(
-        Xoshiro(STATIC_MIS_BENCHMARK_SEED),
+        Threefry4x32(STATIC_MIS_BENCHMARK_SEED),
         benchmark_target,
         algorithm;
         threaded=false,

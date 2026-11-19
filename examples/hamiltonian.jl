@@ -1,4 +1,4 @@
-using ImportanceSamplers, LinearAlgebra, Random, Statistics
+using ImportanceSamplers, LinearAlgebra, PureRNGs, Statistics
 
 # A normalized curved distribution. If z1 ~ Normal(0, scale), then
 # z2 + bend*(z1^2-scale^2) and z3 are independent standard normals.
@@ -28,7 +28,7 @@ bank = ProposalBank([SphericalStudentT(T(7), T[-2, 0, -1], T(1.5)),
 upper = HamiltonianMonteCarlo(; step_size=T(0.12), leapfrog_steps=12,
                               mass=I, tuning=WarmupTuning(100))
 algorithm = HAIS(bank; transition=upper, rounds=20, round_size=4096)
-prepared = prepare_sampler(Xoshiro(42), target, p, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), target, p, algorithm)
 samples = importance_sample!(prepared)
 
 # These are finite-run estimates, not exact equalities. A high weight ESS does
@@ -39,7 +39,7 @@ function summarize(result)
 end
 replicates = [summarize(samples)]
 for seed in 101:108
-    push!(replicates, summarize(importance_sample(Xoshiro(seed), target, p, algorithm)))
+    push!(replicates, summarize(importance_sample(Threefry4x32(seed), target, p, algorithm)))
 end
 estimates = (; mean=mean(getproperty.(replicates, :mean)),
              variance=mean(getproperty.(replicates, :variance)),

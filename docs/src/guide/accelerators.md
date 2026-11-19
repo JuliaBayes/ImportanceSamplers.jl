@@ -176,7 +176,7 @@ An accelerator-prepared sampler cannot itself migrate to another device or back 
 Use `current_proposal(MLDataDevices.CPUDevice(), sampler)` for a proposal snapshot.
 Use [`retarget`](@ref reuse-guide) to rebuild target-dependent state on the same device.
 
-Accelerator setup requires a native PureRNGs generator. Transfer preserves its
+All backends require a native PureRNGs generator. Transfer preserves its
 generator family, key, and position without consuming a replacement seed.
 The source and transferred handles start from the same snapshot. Split the RNG
 explicitly for independent runs. Normal draws and floating-point reductions

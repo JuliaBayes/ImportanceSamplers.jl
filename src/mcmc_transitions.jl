@@ -11,7 +11,7 @@ Custom transitions require the following methods, qualified with
 |:--|:--|
 | `prepare_transition(config, centres, target, L)` | Build state without RNG use and retain the supplied centre storage; `L` is the log-density type |
 | `transition_centres(state)` | Return the same centre batch without copying |
-| `transition!(state, target, rng, execution, transfers)` | Advance one upper round and update cumulative work counts; with a pure RNG return `(next_rng, failure)`, with `nothing` for success |
+| `transition!(state, target, rng, execution, transfers)` | Advance one upper round and update cumulative work counts. Return `(next_rng, failure)`, with `nothing` for success |
 | `Base.copyto!(destination, source)` | Copy persistent state for rollback |
 | `transition_diagnostics(state)` | Report initial, warmup, and production target evaluations, warmup and production proposals, and accepted moves |
 | `retarget_transition(config, state, destination)` | Rebuild the configuration from learned parameters for [`retarget`](@ref) |
@@ -19,8 +19,7 @@ Custom transitions require the following methods, qualified with
 State must support `deepcopy`. Custom device execution also requires Adapt
 support, preserved centre aliases, and device preflight. See the
 [transition interface](@ref extension-guide) for diagnostic field names and limits.
-Mutable CPU RNGs also support the original custom-transition contract returning
-`nothing`. Pure transitions must return their continued RNG even when target or
+Transitions must return their continued RNG even when target or
 adaptation work fails after a completed draw; the caller retains it before
 throwing `failure`.
 """

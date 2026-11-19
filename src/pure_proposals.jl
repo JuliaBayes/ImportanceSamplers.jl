@@ -1,4 +1,4 @@
-function _rand_proposal(
+function PureRNGs.rand_next(
     rng::PureRNGs.AbstractPureRNG,
     proposal::_GaussianProposal{F,T},
 ) where {F,T<:_NativeGaussianFloat}
@@ -6,7 +6,7 @@ function _rand_proposal(
     return _gaussian_affine_coordinate(proposal.location, proposal.scale.scale, normal), rng
 end
 
-function _rand_proposal(
+function PureRNGs.rand_next(
     rng::PureRNGs.AbstractPureRNG,
     proposal::_GaussianProposal{F,Vector{T}},
 ) where {F,T}
@@ -37,7 +37,7 @@ function _student_t_multiplier_next(rng, dof::T) where {T<:_NativeGaussianFloat}
     return sqrt(dof / (T(2) * gamma)), rng
 end
 
-function _rand_proposal(
+function PureRNGs.rand_next(
     rng::PureRNGs.AbstractPureRNG,
     proposal::_StudentTProposal{F,T},
 ) where {F,T<:_NativeGaussianFloat}
@@ -51,7 +51,7 @@ function _rand_proposal(
     return sample, rng
 end
 
-function _rand_proposal(
+function PureRNGs.rand_next(
     rng::PureRNGs.AbstractPureRNG,
     proposal::_StudentTProposal{F,Vector{T}},
 ) where {F,T}
@@ -88,7 +88,7 @@ function _rand_independent_coordinate_next(rng, proposal::_LaplaceProposal, i)
     return value, rng
 end
 
-function _rand_proposal(rng::PureRNGs.AbstractPureRNG, proposal::_NativeIndependentProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::_NativeIndependentProposal)
     _native_scalar_layout(proposal) &&
         return _rand_independent_coordinate_next(rng, proposal, 1)
     first_parameter, _ = _independent_parameters(proposal)
@@ -96,6 +96,24 @@ function _rand_proposal(rng::PureRNGs.AbstractPureRNG, proposal::_NativeIndepend
     for i in eachindex(sample)
         sample[i], rng = _rand_independent_coordinate_next(rng, proposal, i)
     end
+    return sample, rng
+end
+
+_next_product_values(rng, ::Tuple{}) = (), rng
+function _next_product_values(rng, blocks::Tuple)
+    value, rng = PureRNGs.rand_next(rng, first(blocks))
+    tail, rng = _next_product_values(rng, Base.tail(blocks))
+    return (value, tail...), rng
+end
+
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::ProductProposal)
+    block_values, rng = _next_product_values(rng, values(proposal.blocks))
+    return NamedTuple{keys(proposal.blocks)}(block_values), rng
+end
+
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TransformedProposal)
+    coordinates, rng = PureRNGs.rand_next(rng, proposal.base)
+    sample, _ = _transform_with_logjac(proposal.transform, coordinates)
     return sample, rng
 end
 

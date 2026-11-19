@@ -1,20 +1,20 @@
 module CUDANPMCValidation
 
-using CUDA, ImportanceSamplers, MLDataDevices, Random, Test, LinearAlgebra
-using PureRNGs: Threefry4x32
+using CUDA, ImportanceSamplers, MLDataDevices, Test, LinearAlgebra
+using PureRNGs
 
 struct QuadraticTarget{T} end
 struct TruncatedTarget end
 (::TruncatedTarget)(x) = x > -5 ? -abs2(x) / 2 : -Inf
 
-mutable struct RoundNormals{A} <: Random.AbstractRNG
+struct RoundNormals{A} <: PureRNGs.AbstractPureRNG
     batches::A
     index::Int
 end
-function Random.randn!(rng::RoundNormals, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::RoundNormals, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, RoundNormals(rng.batches, rng.index + 1)
 end
 
 function check_sparse_rollback(device)

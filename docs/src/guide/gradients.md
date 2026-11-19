@@ -6,7 +6,7 @@ Value-only operations still use the log target without requesting a gradient.
 ## Explicit gradients
 
 ```@example gradients
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x, p) = -sum(abs2, x .- p.centre) / 2
 
@@ -24,7 +24,7 @@ bank = ProposalBank([
 algorithm = FirstOrderGRAMIS(
     bank; rounds=3, round_size=2_000, repulsion_strength=0.0,
 )
-samples = importance_sample(Xoshiro(42), target, p, algorithm)
+samples = importance_sample(Threefry4x32(42), target, p, algorithm)
 
 mean(samples)
 ```
@@ -48,7 +48,7 @@ For example, with ForwardDiff installed:
 using ADTypes, ForwardDiff
 
 target = LogTarget(logtarget, AutoForwardDiff())
-samples = importance_sample(Xoshiro(42), target, p, algorithm)
+samples = importance_sample(Threefry4x32(42), target, p, algorithm)
 ```
 
 The package uses DifferentiationInterface on CPU.
@@ -64,7 +64,7 @@ Failure in the selected source does not trigger a different source.
 For a target taking `theta = (; rate, offset)`, a logical gradient has matching fields:
 
 ```@example named_gradients
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 layout = (
     rate=(1 => PositiveTransform()),
@@ -83,7 +83,7 @@ bank = ProposalBank([
     SphericalGaussian([ 0.5,  0.5], 1.0),
 ])
 samples = importance_sample(
-    Xoshiro(7), LogTarget(named_target; grad=named_gradient!),
+    Threefry4x32(7), LogTarget(named_target; grad=named_gradient!),
     FirstOrderGRAMIS(bank; rounds=3, round_size=2_000, repulsion_strength=0.0);
     transform=layout,
 )
@@ -136,7 +136,7 @@ scores together. It applies to HMC-driven [`LAIS`](@ref), [`HAIS`](@ref), and
 [`FirstOrderGRAMIS`](@ref). The scalar target remains required.
 
 ```@example batch_gradients
-using ImportanceSamplers, Random, LinearAlgebra, Statistics
+using ImportanceSamplers, PureRNGs, Random, LinearAlgebra, Statistics
 
 function regression_value(beta, p)
     value = -sum(abs2,beta)/8
@@ -173,13 +173,13 @@ target = LogTarget(regression_value;
 algorithm = LAIS(ProposalBank([SphericalGaussian(zeros(3),0.3)]);
     transition=HamiltonianMonteCarlo(;step_size=0.02,leapfrog_steps=4),
     rounds=2,round_size=1000)
-prepared = prepare_sampler(rng,target,p,algorithm)
+prepared = prepare_sampler(Threefry4x32(21),target,p,algorithm)
 samples = importance_sample!(prepared)
 mean(samples)
 ```
 
 On CPU, this example uses `grad=`. To use `batch_grad=` on an accelerator,
-prepare a fresh sampler with a PureRNGs input and transfer it before execution.
+prepare a fresh sampler and transfer it before execution.
 Use the [device setup](@ref devices-guide) to preserve the chosen precision.
 The matrix callback's operations must support that device.
 An explicit `batch_grad=` takes priority over scalar gradients and AD in accelerator score phases.

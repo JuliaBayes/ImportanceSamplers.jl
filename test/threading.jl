@@ -1,10 +1,8 @@
 using Test
 using ImportanceSamplers
 import DensityInterface
-import Random
-import Random: rand, randn, randn!
 
-mutable struct ThreadRecordingRNG{R<:Random.AbstractRNG} <: Random.AbstractRNG
+struct ThreadRecordingRNG{R} <: TestScriptedRNG
     inner::R
     access_tasks::Vector{Task}
 end
@@ -29,11 +27,12 @@ function ThreadRecordingProposal(nsamples::Int)
     )
 end
 
-function rand(rng::ThreadRecordingRNG, proposal::ThreadRecordingProposal)
+function PureRNGs.rand_next(rng::ThreadRecordingRNG, proposal::ThreadRecordingProposal)
     push!(rng.access_tasks, current_task())
     proposal.draw_index += 1
     push!(proposal.draw_tasks, current_task())
-    return proposal.draw_index + rand(rng.inner) / 4
+    value, inner = rand_next(rng.inner, Float64)
+    return proposal.draw_index + value / 4, ThreadRecordingRNG(inner, rng.access_tasks)
 end
 
 function DensityInterface.logdensityof(
@@ -47,15 +46,15 @@ function DensityInterface.logdensityof(
     return -sample
 end
 
-mutable struct NativeThreadRecordingRNG{R<:Random.AbstractRNG} <: Random.AbstractRNG
+struct NativeThreadRecordingRNG{R} <: TestScriptedRNG
     inner::R
     access_tasks::Vector{Task}
 end
 
-function Random.randn!(rng::NativeThreadRecordingRNG, values::AbstractArray{Float64})
+function PureRNGs.randn_next!(rng::NativeThreadRecordingRNG, values::AbstractArray{Float64}; threaded=false)
     push!(rng.access_tasks, current_task())
-    Random.randn!(rng.inner, values)
-    return values
+    _, next = randn_next!(rng.inner, values; threaded)
+    return values, NativeThreadRecordingRNG(next, rng.access_tasks)
 end
 
 mutable struct NativeThreadTarget
@@ -75,9 +74,9 @@ end
 
 @testset "CPU threading ($(Threads.nthreads(:default)) default threads)" begin
     nsamples = 64
-    initial_state = Random.Xoshiro(1401)
-    serial_rng = ThreadRecordingRNG(copy(initial_state), Task[])
-    threaded_rng = ThreadRecordingRNG(copy(initial_state), Task[])
+    initial_state = Threefry4x32(1401)
+    serial_rng = ThreadRecordingRNG(initial_state, Task[])
+    threaded_rng = ThreadRecordingRNG(initial_state, Task[])
     serial_proposal = ThreadRecordingProposal(nsamples)
     threaded_proposal = ThreadRecordingProposal(nsamples)
 
@@ -156,33 +155,28 @@ end
 
 @testset "native CPU buffer and execution equivalence" begin
     nsamples = 2_048
-    initial_state = Random.Xoshiro(0x8108)
-    serial_rng = NativeThreadRecordingRNG(copy(initial_state), Task[])
-    threaded_rng = NativeThreadRecordingRNG(copy(initial_state), Task[])
+    initial_state = Threefry4x32(0x8108)
+    serial_rng = NativeThreadRecordingRNG(initial_state, Task[])
+    threaded_rng = NativeThreadRecordingRNG(initial_state, Task[])
     serial_target = NativeThreadTarget(ReentrantLock(), Task[])
     threaded_target = NativeThreadTarget(ReentrantLock(), Task[])
     proposal = SphericalGaussian(0.5, 1.25)
     algorithm = ImportanceSampling(proposal; nsamples=nsamples)
     caller_task = current_task()
 
-    serial_result = @inferred importance_sample!(
-        prepare_sampler(serial_rng, serial_target, algorithm; threaded=false),
-    )
-    threaded_result = @inferred importance_sample!(
-        prepare_sampler(threaded_rng, threaded_target, algorithm; threaded=true),
-    )
+    serial_sampler = prepare_sampler(serial_rng, serial_target, algorithm; threaded=false)
+    threaded_sampler = prepare_sampler(threaded_rng, threaded_target, algorithm; threaded=true)
+    serial_result = @inferred importance_sample!(serial_sampler)
+    threaded_result = @inferred importance_sample!(threaded_sampler)
 
-    expected_rng = copy(initial_state)
-    expected_samples = Vector{Float64}(undef, nsamples)
-    randn!(expected_rng, expected_samples)
+    expected_samples, expected_rng = randn_next(initial_state, Float64, nsamples)
     expected_samples .= 0.5 .+ 1.25 .* expected_samples
 
     @test serial_result.samples == expected_samples
     @test threaded_result.samples == expected_samples
     @test serial_result.logweights == threaded_result.logweights
-    expected_next = rand(expected_rng)
-    @test rand(serial_rng.inner) == expected_next
-    @test rand(threaded_rng.inner) == expected_next
+    @test current_rng(serial_sampler).inner == expected_rng
+    @test current_rng(threaded_sampler).inner == expected_rng
     @test length(serial_rng.access_tasks) == 1
     @test length(threaded_rng.access_tasks) == 1
     @test all(==(caller_task), serial_rng.access_tasks)

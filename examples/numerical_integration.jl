@@ -1,5 +1,5 @@
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 logintegrand(x)::Float64 = -abs2(x)
 
@@ -8,7 +8,7 @@ function main(; nsamples=100_000)
     proposal = SphericalGaussian(0.0, 1.0)
     algorithm = ImportanceSampling(proposal; nsamples)
     samples = importance_sample(
-        Xoshiro(0x494e54454752414c),
+        Threefry4x32(0x494e54454752414c),
         logintegrand,
         algorithm;
         threaded=false,

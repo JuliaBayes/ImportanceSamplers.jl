@@ -1,6 +1,7 @@
 module PSISValidation
 
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, Statistics
+using PureRNGs
 
 """
     main(; n=2_000, repetitions=400, seed=20261109)
@@ -17,7 +18,7 @@ function main(; n = 2_000, repetitions = 400, seed = 20261109)
         shapes = Float64[]
         unreliable = 0
         for repetition = 1:repetitions
-            rng = Xoshiro(seed + repetition)
+            rng = Threefry4x32(seed + repetition)
             x = randexp(rng, n) ./ rate
             samples = WeightedSamples(x, (rate - 1) .* x .- log(rate))
             smoothed = psis(samples; threaded = false)

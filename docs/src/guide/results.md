@@ -6,10 +6,10 @@ The samples and their weights together define the estimate.
 ## Weighted moments
 
 ```@example results
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 samples = importance_sample(
-    Xoshiro(42), x -> -sum(abs2, x) / 2,
+    Threefry4x32(42), x -> -sum(abs2, x) / 2,
     ImportanceSampling(SphericalGaussian(zeros(3), 1.5); nsamples=5_000),
 )
 
@@ -114,13 +114,14 @@ Transfer a GPU result explicitly before using them.
 ## Resampling
 
 ```@example results
-draws = resample(Xoshiro(7), samples)
+draws, next_rng = resample_next(Threefry4x32(7), samples)
 (length(draws), mean(draws))
 ```
 
 The default is multinomial resampling with replacement.
 Omitting the count requests `length(samples)` draws.
-Use `resample(rng, samples, n)` for another count.
+Use `resample_next(rng, samples, n)` for another count. Pass the returned RNG to
+continue the stream.
 
 The returned `UnweightedSamples` contains no importance weights.
 Its summaries use ordinary unweighted definitions.

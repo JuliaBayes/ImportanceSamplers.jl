@@ -22,7 +22,8 @@ struct FixedTransformBase{T}
     logdensity::T
 end
 
-Random.rand(::Random.AbstractRNG, proposal::FixedTransformBase) = proposal.coordinate
+PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::FixedTransformBase) =
+    proposal.coordinate, rng
 DensityInterface.logdensityof(proposal::FixedTransformBase, sample) = proposal.logdensity
 
 @testset "normalized transformed proposal densities" begin
@@ -49,7 +50,7 @@ end
         PositiveTransform(),
     )
     generated_error = try
-        rand(Random.Xoshiro(0x7101), positive)
+        rand_next(Threefry4x32(0x7101), positive)
         nothing
     catch error
         error

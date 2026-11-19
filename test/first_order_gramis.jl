@@ -4,7 +4,6 @@ import ADTypes
 import DifferentiationInterface
 import LinearAlgebra
 import MLDataDevices
-import Random
 
 include("support/first_order_gramis.jl")
 
@@ -511,11 +510,11 @@ end
     end
     target = LogTarget(theta -> -abs2(theta.x) / 2; grad=yielding_gradient!)
     transform = (; x=(1 => IdentityTransform()))
-    serial_sampler = prepare_sampler(Random.Xoshiro(0x3b02), target, algorithm;
+    serial_sampler = prepare_sampler(Threefry4x32(0x3b02), target, algorithm;
         transform, threaded=false)
     serial = importance_sample!(serial_sampler)
     for _ in 1:3
-        threaded_sampler = prepare_sampler(Random.Xoshiro(0x3b02), target, algorithm;
+        threaded_sampler = prepare_sampler(Threefry4x32(0x3b02), target, algorithm;
             transform, threaded=true)
         threaded = importance_sample!(threaded_sampler)
         @test threaded.samples == serial.samples
@@ -652,7 +651,7 @@ end
         covariance_ess_threshold=2,
     )
     sampler = prepare_sampler(
-        Random.Xoshiro(0x7461736b3130),
+        Threefry4x32(0x7461736b3130),
         LogTarget(
             FirstOrderGRAMISShiftedTarget(0.5);
             grad=first_order_gramis_shifted_gradient!,
@@ -692,7 +691,7 @@ end
 
 function first_order_gramis_steady_state_allocation(::Type{T}) where {T}
     sampler = prepare_sampler(
-        Random.Xoshiro(0x7461736b3131),
+        Threefry4x32(0x7461736b3131),
         LogTarget(
             FirstOrderGRAMISShiftedTarget(T(0.5));
             grad=first_order_gramis_shifted_gradient!,
@@ -915,7 +914,7 @@ end
           [proposal.location for proposal in before.proposals]
     @test [proposal.scale.factor for proposal in retained.proposals] ==
           [proposal.scale.factor for proposal in before.proposals]
-    @test rng.next_batch == 2
+    @test current_rng(sampler).next_batch == 2
 
     control = prepare_sampler(
         FirstOrderGRAMISPrefilledRNG([copy(recovery_normals)]),

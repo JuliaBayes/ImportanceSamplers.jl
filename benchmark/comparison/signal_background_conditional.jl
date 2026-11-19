@@ -3,7 +3,7 @@ module SignalBackgroundConditional
 include("compare.jl")
 include("signal_background_proposal.jl")
 using .SignalBackgroundProposals: SignalBackgroundProposal
-using BenchmarkTools, LinearAlgebra, Optim, Printf, Random, SHA, Statistics, TOML
+using BenchmarkTools, LinearAlgebra, Optim, Printf, SHA, Statistics, TOML
 import CUDA, MLDataDevices
 using PureRNGs
 const SC = SamplerComparison
@@ -70,7 +70,7 @@ function run_conditional(device, model, seed; nsamples=2^18, pilot_draws=2^16)
     pilot = SC.run_method(:lais, nothing, model, seed+2_000_000;
         nsamples=pilot_draws, pilot=WIDTH_PILOT)
     proposal = fit_proposal(pilot.samples)
-    rng = device === nothing ? Xoshiro(seed+3_000_000) : Threefry4x32(seed+3_000_000)
+    rng = Threefry4x32(seed+3_000_000)
     sampler = IS.prepare_sampler(rng, IS.LogTarget(SC.logtarget),
         model.data, IS.ImportanceSampling(proposal; nsamples))
     device === nothing || (sampler = device(sampler))

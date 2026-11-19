@@ -8,8 +8,6 @@ import KernelAbstractions
 import LinearAlgebra
 import MLDataDevices
 import PureRNGs
-import Random
-import Random: rand, randn
 
 const IS = ImportanceSamplers
 
@@ -23,8 +21,9 @@ struct TransferProposal{A<:AbstractVector}
     location::A
 end
 
-function rand(rng::Random.AbstractRNG, proposal::TransferProposal)
-    return only(proposal.location) + randn(rng, eltype(proposal.location))
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::TransferProposal)
+    offset, rng = randn_next(rng, eltype(proposal.location))
+    return only(proposal.location) + offset, rng
 end
 
 function DensityInterface.logdensityof(proposal::TransferProposal, sample::Real)
@@ -127,9 +126,6 @@ function Adapt.adapt_structure(to, gradient::GRAMISTransferGradient)
     to isa KernelArgumentTestAdaptor || (DERIVATIVE_GRADIENT_TRANSFERS[] += 1)
     return GRAMISTransferGradient(Adapt.adapt(to, gradient.scale))
 end
-
-struct UncopyableRNG <: Random.AbstractRNG end
-Base.copy(rng::UncopyableRNG) = rng
 
 struct FunctionalAccelerator <: MLDataDevices.AbstractAcceleratorDevice end
 MLDataDevices.functional(::FunctionalAccelerator) = true
@@ -277,7 +273,7 @@ KernelAbstractions.get_backend(::AMISPublicationSyncArray) =
 KernelAbstractions.synchronize(::AMISPublicationSyncBackend) =
     error("intentional AMIS publication synchronization failure")
 
-struct AMISExecutionPrefilledRNG{T} <: PureRNGs.AbstractPureRNG
+struct AMISExecutionPrefilledRNG{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
@@ -294,6 +290,7 @@ end
 
 function PureRNGs.randn_next!(rng::AMISExecutionPrefilledRNG, destination::AbstractArray;
     threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, rng.batches[rng.index])
     return destination, AMISExecutionPrefilledRNG(rng.batches, rng.index + 1)
 end
@@ -470,7 +467,7 @@ function prepared_parts(prepared)
 end
 
 function make_transfer_sampler(
-    rng::Union{Random.AbstractRNG,PureRNGs.AbstractPureRNG};
+    rng::PureRNGs.AbstractPureRNG;
     factor_execution=FusedFactorExecution(),
     threaded=true,
     target=TransferTarget([0.25]),
@@ -489,7 +486,7 @@ function make_transfer_sampler(
 end
 
 make_transfer_sampler(seed::Integer; kwargs...) =
-    make_transfer_sampler(Random.Xoshiro(seed); kwargs...)
+    make_transfer_sampler(Threefry4x32(seed); kwargs...)
 
 function caught_device_error(f)
     try
@@ -573,8 +570,7 @@ end
     context = DerivativeTransferContext([0.25])
     device = KernelArgumentTestAccelerator()
 
-    missing_rng = Random.Xoshiro(0x4752414d495301)
-    expected_missing_rng = copy(missing_rng)
+    missing_rng = Threefry4x32(0x4752414d495301)
     @test_throws ArgumentError prepare_sampler(
         missing_rng,
         LogTarget(GRAMISTransferValue([0.0])),
@@ -582,10 +578,8 @@ end
         algorithm;
         threaded=true,
     )
-    @test rand(missing_rng, UInt64) == rand(expected_missing_rng, UInt64)
 
-    wrong_scalar_rng = Random.Xoshiro(0x4752414d495306)
-    expected_wrong_scalar_rng = copy(wrong_scalar_rng)
+    wrong_scalar_rng = Threefry4x32(0x4752414d495306)
     wrong_scalar_error = caught_device_error() do
         prepare_sampler(
             wrong_scalar_rng,
@@ -604,7 +598,6 @@ end
         "and Float64; inferred Float16",
         sprint(showerror, wrong_scalar_error),
     )
-    @test rand(wrong_scalar_rng, UInt64) == rand(expected_wrong_scalar_rng, UInt64)
 
     cases = (
         (
@@ -677,13 +670,13 @@ end
     @test source_parts.device isa MLDataDevices.CPUDevice
     @test getfield(source, :executed) === false
     @test_throws MethodError prepare_sampler(
-        Random.Xoshiro(2102),
+        Threefry4x32(2102),
         x -> -abs2(x),
         ImportanceSampling(TestScalarProposal(0.0); nsamples=1);
         device=cpu,
     )
     @test_throws MethodError importance_sample(
-        Random.Xoshiro(2103),
+        Threefry4x32(2103),
         x -> -abs2(x),
         ImportanceSampling(TestScalarProposal(0.0); nsamples=1);
         device=cpu,
@@ -708,14 +701,13 @@ end
     @test eltype(destination_parts.context.nested.scale) === Float32
     @test eltype(destination_parts.proposal.location) === Float32
 
-    @test destination_parts.rng !== source_parts.rng
+    @test destination_parts.rng == source_parts.rng
     @test destination_parts.callable !== source_parts.callable
     @test destination_parts.callable.offset !== source_parts.callable.offset
     @test destination_parts.context.shift !== source_parts.context.shift
     @test destination_parts.context.nested.scale !== source_parts.context.nested.scale
     @test destination_parts.proposal !== source_parts.proposal
     @test destination_parts.proposal.location !== source_parts.proposal.location
-    @test rand(copy(destination_parts.rng)) == rand(copy(source_parts.rng))
 
     destination_parts.callable.offset[1] = 9.0
     destination_parts.context.shift[1] = 8.0
@@ -725,23 +717,6 @@ end
     @test source_parts.context.shift == [1.5]
     @test source_parts.context.nested.scale == [2.0, 3.0]
     @test source_parts.proposal.location == [0.5]
-
-    default_rng_source = make_transfer_sampler(
-        Random.default_rng();
-        threaded=false,
-    )
-    default_rng_destination = cpu(default_rng_source)
-    @test getfield(default_rng_destination, :rng) isa Random.Xoshiro
-    @test getfield(default_rng_destination, :rng) !==
-          getfield(default_rng_source, :rng)
-    expected_source_rng = copy(getfield(default_rng_source, :rng))
-    rand(getfield(default_rng_destination, :rng))
-    @test rand(getfield(default_rng_source, :rng)) == rand(expected_source_rng)
-
-    uncopyable_source = make_transfer_sampler(UncopyableRNG(); threaded=false)
-    uncopyable_error = caught_device_error(() -> cpu(uncopyable_source))
-    @test uncopyable_error isa SamplerDeviceError
-    @test uncopyable_error.reason === :rng_not_cloneable
 
     direct = cpu(make_transfer_sampler(2104; threaded=false))
     piped = make_transfer_sampler(2104; threaded=false) |> cpu
@@ -783,7 +758,7 @@ end
     context = DerivativeTransferContext([1.5])
     adtype = ADTypes.AutoForwardDiff(chunksize=2, tag=:transfer_test)
     source = prepare_sampler(
-        Random.Xoshiro(0x2110),
+        Threefry4x32(0x2110),
         LogTarget(value, adtype; grad=gradient),
         context,
         ImportanceSampling(TransferProposal([0.5]); nsamples=1);
@@ -957,18 +932,6 @@ end
     @test first(prepared_parts(collection_sampler).callable.functions) ===
           collection_closure
     @test captured_values isa Vector{Float64}
-
-    rng_limit_sampler = prepare_sampler(
-        Random.Xoshiro(2207),
-        sample -> -abs2(sample) / 2,
-        ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples=4);
-        threaded=true,
-    )
-    rng_limit_error = caught_device_error(
-        () -> FunctionalAccelerator()(rng_limit_sampler),
-    )
-    @test rng_limit_error isa SamplerDeviceError
-    @test rng_limit_error.reason === :accelerator_rng_unavailable
 
     product = ProductProposal((
         left=TestScalarProposal(0.0),
@@ -1224,8 +1187,7 @@ end
             "one floating type",
         ),
     )
-        rng = Random.Xoshiro(seed)
-        expected_rng = copy(rng)
+        rng = Threefry4x32(seed)
         error = caught_device_error() do
             prepare_sampler(
                 rng,
@@ -1237,7 +1199,6 @@ end
         end
         @test error isa error_type
         @test occursin(message, sprint(showerror, error))
-        @test rand(rng, UInt64) == rand(expected_rng, UInt64)
     end
 end
 

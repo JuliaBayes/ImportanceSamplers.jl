@@ -1,13 +1,12 @@
 import DensityInterface
 import KernelAbstractions
 import LogExpFunctions
-import Random
 
 struct DMPMCTarget{T<:AbstractFloat} end
 
 (::DMPMCTarget{T})(sample) where {T} = -T(0.5) * sum(abs2, sample)
 
-mutable struct DMPMCPrefilledRNG{T<:AbstractFloat} <: Random.AbstractRNG
+struct DMPMCPrefilledRNG{T<:AbstractFloat} <: TestScriptedRNG
     normal_batches::Vector{Vector{T}}
     uniform_batches::Vector{Vector{T}}
     normal_index::Int
@@ -21,24 +20,28 @@ function DMPMCPrefilledRNG(
     return DMPMCPrefilledRNG{T}(normal_batches, uniform_batches, 1, 1)
 end
 
-function Random.randn!(rng::DMPMCPrefilledRNG, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::DMPMCPrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.normal_batches[rng.normal_index]
     length(batch) >= length(destination) || throw(
         DimensionMismatch("prefilled normal batch is too short"),
     )
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.normal_index += 1
-    return destination
+    return destination, DMPMCPrefilledRNG(
+        rng.normal_batches, rng.uniform_batches, rng.normal_index + 1, rng.uniform_index,
+    )
 end
 
-function Random.rand!(rng::DMPMCPrefilledRNG, destination::AbstractArray)
+function PureRNGs.rand_next!(rng::DMPMCPrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.uniform_batches[rng.uniform_index]
     length(batch) >= length(destination) || throw(
         DimensionMismatch("prefilled uniform batch is too short"),
     )
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.uniform_index += 1
-    return destination
+    return destination, DMPMCPrefilledRNG(
+        rng.normal_batches, rng.uniform_batches, rng.normal_index, rng.uniform_index + 1,
+    )
 end
 
 struct DMPMCResultFailurePrototype{T,N,A<:AbstractArray{T,N}} <: AbstractArray{T,N}
@@ -240,9 +243,9 @@ end
 
 DMPMCGenericProposal() = DMPMCGenericProposal(Ref(0))
 
-function Random.rand(rng::Random.AbstractRNG, proposal::DMPMCGenericProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::DMPMCGenericProposal)
     proposal.draw_count[] += 1
-    return Random.randn(rng)
+    return randn_next(rng, Float64)
 end
 
 DensityInterface.logdensityof(::DMPMCGenericProposal, sample::Real) = -abs2(sample) / 2

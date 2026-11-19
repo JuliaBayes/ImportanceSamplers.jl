@@ -17,9 +17,9 @@ end
     FittedTransportValidation.main(; d = 3)
     algorithm = ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples = 32)
     target(x) = -abs2(x) / 2
-    plain = importance_sample(Xoshiro(19), target, algorithm)
+    plain = importance_sample(Threefry4x32(19), target, algorithm)
     identity = importance_sample(
-        Xoshiro(19),
+        Threefry4x32(19),
         target,
         algorithm;
         transform = QuadraticCoupling(Float64[]),
@@ -35,32 +35,32 @@ end
     transform = QuadraticCoupling([1.25])
     base = SphericalGaussian(zeros(2), 1.0)
     proposal = TransformedProposal(base, transform)
-    point = rand(Xoshiro(17), proposal)
+    point, _ = rand_next(Threefry4x32(17), proposal)
     @test DensityInterface.logdensityof(proposal, point) ≈ transport_target(point)
 
     algorithm = ImportanceSampling(base; nsamples = 64)
     options = (; transform, threaded = false)
-    scalar = importance_sample(Xoshiro(29), transport_target, algorithm; options...)
+    scalar = importance_sample(Threefry4x32(29), transport_target, algorithm; options...)
     batch_target = LogTarget(transport_target; batch = transport_batch!)
-    batch = importance_sample(Xoshiro(29), batch_target, algorithm; options...)
+    batch = importance_sample(Threefry4x32(29), batch_target, algorithm; options...)
     @test maximum(abs, scalar.logweights) < 16eps(Float64)
     @test batch.samples == scalar.samples
     @test batch.logweights ≈ scalar.logweights atol = 16eps(Float64)
     identity = importance_sample(
-        Xoshiro(29),
+        Threefry4x32(29),
         transport_latent,
         algorithm;
         transform = QuadraticCoupling([0.0]),
         threaded = false,
     )
-    plain = importance_sample(Xoshiro(29), transport_latent, algorithm; threaded = false)
+    plain = importance_sample(Threefry4x32(29), transport_latent, algorithm; threaded = false)
     @test identity.samples == plain.samples
     @test identity.logweights == plain.logweights
     huge = TransformedProposal(
         SphericalGaussian([floatmax(Float64), 0.0], 1.0),
         QuadraticCoupling([0.0]),
     )
-    @test all(isfinite, rand(Xoshiro(31), huge))
+    @test all(isfinite, first(rand_next(Threefry4x32(31), huge)))
 end
 
 @testset "Weighted pilot fits preserve covariance convention" begin
@@ -112,7 +112,7 @@ end
                 dof = 7,
             )
             run = importance_sample(
-                Xoshiro(71),
+                Threefry4x32(71),
                 transport_target,
                 ImportanceSampling(mixed.proposal; nsamples = 64);
                 transform = mixed.transform,
@@ -144,16 +144,16 @@ end
     base = FactorStudentT(5.0, zeros(2), Matrix{Float64}(I, 2, 2))
     algorithm = AMIS(base; rounds = 2, round_size = 128)
     options = (; transform, threaded = false)
-    source = prepare_sampler(Xoshiro(7), transport_target, algorithm; options...)
+    source = prepare_sampler(Threefry4x32(7), transport_target, algorithm; options...)
     mapped = importance_sample!(source)
-    latent = importance_sample(Xoshiro(7), transport_latent, algorithm; threaded = false)
+    latent = importance_sample(Threefry4x32(7), transport_latent, algorithm; threaded = false)
     recovered = copy(mapped.samples)
     recovered[2, :] .-= 1.25 .* (recovered[1, :] .^ 2 .- 1)
     @test recovered ≈ latent.samples
     @test mapped.logweights ≈ latent.logweights
-    reused = retarget(Xoshiro(11), source, transport_target)
+    reused = retarget(Threefry4x32(11), source, transport_target)
     adapted = AMIS(current_proposal(source); rounds = 2, round_size = 128)
-    rebuilt = prepare_sampler(Xoshiro(11), transport_target, adapted; options...)
+    rebuilt = prepare_sampler(Threefry4x32(11), transport_target, adapted; options...)
     @test importance_sample!(reused).samples == importance_sample!(rebuilt).samples
 end
 
@@ -167,13 +167,13 @@ end
     algorithm =
         FirstOrderGRAMIS(bank; rounds = 2, round_size = 128, repulsion_strength = 0.1)
     reference = LogTarget(transport_latent; grad = (g, x) -> (g .= .-x))
-    flat = importance_sample(Xoshiro(18), reference, algorithm; threaded = false)
+    flat = importance_sample(Threefry4x32(18), reference, algorithm; threaded = false)
     for target in (
         LogTarget(transport_target; grad = transport_gradient!),
         LogTarget(transport_target, ADTypes.AutoForwardDiff()),
     )
         mapped =
-            importance_sample(Xoshiro(18), target, algorithm; transform, threaded = false)
+            importance_sample(Threefry4x32(18), target, algorithm; transform, threaded = false)
         @test mapped.logweights ≈ flat.logweights rtol = 1e-10 atol = 1e-10
     end
 end

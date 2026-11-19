@@ -1,4 +1,4 @@
-using ImportanceSamplers, Random, Test, DensityInterface
+using ImportanceSamplers, Test, DensityInterface
 using PureRNGs: Threefry4x32
 using ImportanceSamplers.LogExpFunctions: logsumexp
 import MLDataDevices
@@ -55,7 +55,7 @@ function check_independent_population(;
                 )
             end
             for algorithm in algorithms
-                rng = device isa MLDataDevices.AbstractAcceleratorDevice ? Threefry4x32(2040) : Xoshiro(2040)
+                rng = Threefry4x32(2040)
                 sampler = device(prepare_sampler(rng, target, algorithm))
                 result = importance_sample!(sampler)
                 learned = current_proposal(MLDataDevices.CPUDevice(), sampler)

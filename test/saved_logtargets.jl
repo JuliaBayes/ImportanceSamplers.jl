@@ -1,4 +1,4 @@
-using Test, Random, ImportanceSamplers
+using Test, ImportanceSamplers
 import MLDataDevices
 
 @testset "saved targets use existing scalar and batch evaluations" begin
@@ -7,18 +7,18 @@ import MLDataDevices
         calls = Ref(0)
         counted(x) = (calls[] += 1; target(x))
         algorithm = ImportanceSampling(proposal; nsamples=32)
-        rng = Xoshiro(91)
-        baseline = importance_sample(copy(rng), target, algorithm; threaded=false)
-        actual = importance_sample(rng, counted, algorithm; threaded=false, save_logtargets=true)
+        rng = Threefry4x32(91)
+        baseline_sampler = prepare_sampler(rng, target, algorithm; threaded=false)
+        actual_sampler = prepare_sampler(rng, counted, algorithm; threaded=false, save_logtargets=true)
+        baseline = importance_sample!(baseline_sampler)
+        actual = importance_sample!(actual_sampler)
         @test calls[] == length(actual)
         @test actual.logtargets == target.(actual.samples)
         @test any(==(-Inf), actual.logtargets)
         @test baseline.logtargets === nothing
         @test actual.samples == baseline.samples
         @test actual.logweights == baseline.logweights
-        expected_rng = Xoshiro(91)
-        importance_sample(expected_rng, target, algorithm; threaded=false)
-        @test rand(rng) == rand(expected_rng)
+        @test current_rng(actual_sampler) == current_rng(baseline_sampler)
     end
 
     batches = Ref(0)
@@ -26,7 +26,7 @@ import MLDataDevices
     scalar(x) = (scalar_calls[] += 1; target(x))
     batch!(out, xs) = (batches[] += 1; out .= target.(xs))
     result = importance_sample(
-        Xoshiro(92),
+        Threefry4x32(92),
         LogTarget(scalar; batch=batch!),
         ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples=32);
         save_logtargets=true,
@@ -46,7 +46,7 @@ end
         scalar(x) = (calls[] += 1; -1e-20)
         batch!(out, xs) = fill!(out, -1e-20)
         result = importance_sample(
-            Xoshiro(96),
+            Threefry4x32(96),
             LogTarget(scalar; batch=batch!),
             ImportanceSampling(ProposalBank(proposals); nsamples=24);
             save_logtargets=true,
@@ -68,8 +68,8 @@ end
         LAIS(bank; transition=RandomWalkMetropolis(0.3), rounds=2, round_size=[32, 24]),
     )
     for algorithm in algorithms
-        sampler = prepare_sampler(Xoshiro(93), target, algorithm; save_logtargets=true, threaded=false)
-        baseline = prepare_sampler(Xoshiro(93), target, algorithm; threaded=false)
+        sampler = prepare_sampler(Threefry4x32(93), target, algorithm; save_logtargets=true, threaded=false)
+        baseline = prepare_sampler(Threefry4x32(93), target, algorithm; threaded=false)
         result = importance_sample!(sampler)
         expected = importance_sample!(baseline)
         saved = copy(result.logtargets)
@@ -85,7 +85,7 @@ end
     factor_bank = ProposalBank([FactorGaussian([x, -x], [1.5 0.0; 0.2 1.2]) for x in (-0.5, 0.5)])
     grad!(g, x) = (g .= .-x)
     result = importance_sample(
-        Xoshiro(94),
+        Threefry4x32(94),
         LogTarget(target; grad=grad!),
         FirstOrderGRAMIS(factor_bank; rounds=2, round_size=[32, 24], repulsion_strength=0.0);
         save_logtargets=true,
@@ -99,12 +99,12 @@ end
     target(x) = -x.scale
     transform = (scale=1 => PositiveTransform(),)
     result =
-        importance_sample(Xoshiro(95), target, algorithm; transform, save_logtargets=true, threaded=false)
-    coordinates = importance_sample(Xoshiro(95), x -> 0.0, algorithm; threaded=false).samples
+        importance_sample(Threefry4x32(95), target, algorithm; transform, save_logtargets=true, threaded=false)
+    coordinates = importance_sample(Threefry4x32(95), x -> 0.0, algorithm; threaded=false).samples
     @test result.logtargets == [-exp(z) + z for z in vec(coordinates)]
     batch!(out, xs) = (out .= .-xs.scale)
     batched = importance_sample(
-        Xoshiro(95),
+        Threefry4x32(95),
         LogTarget(target; batch=batch!),
         algorithm;
         transform,

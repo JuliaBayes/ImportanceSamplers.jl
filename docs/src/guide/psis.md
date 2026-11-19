@@ -20,12 +20,12 @@ although the target has finite moments of every order. An occasional large
 ratio can dominate the raw estimate.
 
 ```@example psis
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = x[1] >= 0 ? -x[1] : -Inf
 # Gamma shape 1 and scale 1/3 is an exponential distribution with rate 3.
 algorithm = ImportanceSampling(IndependentGamma([1.0], [1 / 3]); nsamples=2_000)
-samples = importance_sample(Xoshiro(20261110), logtarget, algorithm)
+samples = importance_sample(Threefry4x32(20261110), logtarget, algorithm)
 smoothed = psis(samples)
 
 (
@@ -47,7 +47,7 @@ with one and pair the raw and smoothed squared errors within each run.
 ```@example psis
 repetitions = 400
 estimates = map(1:repetitions) do repetition
-    raw = importance_sample(Xoshiro(20261109 + repetition), logtarget, algorithm)
+    raw = importance_sample(Threefry4x32(20261109 + repetition), logtarget, algorithm)
     smooth = psis(raw; threaded=false)
     (mean(x -> x[1], raw), mean(x -> x[1], smooth))
 end

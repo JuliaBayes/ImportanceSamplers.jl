@@ -1,6 +1,7 @@
 module FittedTransportValidation
 
 using ImportanceSamplers, Random, Statistics, LinearAlgebra, Test
+using PureRNGs
 import DensityInterface, MLDataDevices
 
 function logtarget(x)
@@ -75,12 +76,12 @@ function main(; device = MLDataDevices.cpu_device(), T = Float64, d = 2)
         transform = QuadraticCoupling(fill(T(1.25), d ÷ 2))
         batch_target = LogTarget(logtarget; batch = batch!)
         algorithm = ImportanceSampling(base; nsamples = 256)
-        prepared = prepare_sampler(Xoshiro(17), batch_target, algorithm; transform)
+        prepared = prepare_sampler(Threefry4x32(17), batch_target, algorithm; transform)
         result = importance_sample!(device(prepared))
         @test maximum(abs, Array(result.logweights)) < tolerance
         algorithm = AMIS(fit.proposal; rounds = 2, round_size = 256)
         production =
-            prepare_sampler(Xoshiro(31), logtarget, algorithm; transform = fit.transform)
+            prepare_sampler(Threefry4x32(31), logtarget, algorithm; transform = fit.transform)
         sampled = importance_sample!(device(production))
         @test all(isfinite, Array(sampled.logweights))
         left, right = zeros(T, d), zeros(T, d)
@@ -92,10 +93,10 @@ function main(; device = MLDataDevices.cpu_device(), T = Float64, d = 2)
         algorithm =
             FirstOrderGRAMIS(bank; rounds = 2, round_size = 128, repulsion_strength = 0.1)
         target = LogTarget(logtarget; grad = gradient!)
-        prepared = prepare_sampler(Xoshiro(43), target, algorithm; transform)
+        prepared = prepare_sampler(Threefry4x32(43), target, algorithm; transform)
         mapped = importance_sample!(device(prepared))
         target = LogTarget(latent_target; grad = latent_gradient!)
-        prepared = prepare_sampler(Xoshiro(43), target, algorithm)
+        prepared = prepare_sampler(Threefry4x32(43), target, algorithm)
         flat = importance_sample!(device(prepared))
         @test Array(mapped.logweights) ≈ Array(flat.logweights) rtol = sqrt(eps(T)) atol =
             tolerance

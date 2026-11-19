@@ -1,5 +1,5 @@
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 function correlated_logtarget(sample)::Float64
     centered_1 = sample[1] - 1.0
@@ -32,7 +32,7 @@ function main(; rounds=4, round_size=3_000)
         repulsion_strength=0.05,
     )
     sampler = prepare_sampler(
-        Xoshiro(0x4752414d49534558),
+        Threefry4x32(0x4752414d49534558),
         LogTarget(correlated_logtarget; grad=correlated_gradient!),
         algorithm;
         threaded=false,

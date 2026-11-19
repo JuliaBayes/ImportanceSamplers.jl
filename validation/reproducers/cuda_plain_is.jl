@@ -1,11 +1,10 @@
 using CUDA
-using PureRNGs: Threefry4x32
+using PureRNGs
 using DensityInterface
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -47,8 +46,11 @@ end
     return context.shift[1] - abs2(sample) / 2
 end
 
-function Random.rand(rng::Random.AbstractRNG, proposal::GenericGaussian{T}) where {T}
-    return proposal.location + proposal.scale * randn(rng, T)
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG, proposal::GenericGaussian{T},
+) where {T}
+    normal, next_rng = randn_next(rng, T)
+    return proposal.location + proposal.scale * normal, next_rng
 end
 
 @inline function DensityInterface.logdensityof(proposal::GenericGaussian{T}, sample) where {T}
@@ -389,7 +391,7 @@ _explicit_array_transfer(arrays::NamedTuple) = map(_explicit_array_transfer, arr
 function validate_case(device, ::Type{T}, case, seed) where {T}
     algorithm = ImportanceSampling(case.proposal; nsamples=VALIDATION_SAMPLES)
     cpu = importance_sample(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         case.target,
         case.context,
         algorithm;

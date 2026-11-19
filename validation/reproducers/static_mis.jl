@@ -1,7 +1,7 @@
 using DensityInterface
 using ImportanceSamplers
 using Pkg
-using Random
+using PureRNGs
 using Test
 
 const STATIC_MIS_CPU_SEED = 0x7374617469636370
@@ -56,7 +56,7 @@ end
 function run_case(bank, scheme, nsamples; seed=STATIC_MIS_CPU_SEED)
     logtarget(sample) = bank_logdensity(bank, sample)
     result = importance_sample(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         logtarget,
         ImportanceSampling(bank; nsamples, mis_scheme=scheme);
         threaded=false,
@@ -167,7 +167,7 @@ function check_direct_normalizer_fixtures()
     for (case_index, case) in enumerate(cases)
         bank = case.row.factory(case.type)
         result = importance_sample(
-            Xoshiro(STATIC_MIS_DIRECT_SEED + UInt(case_index)),
+            Threefry4x32(STATIC_MIS_DIRECT_SEED + UInt(case_index)),
             sample -> bank_logdensity(bank, sample),
             ImportanceSampling(
                 bank;
@@ -198,7 +198,7 @@ function check_direct_sample_shapes()
         location = getfield(first(bank.proposals), :location)
         expected_mean = zeros(Float32, location isa Real ? 1 : length(location))
         result = importance_sample(
-            Xoshiro(STATIC_MIS_DIRECT_SEED + UInt(100 + case_index)),
+            Threefry4x32(STATIC_MIS_DIRECT_SEED + UInt(100 + case_index)),
             sample -> bank_logdensity(bank, sample),
             ImportanceSampling(bank; nsamples=17, mis_scheme=StratifiedMixture());
             threaded=false,

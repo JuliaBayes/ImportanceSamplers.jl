@@ -1,6 +1,5 @@
 import DensityInterface: logdensityof
 import LogExpFunctions: logsumexp
-import Random
 
 laplace_population_logmixture(proposals, masses, x) =
     logsumexp(log.(masses) .+ [logdensityof(q, x) for q in proposals])
@@ -13,7 +12,7 @@ laplace_population_target(x, p) = p.valid[] ? logdensityof(p.law, x) : -Inf
     target = IndependentLaplace([0.3, -0.2], [0.9, 0.8])
     context = (; law = target, valid = Ref(true))
     sampler = prepare_sampler(
-        Random.Xoshiro(2012),
+        Threefry4x32(2012),
         laplace_population_target,
         context,
         APIS(bank; rounds = 2, round_size = [128, 192]),
@@ -60,7 +59,7 @@ end
     target = IndependentLaplace(0.2f0, 0.9f0)
     for policy in (GlobalResampling(), LocalResampling())
         sampler = prepare_sampler(
-            Random.Xoshiro(2013),
+            Threefry4x32(2013),
             target,
             DeterministicMixturePMC(bank; rounds = 1, round_size = 128, resampling = policy),
         )
@@ -96,7 +95,7 @@ end
     bank = ProposalBank(proposals)
     logtarget(x) = -sum(abs2, x)/2
     sampler = prepare_sampler(
-        Random.Xoshiro(2014),
+        Threefry4x32(2014),
         logtarget,
         LAIS(
             bank;

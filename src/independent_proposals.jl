@@ -169,25 +169,6 @@ function DensityInterface.logdensityof(proposal::_GammaProposal, sample)
     return result
 end
 
-function _gamma_draw(rng, shape, scale)
-    value = _rand_unit_gamma(rng, shape) * scale
-    isfinite(value) && value > zero(value) ||
-        throw(DomainError(value, "Gamma draw is not finite and positive in the chosen precision"))
-    return value
-end
-
-Random.rand(rng::Random.AbstractRNG, proposal::_GammaProposal{T}) where {T<:_NativeGaussianFloat} =
-    _gamma_draw(rng, proposal.shape, proposal.scale)
-
-function Random.rand(
-    rng::Random.AbstractRNG,
-    proposal::_GammaProposal{<:AbstractVector{T}},
-) where {T}
-    return [
-        _gamma_draw(rng, proposal.shape[i], proposal.scale[i]) for i in eachindex(proposal.shape)
-    ]
-end
-
 function _independent_parameters(first, second)
     # Native parameter validation also copies scalar/vector inputs without RNG use.
     a = _validated_native_parameter(first)
@@ -245,21 +226,6 @@ _default_mass_type(proposal::_BoxUniform) = typeof(proposal.lognormalizer)
         _packed_sample_coordinate(proposal.upper, coordinate),
         uniform,
     )
-end
-
-function Random.rand(
-    rng::Random.AbstractRNG,
-    proposal::_BoxUniform{T},
-) where {T<:_NativeGaussianFloat}
-    return _box_coordinate(proposal, Random.rand(rng, T), 1)
-end
-
-function Random.rand(rng::Random.AbstractRNG, proposal::_BoxUniform{<:AbstractVector{T}}) where {T}
-    sample = Random.rand(rng, T, _proposal_dimension(proposal))
-    for i in eachindex(sample)
-        sample[i] = _box_coordinate(proposal, sample[i], i)
-    end
-    return sample
 end
 
 @inline function DensityInterface.logdensityof(proposal::_BoxUniform, sample)

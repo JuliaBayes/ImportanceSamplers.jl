@@ -1,7 +1,5 @@
 import DensityInterface
 import LogDensityProblems
-import Random
-import Random: rand
 
 struct StaticMISDimensionTarget{D} end
 
@@ -14,18 +12,19 @@ struct StaticMISAssignmentFailure <: Exception
     sample_index::Int
 end
 
-mutable struct StaticMISFailingAssignmentRNG{R<:Random.AbstractRNG} <: Random.AbstractRNG
+struct StaticMISFailingAssignmentRNG{R<:PureRNGs.AbstractPureRNG} <: TestScriptedRNG
     inner::R
-    uniform_count::Int
+    uniform_count::Base.RefValue{Int}
     fail_at::Int
 end
 
-function rand(rng::StaticMISFailingAssignmentRNG)
-    rng.uniform_count += 1
-    rng.uniform_count == rng.fail_at && throw(
-        StaticMISAssignmentFailure(rng.uniform_count),
+function PureRNGs.rand_next(rng::StaticMISFailingAssignmentRNG, ::Type{Float64})
+    rng.uniform_count[] += 1
+    rng.uniform_count[] == rng.fail_at && throw(
+        StaticMISAssignmentFailure(rng.uniform_count[]),
     )
-    return rand(rng.inner)
+    value, inner = rand_next(rng.inner, Float64)
+    return value, StaticMISFailingAssignmentRNG(inner, rng.uniform_count, rng.fail_at)
 end
 
 mutable struct StaticMISGaussian{T<:AbstractFloat}
@@ -37,9 +36,10 @@ end
 StaticMISGaussian(location::T) where {T<:AbstractFloat} =
     StaticMISGaussian(location, Ref(0), Ref(0))
 
-function rand(rng::Random.AbstractRNG, proposal::StaticMISGaussian{T}) where {T}
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::StaticMISGaussian{T}) where {T}
     proposal.draw_count[] += 1
-    return proposal.location + Random.randn(rng, T)
+    offset, rng = randn_next(rng, T)
+    return proposal.location + offset, rng
 end
 
 function DensityInterface.logdensityof(proposal::StaticMISGaussian, sample::Real)
@@ -53,14 +53,15 @@ function static_mis_gaussian_logdensity(location, sample)
     return -0.5 * abs2(offset) - 0.5 * log(2pi)
 end
 
-mutable struct StaticMISRecordingRNG{R<:Random.AbstractRNG} <: Random.AbstractRNG
+struct StaticMISRecordingRNG{R<:PureRNGs.AbstractPureRNG} <: TestScriptedRNG
     inner::R
     events::Vector{Symbol}
 end
 
-function rand(rng::StaticMISRecordingRNG)
+function PureRNGs.rand_next(rng::StaticMISRecordingRNG, ::Type{Float64})
     push!(rng.events, :random)
-    return rand(rng.inner)
+    value, inner = rand_next(rng.inner, Float64)
+    return value, StaticMISRecordingRNG(inner, rng.events)
 end
 
 mutable struct StaticMISUniformProposal
@@ -69,10 +70,11 @@ mutable struct StaticMISUniformProposal
     events::Vector{Symbol}
 end
 
-function rand(rng::StaticMISRecordingRNG, proposal::StaticMISUniformProposal)
+function PureRNGs.rand_next(rng::StaticMISRecordingRNG, proposal::StaticMISUniformProposal)
     proposal.draw_count[] += 1
     push!(proposal.events, :draw)
-    return proposal.location + rand(rng)
+    offset, rng = rand_next(rng, Float64)
+    return proposal.location + offset, rng
 end
 
 DensityInterface.logdensityof(::StaticMISUniformProposal, ::Float64) = 0.0
@@ -102,10 +104,10 @@ function StaticMISTableProposal(
     )
 end
 
-function rand(::Random.AbstractRNG, proposal::StaticMISTableProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::StaticMISTableProposal)
     proposal.draw_count[] += 1
     proposal.fail_draw && error("intentional static-MIS draw failure")
-    return proposal.draw_value
+    return proposal.draw_value, rng
 end
 
 function DensityInterface.logdensityof(
@@ -145,12 +147,12 @@ struct StaticMISThreadProposal
     state::StaticMISThreadState
 end
 
-function rand(::Random.AbstractRNG, proposal::StaticMISThreadProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::StaticMISThreadProposal)
     state = proposal.state
     state.draw_count[] += 1
     sample_index = state.draw_count[]
     state.draw_tasks[sample_index] = current_task()
-    return Float64(sample_index)
+    return Float64(sample_index), rng
 end
 
 function DensityInterface.logdensityof(
