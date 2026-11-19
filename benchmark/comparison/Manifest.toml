@@ -714,7 +714,7 @@ uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.30"
 
 [[deps.ImportanceSamplers]]
-deps = ["ADTypes", "AcceleratedKernels", "Adapt", "DensityInterface", "DifferentiationInterface", "KernelAbstractions", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MLDataDevices", "PureRNGs", "SpecialFunctions", "Statistics"]
+deps = ["ADTypes", "AcceleratedKernels", "Adapt", "DensityInterface", "DifferentiationInterface", "KernelAbstractions", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MLDataDevices", "PureRNGs", "Random", "SpecialFunctions", "Statistics"]
 path = "../.."
 uuid = "f51d20bd-8e2c-46f0-bdaa-6990265b9f1c"
 version = "0.0.2"

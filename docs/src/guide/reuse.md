@@ -102,12 +102,12 @@ constructing fresh state on the original device. This is a setup cost, not a per
 ## Random streams and failures
 
 Each call stores its continued RNG, available with `current_rng(prepared)`.
-The supplied RNG is immutable. Passing the same snapshot to separate samplers
+A native RNG is immutable. Passing the same snapshot to separate samplers
 repeats its stream. For independent runs, split once with `left, right = splitrng(rng)`
 and use each continuation separately.
 
 On Reactant, `current_rng` returns a compiled stream. Use it with `retarget` or
-`resample_next` on the same device. Fresh preparation takes a native generator.
+`resample_next` on the same device. Fresh preparation does not accept a compiled stream.
 
 A prepared sampler is mutable and non-reentrant.
 An adaptive failure preserves the proposal committed before that call.

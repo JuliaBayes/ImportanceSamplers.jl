@@ -2,14 +2,18 @@ using PureRNGs
 import MLDataDevices
 import Random
 
-@testset "Mutable RNGs are rejected across sampling entry points" begin
+@testset "Explicit mutable RNG supplies one seed per setup" begin
     rng = Random.Xoshiro(42)
+    seeds = copy(rng)
     target = x -> -sum(abs2, x) / 2
     algorithm = AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=4)
-    sampler = prepare_sampler(Threefry4x32(42), target, algorithm)
-    @test_throws MethodError prepare_sampler(rng, target, algorithm)
-    @test_throws MethodError importance_sample(rng, target, algorithm)
-    @test_throws SamplerDeviceError retarget(rng, sampler, target)
+    sampler = prepare_sampler(rng, target, algorithm)
+    @test current_rng(sampler) == Philox4x32(Random.rand(seeds, UInt64))
+    expected = importance_sample(Philox4x32(Random.rand(seeds, UInt64)), target, algorithm)
+    @test importance_sample(rng, target, algorithm).samples == expected.samples
+    @test current_rng(retarget(rng, sampler, target)) ==
+          Philox4x32(Random.rand(seeds, UInt64))
+    @test Random.rand(rng, UInt64) == Random.rand(seeds, UInt64)
 end
 
 @testset "Native random stream lifecycle" begin

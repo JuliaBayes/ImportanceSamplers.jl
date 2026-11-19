@@ -307,6 +307,8 @@ _logtarget_view(values::AbstractVector, indices) = view(values, indices)
 
 _prepare_backend_execution(sampler) = sampler
 
+const _SamplingRNG = Union{PureRNGs.AbstractPureRNG,Random.AbstractRNG}
+
 """
     prepare_sampler(rng, logtarget, algorithm;
                     transform=nothing, factor_execution=nothing, threaded=true,
@@ -350,7 +352,9 @@ selects the two-argument callable form.
 | DensityInterface object | `DensityInterface.DensityKind(target)` advertising a density, and `DensityInterface.logdensityof(target, sample)` | None required |
 | LogDensityProblems object | `LogDensityProblems.capabilities`, `LogDensityProblems.dimension`, and `LogDensityProblems.logdensity` | First-order capability and `LogDensityProblems.logdensity_and_gradient` for gradient methods |
 
-Pass a native PureRNGs generator. Preparation preserves its key and position.
+Prefer a native PureRNGs generator. Preparation preserves its key and position.
+An explicit `Random.AbstractRNG` supplies one `UInt64` seed for a new
+`PureRNGs.Philox4x32` stream. There is no default RNG.
 Read the continued stream through [`current_rng`](@ref).
 Reusing the same input snapshot repeats its stream. A prepared sampler is mutable and
 non-reentrant. Repeated calls to [`importance_sample!`](@ref) create separate,
@@ -377,7 +381,7 @@ narrowing those weights. Its default remains fused; explicit batching uses
 a separate denominator buffer in the logweight precision.
 """
 Base.@constprop :aggressive function prepare_sampler(
-    rng::PureRNGs.AbstractPureRNG,
+    rng::_SamplingRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -402,7 +406,7 @@ Base.@constprop :aggressive function prepare_sampler(
 end
 
 Base.@constprop :aggressive function prepare_sampler(
-    rng::PureRNGs.AbstractPureRNG,
+    rng::_SamplingRNG,
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;
@@ -452,7 +456,7 @@ Base.@constprop :aggressive function _prepare_importance_sampler(
         method_state,
         sample_budget)
     return _PreparedImportanceSampler(
-        _cpu_rng(rng),
+        _cpu_rng(_native_sampling_rng(rng)),
         random_buffers,
         prepared_target,
         algorithm,
@@ -513,6 +517,10 @@ function _accelerator_product_source(sampler::_PreparedImportanceSampler{R,B,T,A
 end
 
 _accelerator_method_state_limit(method_state) = nothing
+
+_native_sampling_rng(rng) = rng
+_native_sampling_rng(rng::Random.AbstractRNG) =
+    PureRNGs.Philox4x32(Random.rand(rng, UInt64))
 
 _cpu_rng(rng) = rng
 _cpu_rng(rng::PureRNGs.AbstractPureRNG) = MLDataDevices.CPUDevice()(rng)
@@ -732,11 +740,13 @@ _validate_transfer_rng(device, rng) =
 
 function _retarget_sampler(rng, sampler, target)
     sampler.running && throw(SamplerBusyError())
+    algorithm = _retarget_algorithm(sampler)
+    rng = _native_sampling_rng(rng)
     _validate_transfer_rng(sampler.device, rng)
     prepared = _prepare_importance_sampler(
         rng,
         target,
-        _retarget_algorithm(sampler),
+        algorithm,
         sampler.factor_execution,
         _prepared_target_layout(sampler.target),
         sampler.threaded,
@@ -758,9 +768,10 @@ adaptation history, workspaces, diagnostics, and failure buffers. Samples,
 weights, and normalizer state from the source are never reused. The source
 sampler remains unchanged and usable.
 
-Supply a native PureRNGs generator or a compatible Reactant stream snapshot.
-The returned sampler advances this stream without reseeding. Equal snapshots
-do not produce independent streams.
+Prefer a native PureRNGs generator or a compatible Reactant stream snapshot.
+The returned sampler advances that stream without reseeding. Equal snapshots
+do not produce independent streams. An explicit `Random.AbstractRNG` seeds a
+new stream once, as in [`prepare_sampler`](@ref).
 
 Retargeting supports prepared [`DeterministicMixturePMC`](@ref), [`APIS`](@ref),
 [`CAIS`](@ref), [`NPMC`](@ref), [`LAIS`](@ref), [`AMIS`](@ref), and [`FirstOrderGRAMIS`](@ref) samplers.
@@ -827,7 +838,7 @@ The result stores the algorithm's canonical raw log weights. Use
 for the complete estimator's log normalizer.
 """
 Base.@constprop :aggressive function importance_sample(
-    rng::PureRNGs.AbstractPureRNG,
+    rng::_SamplingRNG,
     logtarget,
     algorithm::AbstractImportanceSampler;
     factor_execution=nothing,
@@ -848,7 +859,7 @@ Base.@constprop :aggressive function importance_sample(
 end
 
 Base.@constprop :aggressive function importance_sample(
-    rng::PureRNGs.AbstractPureRNG,
+    rng::_SamplingRNG,
     logtarget,
     context,
     algorithm::AbstractImportanceSampler;

@@ -13,6 +13,7 @@ import LogDensityProblems
 import LogExpFunctions
 import MLDataDevices
 import PureRNGs
+import Random
 import Statistics
 import SpecialFunctions
 

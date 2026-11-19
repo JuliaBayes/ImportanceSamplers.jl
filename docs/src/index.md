@@ -20,7 +20,9 @@ using Pkg
 Pkg.add(["ImportanceSamplers", "PureRNGs"])
 ```
 
-Sampling requires a PureRNGs generator on CPU and accelerators.
+Prefer an explicit PureRNGs generator on CPU and accelerators.
+For compatibility, an explicit `Random.AbstractRNG` supplies one seed for a
+new PureRNGs stream. There is no default RNG.
 Accelerator and automatic-differentiation packages are optional.
 
 ## Weighted sampling
