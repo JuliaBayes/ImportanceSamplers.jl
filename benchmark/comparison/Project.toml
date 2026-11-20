@@ -29,6 +29,6 @@ EnsembleMCMC = {rev = "5fcb74c1a7c19bedf95795644fb6296901d25d0e", url = "https:/
 ImportanceSamplers = {path = "../.."}
 
 [compat]
-ImportanceSamplers = "0.1.0"
+ImportanceSamplers = "0.0.2"
 PureRNGs = "0.0.3"
 julia = "1.13"

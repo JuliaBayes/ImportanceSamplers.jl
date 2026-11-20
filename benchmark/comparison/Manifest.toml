@@ -2,7 +2,7 @@
 
 julia_version = "1.13.3"
 manifest_format = "2.1"
-project_hash = "023f6d43b57a9be1592ced9ab8bcb933e7140111"
+project_hash = "c22ccf9c14f0d54f6a8a9d05d44866632dd0f0af"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -717,7 +717,7 @@ version = "0.3.30"
 deps = ["ADTypes", "AcceleratedKernels", "Adapt", "DensityInterface", "DifferentiationInterface", "KernelAbstractions", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MLDataDevices", "PureRNGs", "Random", "SpecialFunctions", "Statistics"]
 path = "../.."
 uuid = "f51d20bd-8e2c-46f0-bdaa-6990265b9f1c"
-version = "0.1.0"
+version = "0.0.2"
 
     [deps.ImportanceSamplers.extensions]
     ImportanceSamplersCUDAExt = "CUDA"
