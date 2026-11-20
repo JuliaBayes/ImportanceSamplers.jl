@@ -2,7 +2,7 @@
 
 julia_version = "1.13.3"
 manifest_format = "2.1"
-project_hash = "13f1643dfac4ba2238d7d245150d02e542952e9e"
+project_hash = "023f6d43b57a9be1592ced9ab8bcb933e7140111"
 
 [[deps.ADTypes]]
 deps = ["PrecompileTools"]
@@ -717,7 +717,7 @@ version = "0.3.30"
 deps = ["ADTypes", "AcceleratedKernels", "Adapt", "DensityInterface", "DifferentiationInterface", "KernelAbstractions", "LinearAlgebra", "LogDensityProblems", "LogExpFunctions", "MLDataDevices", "PureRNGs", "Random", "SpecialFunctions", "Statistics"]
 path = "../.."
 uuid = "f51d20bd-8e2c-46f0-bdaa-6990265b9f1c"
-version = "0.0.2"
+version = "0.1.0"
 
     [deps.ImportanceSamplers.extensions]
     ImportanceSamplersCUDAExt = "CUDA"
@@ -1281,10 +1281,10 @@ version = "1.4.0"
 
 [[deps.PureRNGs]]
 deps = ["MLDataDevices", "PrecompileTools", "Random"]
-git-tree-sha1 = "e43572e1685cbc7ee43a4588a7e44109477bb19b"
+git-tree-sha1 = "e648d78ab2c143d08b2e8ec6de7bdb5bea340972"
 registries = "General"
 uuid = "2ccaadc3-3d9a-45d4-a2ec-95a2424790b7"
-version = "0.0.2"
+version = "0.0.3"
 
     [deps.PureRNGs.extensions]
     PureRNGsAMDGPUExt = "AMDGPU"
