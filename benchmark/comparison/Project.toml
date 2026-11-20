@@ -30,5 +30,5 @@ ImportanceSamplers = {path = "../.."}
 
 [compat]
 ImportanceSamplers = "0.0.2"
-PureRNGs = "0.0.2"
+PureRNGs = "0.0.3"
 julia = "1.13"

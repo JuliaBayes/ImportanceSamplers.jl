@@ -19,6 +19,7 @@
 ### Changed
 
 - Sampling and retargeting use PureRNGs on every backend. An explicit `Random.AbstractRNG` supplies one seed for compatibility. Device transfer preserves the native stream without reseeding.
+- Require PureRNGs 0.0.3 for faster CPU Float32 normal fills.
 - `resample_next` replaces `resample` and returns draws and the continued generator.
 - Custom proposals implement `PureRNGs.rand_next(rng, proposal)`, returning `(sample, next_rng)`.
 - Document batch-target sample ordering, including proposal banks and AMIS round concatenation.
