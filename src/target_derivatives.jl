@@ -1,5 +1,14 @@
 abstract type _BoundGradient end
 
+# HMC needs the primal at each score point. Preserve combined backend results
+# rather than evaluating an expensive target twice.
+function _value_and_gradient!(destination, bound::_BoundGradient, sample, slot=1)
+    target = bound.target
+    value = _batch_target_value(target.logdensity, sample, target.context)
+    isfinite(value) && _gradient!(destination, bound, sample, slot)
+    return value
+end
+
 _record_gradient_transfers!(transfers, bound::_BoundGradient) = nothing
 
 struct _BoundInPlaceGradient{T} <: _BoundGradient
@@ -35,6 +44,35 @@ struct _BoundDIBatchGradient{T,P,S,C} <: _BoundBatchGradient
     context::C
 end
 
+function _value_and_gradient!(destination, bound::_BoundDIGradient, sample, slot=1)
+    target = bound.target
+    contexts = target.context isa _NoTargetContext ? () :
+        (DifferentiationInterface.Constant(target.context),)
+    value, _ = DifferentiationInterface.value_and_gradient!(target.logdensity,
+        destination, bound.preparation.preparations[slot], bound.backend, sample, contexts...)
+    return value
+end
+
+function _value_and_gradient!(destination, bound::_BoundLDPGradient, sample, slot=1)
+    value, gradient = LogDensityProblems.logdensity_and_gradient(bound.target.target, sample)
+    if isfinite(value)
+        axes(destination) == axes(gradient) || throw(DimensionMismatch("target gradient must match the sample"))
+        copyto!(destination, gradient)
+    end
+    return value
+end
+
+function _value_and_gradient!(destination, bound::_BoundOutOfPlaceGradient, sample, slot=1)
+    target = bound.target
+    value = _batch_target_value(target.logdensity, sample, target.context)
+    if isfinite(value)
+        gradient = _batch_target_value(target.gradient, sample, target.context)
+        axes(destination) == axes(gradient) || throw(DimensionMismatch("target gradient must match the sample"))
+        copyto!(destination, gradient)
+    end
+    return value
+end
+
 function _prepare_accelerator_gradient(target, locations, values)
     return _prepare_bound_gradient(target, view(locations, :, 1), 1)
 end
@@ -43,7 +81,7 @@ function _prepare_accelerator_gradient(
     target::_PreparedLogTarget{F,P,A,Nothing}, locations, values,
 ) where {F,P,A<:ADTypes.AutoEnzyme}
     target = _scalar_target(target)
-    sample = view(locations, :, 1)
+    sample = _GradientSample(view(locations, :, 1))
     ADTypes.mode(target.adtype) isa Union{ADTypes.ReverseMode,ADTypes.ForwardOrReverseMode} ||
         _reject_cpu_gradient_on_accelerator(sample)
     _bind_resolved_target(target, sample)
@@ -62,9 +100,29 @@ end
 _batch_target_value(f, x, p) = f(x, p)
 _batch_target_value(f, x, ::_NoTargetContext) = f(x)
 
+# A borrowed vector with a nonrecursive reduction keeps scalar AD tapes inline.
+# The method belongs to our sample type, leaving dependency array methods intact.
+struct _GradientSample{T,A<:AbstractVector{T}} <: AbstractVector{T}
+    data::A
+end
+Base.size(x::_GradientSample) = size(x.data)
+Base.axes(x::_GradientSample) = axes(x.data)
+Base.parent(x::_GradientSample) = x.data
+Base.IndexStyle(::Type{<:_GradientSample}) = IndexLinear()
+@inline Base.getindex(x::_GradientSample, i::Int) = x.data[i]
+
+@inline function Base._mapreduce(f, op, ::IndexLinear, x::_GradientSample)
+    isempty(x) && return Base.mapreduce_empty(f, op, eltype(x))
+    value = Base.mapreduce_first(f, op, x[firstindex(x)])
+    for i in (firstindex(x) + 1):lastindex(x)
+        value = op(value, f(x[i]))
+    end
+    return value
+end
+
 @kernel function _batch_logtarget_kernel!(values, locations, f, p)
     column = @index(Global, Linear)
-    values[column] = _batch_target_value(f, view(locations, :, column), p[])
+    values[column] = _batch_target_value(f, _GradientSample(view(locations, :, column)), p[])
 end
 
 function _batch_logtarget!(values, locations, f, p)

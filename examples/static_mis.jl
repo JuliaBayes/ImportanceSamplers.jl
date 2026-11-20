@@ -1,5 +1,5 @@
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 function contextual_gaussian_logtarget(sample, context)::Float64
     value = -length(sample) * (log(context.scale) + 0.5 * log(2pi))
@@ -27,7 +27,7 @@ function main(; nsamples=20_003)
         mis_scheme=StratifiedMixture(),
     )
     result = importance_sample(
-        Xoshiro(0x5354415449434d49),
+        Threefry4x32(0x5354415449434d49),
         contextual_gaussian_logtarget,
         context,
         algorithm;

@@ -1,9 +1,9 @@
 using CUDA
+using PureRNGs: Threefry4x32
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -168,13 +168,13 @@ function parity_case(device, ::Type{T}, kind; zero_mass=false, schedule=[9, 11])
         round_size=schedule,
     )
     cpu = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         DMPMCQuadraticTarget{T}(),
         algorithm;
         threaded=true,
     )
     gpu_source = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         DMPMCQuadraticTarget{T}(),
         algorithm;
         threaded=true,
@@ -311,7 +311,7 @@ function public_execution_case(
     schedule = [9, 11, 13]
     bank = dm_pmc_validation_bank(T, Val(kind))
     source = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED + 0x100),
+        Threefry4x32(DM_PMC_CUDA_SEED + 0x100),
         DMPMCQuadraticTarget{T}(),
         DeterministicMixturePMC(
             bank;
@@ -448,7 +448,7 @@ function transfer_scaling_case(device, ::Type{T}) where {T}
     )
     function run(bank, schedule)
         prepared = prepare_sampler(
-            Xoshiro(DM_PMC_CUDA_SEED + UInt(length(schedule))),
+            Threefry4x32(DM_PMC_CUDA_SEED + UInt(length(schedule))),
             DMPMCQuadraticTarget{T}(),
             DeterministicMixturePMC(
                 bank;
@@ -483,14 +483,14 @@ function static_factor_case(device, ::Type{T}) where {T}
         mis_scheme=StratifiedMixture(),
     )
     cpu = importance_sample(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         cuda_factor_mixture_target,
         context,
         algorithm;
         threaded=false,
     )
     prepared = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED),
+        Threefry4x32(DM_PMC_CUDA_SEED),
         cuda_factor_mixture_target,
         context,
         algorithm;
@@ -566,7 +566,7 @@ function factor_batch_case(device, ::Type{T}) where {T}
     end
     masses = T[1, 2, 3, 4]
     prepared = prepare_sampler(
-        Xoshiro(DM_PMC_CUDA_SEED + 0x500),
+        Threefry4x32(DM_PMC_CUDA_SEED + 0x500),
         DMPMCQuadraticTarget{T}(),
         DeterministicMixturePMC(
             ProposalBank(proposals, masses);

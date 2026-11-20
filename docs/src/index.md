@@ -13,13 +13,16 @@ The result contains samples and raw log weights.
 
 ## Installation
 
-Requires Julia 1.13 or later. Install the package with Pkg:
+Requires Julia 1.13 or later. Install ImportanceSamplers and PureRNGs with Pkg:
 
 ```julia
 using Pkg
-Pkg.add("ImportanceSamplers")
+Pkg.add(["ImportanceSamplers", "PureRNGs"])
 ```
 
+Prefer an explicit PureRNGs generator on CPU and accelerators.
+For compatibility, an explicit `Random.AbstractRNG` supplies one seed for a
+new PureRNGs stream. There is no default RNG.
 Accelerator and automatic-differentiation packages are optional.
 
 ## Weighted sampling
@@ -29,12 +32,12 @@ Estimate the mean of a three-dimensional standard Gaussian. Its log density is
 parameters being sampled.
 
 ```@example overview
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 proposal = SphericalGaussian(zeros(3), 1.5)
 algorithm = ImportanceSampling(proposal; nsamples=10_000)
-samples = importance_sample(Xoshiro(42), logtarget, algorithm)
+samples = importance_sample(Threefry4x32(42), logtarget, algorithm)
 
 (
     mean=round.(mean(samples); digits=3),

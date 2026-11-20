@@ -2,7 +2,6 @@ using Test
 using ImportanceSamplers
 import DensityInterface
 import LinearAlgebra
-import Random
 import LogDensityProblems
 
 const IS = ImportanceSamplers
@@ -17,7 +16,8 @@ struct FixedProductBlock{T}
     logdensity::T
 end
 
-Random.rand(::Random.AbstractRNG, proposal::FixedProductBlock) = proposal.coordinate
+PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::FixedProductBlock) =
+    proposal.coordinate, rng
 DensityInterface.logdensityof(proposal::FixedProductBlock, sample) = proposal.logdensity
 
 struct SplitDensityTransformBase{C,D}
@@ -25,8 +25,8 @@ struct SplitDensityTransformBase{C,D}
     logdensity::D
 end
 
-Random.rand(::Random.AbstractRNG, proposal::SplitDensityTransformBase) =
-    proposal.coordinate
+PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::SplitDensityTransformBase) =
+    proposal.coordinate, rng
 DensityInterface.logdensityof(proposal::SplitDensityTransformBase, sample) =
     proposal.logdensity
 
@@ -90,7 +90,7 @@ end
         DensityInterface.test_density_interface(proposal, sample, expected)
 
         result = importance_sample(
-            Random.Xoshiro(0x7400 + index),
+            Threefry4x32(0x7400 + index),
             proposal,
             ImportanceSampling(proposal; nsamples=8);
             threaded=false,
@@ -112,16 +112,14 @@ end
     abstract_blocks = NamedTuple{(:only,),Tuple{Any}}((blocks.first,))
     @test_throws ArgumentError ProductProposal(abstract_blocks)
 
-    actual_rng = Random.Xoshiro(0x7201)
-    expected_rng = copy(actual_rng)
-    actual = @inferred rand(actual_rng, proposal)
-    expected = (
-        first=rand(expected_rng, blocks.first),
-        second=rand(expected_rng, blocks.second),
-        third=rand(expected_rng, blocks.third),
-    )
+    rng = Threefry4x32(0x7201)
+    actual, actual_rng = @inferred rand_next(rng, proposal)
+    first_draw, expected_rng = rand_next(rng, blocks.first)
+    second_draw, expected_rng = rand_next(expected_rng, blocks.second)
+    third_draw, expected_rng = rand_next(expected_rng, blocks.third)
+    expected = (first=first_draw, second=second_draw, third=third_draw)
     @test actual == expected
-    @test rand(actual_rng) == rand(expected_rng)
+    @test actual_rng == expected_rng
 
     logdensity = @inferred DensityInterface.logdensityof(proposal, actual)
     expected_logdensity = sum(
@@ -148,10 +146,10 @@ end
                 Float32[1.25 0 0 0; 0 1 0 0; 0 0.4 2 0; 0 0 0 0.75]) :
             DiagonalGaussian(Float32[0.5, -1, 2, 1], Float32[1.25, 1, 2, 0.75])
         target(x) = DensityInterface.logdensityof(product, x)
-        sampler = prepare_sampler(Random.Xoshiro(81), target,
+        sampler = prepare_sampler(Threefry4x32(81), target,
             ImportanceSampling(product; nsamples=64); threaded=false)
         actual = importance_sample!(sampler)
-        expected = importance_sample(Random.Xoshiro(81), target,
+        expected = importance_sample(Threefry4x32(81), target,
             ImportanceSampling(joint; nsamples=64);
             transform=(scalar=1, vector=2:3, singleton=4:4), threaded=false)
         correlated || @test actual.samples == expected.samples
@@ -168,7 +166,7 @@ end
     bank = ProposalBank([ProductProposal((unused=FixedProductBlock(0f0, 0f0),)),
         products...], Float32[0, 3, 7])
     target(x) = -(abs2(x.scalar) + sum(abs2, x.vector) + sum(abs2, x.singleton)) / 2f0
-    result = importance_sample(Random.Xoshiro(82), target,
+    result = importance_sample(Threefry4x32(82), target,
         ImportanceSampling(bank; nsamples=128, mis_scheme=RandomMixture()); threaded=false)
     expected = map(1:length(result)) do index
         x = (scalar=result.samples.scalar[index], vector=result.samples.vector[:, index],
@@ -181,7 +179,7 @@ end
     @test Set(result.provenance.proposal_id) == Set((2, 3))
 
     named_proposal = ProductProposal((a=SphericalGaussian(0.0, 1.0), b=SphericalGaussian(0.0, 1.0)))
-    named_result = importance_sample(Random.Xoshiro(83), NamedProductDensity(),
+    named_result = importance_sample(Threefry4x32(83), NamedProductDensity(),
         ImportanceSampling(named_proposal; nsamples=16); threaded=false)
     @test all(isapprox(log(2pi); atol=8eps()), named_result.logweights)
 end
@@ -231,18 +229,17 @@ end
     @test keys(getfield(getfield(proposal, :transform), :blocks)) == keys(base.blocks)
     @test getfield(proposal, :transform).blocks.offset.transform isa IdentityTransform
 
-    actual_rng = Random.Xoshiro(0x7202)
-    expected_rng = copy(actual_rng)
-    raw = rand(expected_rng, base)
+    rng = Threefry4x32(0x7202)
+    raw, expected_rng = rand_next(rng, base)
     expected = (
         weights=IS._transform_with_logjac(SimplexTransform(3), raw.weights)[1],
         rate=IS._transform_with_logjac(PositiveTransform(), raw.rate)[1],
         offset=raw.offset,
     )
-    actual = @inferred rand(actual_rng, proposal)
+    actual, actual_rng = @inferred rand_next(rng, proposal)
     @test actual == expected
     @test keys(actual) == (:weights, :rate, :offset)
-    @test rand(actual_rng) == rand(expected_rng)
+    @test actual_rng == expected_rng
 
     uniform = fill(1 / 3, 3)
     logical_origin = (weights=uniform, rate=1.0, offset=0.0)
@@ -271,7 +268,7 @@ end
         (rate=PositiveTransform(),),
     )
     generated_error = try
-        rand(Random.Xoshiro(0x7206), failing)
+        rand_next(Threefry4x32(0x7206), failing)
         nothing
     catch error
         error
@@ -299,26 +296,25 @@ end
     @test isconcretetype(typeof(layout))
     @test keys(getfield(layout, :blocks)) == (:weights, :rate, :offset)
 
-    actual_rng = Random.Xoshiro(0x7203)
-    expected_rng = copy(actual_rng)
-    raw = rand(expected_rng, base)
+    rng = Threefry4x32(0x7203)
+    raw, expected_rng = rand_next(rng, base)
     expected = (
         weights=IS._transform_with_logjac(SimplexTransform(3), raw[1:2])[1],
         rate=IS._transform_with_logjac(PositiveTransform(), raw[3])[1],
         offset=raw[4],
     )
-    actual = @inferred rand(actual_rng, proposal)
+    actual, actual_rng = @inferred rand_next(rng, proposal)
     @test actual == expected
     @test actual.weights isa Vector{Float64}
     @test actual.rate isa Float64
     @test actual.offset isa Float64
-    @test rand(actual_rng) == rand(expected_rng)
+    @test actual_rng == expected_rng
 
     identity = TransformedProposal(base, (scalar=1, singleton=2:2, tail=3:4))
     explicit = TransformedProposal(base, (scalar=1=>IdentityTransform(),
         singleton=2:2=>IdentityTransform(), tail=3:4=>IdentityTransform()))
-    sample = rand(Random.Xoshiro(27), identity)
-    @test sample == rand(Random.Xoshiro(27), explicit)
+    sample, _ = rand_next(Threefry4x32(27), identity)
+    @test sample == first(rand_next(Threefry4x32(27), explicit))
     @test DensityInterface.logdensityof(identity, sample) ≈
           DensityInterface.logdensityof(base, [sample.scalar; sample.singleton; sample.tail])
 
@@ -402,17 +398,6 @@ end
         named_simplex_builder,
     )
         @test_throws DimensionMismatch build_invalid()
-
-        actual_rng = Random.Xoshiro(0x7207)
-        expected_rng = copy(actual_rng)
-        error = try
-            rand(actual_rng, build_invalid())
-            nothing
-        catch caught
-            caught
-        end
-        @test error isa DimensionMismatch
-        @test rand(actual_rng) == rand(expected_rng)
     end
 
     mixed_interval_builders = (
@@ -426,17 +411,14 @@ end
         ),
     )
     for build_invalid in mixed_interval_builders
-        actual_rng = Random.Xoshiro(0x7208)
-        expected_rng = copy(actual_rng)
         error = try
-            rand(actual_rng, build_invalid())
+            rand_next(Threefry4x32(0x7208), build_invalid())
             nothing
         catch caught
             caught
         end
         @test error isa ArgumentError
         @test occursin("interval endpoint type must match", sprint(showerror, error))
-        @test rand(actual_rng) == rand(expected_rng)
     end
 end
 
@@ -450,7 +432,7 @@ end
         (weights=SimplexTransform(3), rate=PositiveTransform()),
     )
     named_result = importance_sample(
-        Random.Xoshiro(0x7204),
+        Threefry4x32(0x7204),
         _independent_structured_logdensity,
         ImportanceSampling(named; nsamples=128);
         threaded=false,
@@ -474,7 +456,7 @@ end
     )
     flat_target(sample) = _dependent_structured_logdensity(sample, factor)
     flat_result = importance_sample(
-        Random.Xoshiro(0x7205),
+        Threefry4x32(0x7205),
         flat_target,
         ImportanceSampling(flat; nsamples=128);
         threaded=false,
@@ -498,7 +480,7 @@ end
     )
     target(sample) = _dependent_structured_logdensity(sample, factor)
     result = importance_sample(
-        Random.Xoshiro(0x7209),
+        Threefry4x32(0x7209),
         target,
         ImportanceSampling(proposal; nsamples=128);
         transform=layout,

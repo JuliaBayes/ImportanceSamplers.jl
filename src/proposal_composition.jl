@@ -355,14 +355,6 @@ function _inverse_with_logjac(layout::_FlatTransformLayout, logical_value::Named
     throw(ArgumentError("flat transform input fields must match the prepared layout"))
 end
 
-function Random.rand(rng::Random.AbstractRNG, proposal::TransformedProposal)
-    logical_value, _ = _transform_with_logjac(
-        proposal.transform,
-        Random.rand(rng, proposal.base),
-    )
-    return logical_value
-end
-
 _transform_float_type(value::T) where {T<:_TransformFloat} = T
 _transform_float_type(value::AbstractVector{T}) where {T<:_TransformFloat} = T
 

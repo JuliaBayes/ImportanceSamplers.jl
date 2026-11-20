@@ -1,6 +1,6 @@
 using ImportanceSamplers
 using LinearAlgebra
-using Random
+using PureRNGs
 using Statistics
 
 # A correlated, unnormalized two-dimensional target. CAIS consumes log
@@ -25,7 +25,7 @@ algorithm = CAIS(
     round_size=4_000,
     covariance_ess_threshold=500,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 learned = current_proposal(prepared)
 

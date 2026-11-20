@@ -15,6 +15,8 @@ Loading Distributions.jl accepts its supported normal, Student-t, Gamma and Lapl
 through native conversion. `round_size` is either one positive `Int` repeated for every
 round or a positive `Vector{Int}` with one entry per round.
 
+Result samples concatenate newly drawn batches in round order, preserving the
+sample order within each batch. Earlier target values are cached, not reevaluated.
 Each successful result reports `diagnostics.method == :amis`.
 `diagnostics.round_ess[t]` and `diagnostics.round_lognormalizers[t]` summarize
 all samples retained through round `t` using their retrospective weights after

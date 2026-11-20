@@ -1,6 +1,7 @@
 module TimeToAccuracy
 
 using BenchmarkTools, ImportanceSamplers, LinearAlgebra, QuadGK, Random, Statistics
+using PureRNGs
 const KA = ImportanceSamplers.KernelAbstractions
 
 function gaussian_target(x, p)
@@ -118,7 +119,8 @@ function algorithms(case, total; T=Float64, rounds=4)
 end
 
 function fresh(device, case, algorithm, seed, threaded)
-    prepared = prepare_sampler(Xoshiro(seed),
+    rng = Threefry4x32(seed)
+    prepared = prepare_sampler(rng,
         LogTarget(case.target; grad=case.gradient), case.context, algorithm; threaded)
     # Default preparation already owns CPU storage. Do not rebuild it just to
     # select CPU again. Explicit converting devices still apply their policy.

@@ -1,4 +1,4 @@
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 # A normalized two-dimensional mixture: unequal masses, correlated coordinates.
 # Each component has covariance [1 0.6; 0.6 1.36]. Lower proposals are broader
@@ -23,7 +23,7 @@ algorithm = LAIS(bank;
     transition=RAM(1.0; tuning=WarmupTuning(100)),
     rounds=20, round_size=10_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 # All 200,000 lower samples contribute. Upper-chain states are not returned as
@@ -38,10 +38,10 @@ learned = current_proposal(prepared)
 # next_samples = importance_sample!(prepared)
 
 # Optional CUDA execution: transfer a fresh complete prepared sampler explicitly.
-# using CUDA, MLDataDevices
+# using CUDA, MLDataDevices, PureRNGs
 # physical = CUDA.device()
 # device = MLDataDevices.CUDADevice{typeof(physical),Nothing}(physical)
-# gpu_prepared = device(prepare_sampler(Xoshiro(43), logtarget, algorithm))
+# gpu_prepared = device(prepare_sampler(Threefry4x32(43), logtarget, algorithm))
 # gpu_samples = importance_sample!(gpu_prepared)
 # host_samples = cpu_device()(gpu_samples)
 # Pass target data as prepare_sampler(rng, logtarget, data, algorithm), so data

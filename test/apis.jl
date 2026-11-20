@@ -2,15 +2,15 @@ using Test
 using ImportanceSamplers
 import LinearAlgebra, Random
 
-mutable struct APISPrefilledNormals{T} <: Random.AbstractRNG
+struct APISPrefilledNormals{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     index::Int
 end
 
-function Random.randn!(rng::APISPrefilledNormals, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::APISPrefilledNormals, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, rng.batches[rng.index])
-    rng.index += 1
-    return destination
+    return destination, APISPrefilledNormals(rng.batches, rng.index + 1)
 end
 
 function apis_normal_logdensity(sample, location, scale)
@@ -122,7 +122,7 @@ end
     initial_means = [[-1.0, 0.5], [1.5, -0.5]]
     factors = [[1.2 0.0; 0.4 0.8], [0.7 0.0; -0.3 1.4]]
     schedule = [8, 12]
-    batches = [randn(Random.Xoshiro(seed), 24) for seed in (81, 82)]
+    batches = [Random.randn(Random.Xoshiro(seed), 24) for seed in (81, 82)]
     logtarget(sample) = -(
         abs2(sample[1] - 0.25) + abs2(sample[2] + 0.4sample[1])
     ) / 2
@@ -158,7 +158,7 @@ end
     initial_means = [-1.0, 1.5]
     scales = [1.25, 0.75]
     schedule = [8, 12]
-    batches = [randn(Random.Xoshiro(seed), 12) for seed in (91, 92)]
+    batches = [Random.randn(Random.Xoshiro(seed), 12) for seed in (91, 92)]
     logtarget(sample) = -abs2(sample - 0.3) / 2
     bank = ProposalBank([
         SphericalGaussian(initial_means[1], scales[1]),
@@ -284,7 +284,7 @@ end
     @test failure.round == 2
     @test [p.location for p in current_proposal(sampler).proposals] ==
           [p.location for p in committed.proposals]
-    @test rng.index == 5
+    @test current_rng(sampler).index == 5
 end
 
 @testset "APIS public scalar epoch recurrence" begin

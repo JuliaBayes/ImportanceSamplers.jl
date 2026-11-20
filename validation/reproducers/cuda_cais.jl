@@ -1,10 +1,10 @@
 module CUDACAISValidation
 
 using CUDA
+using PureRNGs
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
-using Random
 using Test
 
 const IS = ImportanceSamplers
@@ -29,15 +29,15 @@ function (::StandardVectorTarget{T})(x::AbstractVector) where {T}
     return -length(x) * log(T(2pi)) / T(2) - sum(abs2, x) / T(2)
 end
 
-mutable struct DeviceNormals{A} <: Random.AbstractRNG
+struct DeviceNormals{A} <: PureRNGs.AbstractPureRNG
     batches::A
     index::Int
 end
 
-function Random.randn!(rng::DeviceNormals, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::DeviceNormals, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, DeviceNormals(rng.batches, rng.index + 1)
 end
 
 function cuda_device()
@@ -181,7 +181,7 @@ function check_vector_paths(device, ::Type{T}) where {T}
     records = []
     for policy in (BatchedFactorExecution(), FusedFactorExecution())
         prepared = device(prepare_sampler(
-            Xoshiro(0xCA15),
+            Threefry4x32(0xCA15),
             QuadraticTarget{T}(),
             CAIS(
                 bank;
@@ -226,7 +226,7 @@ function check_rollback(device, ::Type{T}) where {T}
     batches = [regular, reverse(regular), regular, zeros(T, 3)]
     bank = ProposalBank([SphericalGaussian(zero(T), one(T))], T[1])
     source = prepare_sampler(
-        Xoshiro(2),
+        Threefry4x32(2),
         StandardNormalTarget{T}(),
         CAIS(bank; rounds=2, round_size=3, covariance_ess_threshold=2),
     )
@@ -256,7 +256,7 @@ function check_workgroup_boundary_factor(device)
         FactorGaussian(zeros(T, dimension), Matrix{T}(I, dimension, dimension)),
     ], T[1])
     prepared = device(prepare_sampler(
-        Xoshiro(0xCA1540),
+        Threefry4x32(0xCA1540),
         StandardVectorTarget{T}(),
         CAIS(
             bank;

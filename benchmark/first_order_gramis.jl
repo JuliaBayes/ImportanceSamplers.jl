@@ -2,7 +2,7 @@ using BenchmarkTools
 using ImportanceSamplers
 using LinearAlgebra
 using Pkg
-using Random
+using PureRNGs
 
 function gram_is_benchmark_option(name)
     prefix = "--$(name)="
@@ -221,7 +221,7 @@ function gram_is_prepare_benchmark(cell, seed)
         covariance_ess_threshold=cell.covariance_ess_threshold,
     )
     source = prepare_sampler(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         target,
         algorithm;
         threaded=cell.threaded,

@@ -378,6 +378,9 @@ Return an independent snapshot of the proposal committed by a
 CPU-prepared [`AMIS`](@ref) or [`NPMC`](@ref) sampler. For an accelerator-prepared sampler, pass
 an explicit preserving CPU destination. A successful call commits its final
 fitted proposal for the next call; a failed call leaves this snapshot unchanged.
+Native snapshots support `Statistics.mean`, `var`, `std`, and `cov`; use
+[`proposal_scale_factor`](@ref) to read a Gaussian or Student-t scale factor.
+These accessors do not change the sampler or add a Distributions.jl dependency.
 """
 function current_proposal(
     sampler::_PreparedImportanceSampler{R,B,T,A,M,D},

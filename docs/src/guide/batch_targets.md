@@ -6,7 +6,7 @@ An optional batch callback evaluates many draws with shared matrix operations or
 ## Batched linear regression
 
 ```@example batch
-using ImportanceSamplers, Random, Statistics, LinearAlgebra
+using ImportanceSamplers, PureRNGs, Random, Statistics, LinearAlgebra
 
 function logtarget(beta, p)
     value = -sum(abs2, beta) / 8
@@ -34,7 +34,7 @@ p = (; X, y)
 proposal = SphericalGaussian(X \ y, 0.3)
 target = LogTarget(logtarget; batch=batch!)
 samples = importance_sample(
-    rng, target, p,
+    Threefry4x32(43), target, p,
     ImportanceSampling(proposal; nsamples=5_000),
 )
 
@@ -67,6 +67,31 @@ Each output must equal the scalar target for that sample.
 It must not depend on other samples or the batch width.
 Widths may vary. Empty batches are skipped.
 
+## Sample order and derived outputs
+
+`values[j]` must describe input sample `j`: column `j` for a vector parameter,
+or index `j` along the final axis of each named leaf.
+The callback must not reorder the inputs.
+
+For [`ImportanceSampling`](@ref), callback samples have the same order as
+`result.samples`, including when the proposal is a [`ProposalBank`](@ref).
+Per-column derived quantities computed alongside the log density, such as power-flow
+outputs, can therefore be associated with the same result columns.
+Copy any inputs or derived outputs you need after the callback returns;
+do not save references to the borrowed buffers.
+
+Adaptive methods preserve the order within each retained sampling batch.
+[`AMIS`](@ref) concatenates its newly drawn batches in chronological round order,
+including unequal round sizes. It caches earlier target values;
+retrospective reweighting does not reorder the samples or reevaluate those targets.
+
+Not every target call produces a retained sample. Upper MCMC moves, gradient
+evaluations, backtracking trials, and padded candidates can evaluate other points.
+Do not concatenate all callback outputs for methods with such auxiliary calls;
+compute derived quantities from the final `result.samples` when the retained calls
+cannot be identified separately. With named transforms, both the batch callback
+and `result.samples` contain logical values, not unconstrained coordinates.
+
 ## Parallelism and memory
 
 The callback controls CPU parallelism.
@@ -87,7 +112,8 @@ The package adds the Jacobian. Do not add it in the callback.
 
 `grad=` and AD selectors remain independent of `batch=`.
 Automatic differentiation uses the scalar target, not this callback.
-There is no separate batch-gradient callback.
+Use `batch_grad=` for [combined batched values and gradients](@ref batched-gradients).
+It remains separate so value-only phases do not compute unnecessary gradients.
 
 A device callback receives resident inputs, outputs, and context.
 Use the current task's stream or complete private-stream work before returning.

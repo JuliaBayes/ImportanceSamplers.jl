@@ -1,9 +1,9 @@
 using CUDA
+using PureRNGs: Threefry4x32
 using ImportanceSamplers
 using DensityInterface
 using LinearAlgebra
 using MLDataDevices
-using Random
 using Test
 
 CUDA.functional() || error("CUDA is not functional")
@@ -33,7 +33,7 @@ end
 
 function run_case(proposal, target, seed)
     sampler = prepare_sampler(
-        Random.Xoshiro(seed),
+        Threefry4x32(seed),
         target,
         ImportanceSampling(proposal; nsamples=65_536),
     )
@@ -85,7 +85,7 @@ end
         FirstOrderGRAMIS(bank; rounds=3, round_size=4096, repulsion_strength=0.1f0),
     )
     for algorithm in algorithms
-        prepared = device(prepare_sampler(Xoshiro(17), target, algorithm))
+        prepared = device(prepare_sampler(Threefry4x32(17), target, algorithm))
         result = importance_sample!(prepared)
         @test result.samples isa CUDA.AnyCuArray
         @test all(isfinite, result.logweights)

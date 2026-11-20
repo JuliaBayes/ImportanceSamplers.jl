@@ -1,25 +1,26 @@
 import DensityInterface: logdensityof
 import Distributions
-import Random
 import Statistics
 import SpecialFunctions
 
-struct BoxEndpointRNG{T} <: Random.AbstractRNG
+struct BoxEndpointRNG{T} <: TestScriptedRNG
     value::T
 end
-Random.rand(rng::BoxEndpointRNG{T}, ::Type{T}) where {T} = rng.value
+PureRNGs.rand_next(rng::BoxEndpointRNG{T}, ::Type{T}) where {T} = rng.value, rng
 
-mutable struct RejectingGammaRNG <: Random.AbstractRNG
+mutable struct RejectingGammaRNG <: TestScriptedRNG
     filled_normals::Bool
     filled_uniforms::Bool
 end
-function Random.randn!(rng::RejectingGammaRNG, values::AbstractArray{T}) where {T}
+function PureRNGs.randn_next!(rng::RejectingGammaRNG, values::AbstractArray{T}; threaded=false) where {T}
+    isempty(values) && return values, rng
     rng.filled_normals = true
-    return fill!(values, T(-100))
+    return fill!(values, T(-100)), rng
 end
-function Random.rand!(rng::RejectingGammaRNG, values::AbstractArray{T}) where {T}
+function PureRNGs.rand_next!(rng::RejectingGammaRNG, values::AbstractArray{T}; threaded=false) where {T}
+    isempty(values) && return values, rng
     rng.filled_uniforms = true
-    return fill!(values, T(0.5))
+    return fill!(values, T(0.5)), rng
 end
 
 @testset "box density, sampling law and input ownership" begin
@@ -34,7 +35,7 @@ end
 
     # Seed 1701, 20,000 draws. Each mean tolerance exceeds six analytic SEs.
     samples = importance_sample(
-        Random.Xoshiro(1701),
+        Threefry4x32(1701),
         proposal,
         ImportanceSampling(proposal; nsamples = 20_000),
     )
@@ -53,7 +54,7 @@ end
     @test logdensityof(proposal, Float32[-1, 0]) == -Inf32
     # Seed 1710, 20,000 draws; tolerances exceed six analytic mean/variance SEs.
     samples = importance_sample(
-        Random.Xoshiro(1710),
+        Threefry4x32(1710),
         proposal,
         ImportanceSampling(proposal; nsamples = 20_000),
     )
@@ -87,7 +88,7 @@ end
     target = IndependentGamma(2.0f0, 1.0f0)
     proposal = SphericalGaussian(0.0, 2.0)
     samples = importance_sample(
-        Random.Xoshiro(1714),
+        Threefry4x32(1714),
         target,
         ImportanceSampling(proposal; nsamples = 128),
     )
@@ -112,7 +113,7 @@ end
         PartialDeterministicMixture([[1], [2]]),
     )
         samples = importance_sample(
-            Random.Xoshiro(1711),
+            Threefry4x32(1711),
             target,
             ImportanceSampling(bank; nsamples = 256, mis_scheme = scheme),
         )
@@ -129,14 +130,13 @@ end
     end
     scalar = Distributions.Gamma(2.0, 3.0)
     samples =
-        importance_sample(Random.Xoshiro(1712), scalar, ImportanceSampling(scalar; nsamples = 128))
+        importance_sample(Threefry4x32(1712), scalar, ImportanceSampling(scalar; nsamples = 128))
     @test maximum(abs, samples.logweights) < 1e-13
 end
 
 @testset "unrepresentable Gamma draws fail the call and advance its RNG" begin
     proposal = IndependentGamma(1.0f-10, 1.0f0)
-    rng = Random.Xoshiro(1713)
-    before = copy(rng)
+    rng = Threefry4x32(1713)
     sampler = prepare_sampler(rng, proposal, ImportanceSampling(proposal; nsamples = 1))
     failure = try
         importance_sample!(sampler)
@@ -144,7 +144,7 @@ end
         error
     end
     @test failure isa SamplerExecutionError && failure.phase == :proposal_draw
-    @test rand(rng, UInt64) != rand(before, UInt64)
+    @test current_rng(sampler) != rng
 end
 
 @testset "rejected Gamma candidates fail without returning partial samples" begin
@@ -168,7 +168,7 @@ end
     expected = -Float64(log(2BigFloat(bound)))
     @test logdensityof(proposal, 0.0) ≈ expected
     samples = importance_sample(
-        Random.Xoshiro(1702),
+        Threefry4x32(1702),
         proposal,
         ImportanceSampling(proposal; nsamples = 256),
     )
@@ -179,12 +179,12 @@ end
         lower, upper = T(3), nextfloat(T(3))
         narrow = BoxUniform(lower, upper)
         result = importance_sample(
-            Random.Xoshiro(1715),
+            Threefry4x32(1715),
             narrow,
             ImportanceSampling(narrow; nsamples = 1024),
         )
         uniform = T === Float32 ? T(0.00015) : T(0.0006)
-        forced = rand(BoxEndpointRNG(uniform), narrow)
+        forced, _ = rand_next(BoxEndpointRNG(uniform), narrow)
         @test lower <= forced <= upper &&
               all(x -> lower <= x <= upper, result.samples) &&
               all(iszero, result.logweights)
@@ -204,7 +204,7 @@ end
         PartialDeterministicMixture([[1], [2]]),
     )
         samples = importance_sample(
-            Random.Xoshiro(1703),
+            Threefry4x32(1703),
             target,
             ImportanceSampling(bank; nsamples = 256, mis_scheme = scheme),
         )
@@ -220,7 +220,7 @@ end
     end
     disjoint = ProposalBank([Distributions.Uniform(0.0, 1.0), Distributions.Uniform(1.0, 2.0)])
     samples = importance_sample(
-        Random.Xoshiro(1704),
+        Threefry4x32(1704),
         Distributions.Uniform(0.0, 2.0),
         ImportanceSampling(disjoint; nsamples = 256),
     )
@@ -232,13 +232,12 @@ end
     BoxUniform([-2.0, -1.0], [2.0, 1.0]),
     IndependentGamma([0.5, 3.0], [2.0, 1.0]),
 )
-    rng = Random.Xoshiro(1705)
-    reference = copy(rng)
-    prepare_sampler(rng, proposal, ImportanceSampling(proposal; nsamples = 256))
-    @test rand(rng, UInt64) == rand(reference, UInt64)
+    rng = Threefry4x32(1705)
+    sampler = prepare_sampler(rng, proposal, ImportanceSampling(proposal; nsamples = 256))
+    @test current_rng(sampler) == rng
     algorithm = ImportanceSampling(proposal; nsamples = 256)
-    serial = importance_sample(Random.Xoshiro(1706), proposal, algorithm; threaded = false)
-    threaded = importance_sample(Random.Xoshiro(1706), proposal, algorithm; threaded = true)
+    serial = importance_sample(Threefry4x32(1706), proposal, algorithm; threaded = false)
+    threaded = importance_sample(Threefry4x32(1706), proposal, algorithm; threaded = true)
     @test serial.samples == threaded.samples
     @test serial.logweights == threaded.logweights
 end

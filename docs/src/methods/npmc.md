@@ -6,14 +6,14 @@ The returned samples keep their original importance weights.
 ## Example
 
 ```@example npmc
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -(abs2(x[1] - 1) + abs2((x[2] + 1 - 0.8(x[1] - 1)) / 0.6)) / 2
 algorithm = NPMC(
     SphericalGaussian(zeros(2), 2.0);
     rounds=4, round_size=2_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 (mean=mean(samples), covariance=cov(samples))

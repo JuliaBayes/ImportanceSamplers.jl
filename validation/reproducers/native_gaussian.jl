@@ -1,14 +1,14 @@
 using DensityInterface
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 function empirical_moments(rng, proposal, nsamples)
-    first_draw = rand(rng, proposal)
+    first_draw, rng = rand_next(rng, proposal)
     dimension = length(first_draw)
     coordinate_sums = zeros(eltype(first_draw), dimension)
     product_sums = zeros(eltype(first_draw), dimension, dimension)
     for sample_index in 1:nsamples
-        draw = isone(sample_index) ? first_draw : rand(rng, proposal)
+        draw, rng = isone(sample_index) ? (first_draw, rng) : rand_next(rng, proposal)
         for row in 1:dimension
             coordinate_sums[row] += draw[row]
             for column in 1:dimension
@@ -39,12 +39,12 @@ function validate_native_gaussians()
 
     nsamples = 30_000
     spherical_mean, spherical_covariance = empirical_moments(
-        Xoshiro(101), spherical, nsamples
+        Threefry4x32(101), spherical, nsamples
     )
     diagonal_mean, diagonal_covariance = empirical_moments(
-        Xoshiro(202), diagonal, nsamples
+        Threefry4x32(202), diagonal, nsamples
     )
-    factor_mean, factor_covariance = empirical_moments(Xoshiro(303), factor, nsamples)
+    factor_mean, factor_covariance = empirical_moments(Threefry4x32(303), factor, nsamples)
     @assert isapprox(spherical_mean, Float64[1, -2]; atol=0.04)
     @assert isapprox(
         spherical_covariance,
@@ -69,7 +69,7 @@ function validate_native_gaussians()
             sample -> DensityInterface.logdensityof(proposal, sample)
         end
         result = importance_sample(
-            Xoshiro(index),
+            Threefry4x32(index),
             target,
             ImportanceSampling(proposal; nsamples=64);
             threaded=false,
@@ -89,7 +89,7 @@ function validate_native_gaussians()
         return -0.5 * (abs2(solved_first) + abs2(solved_second))
     end
     normalizer_result = importance_sample(
-        Xoshiro(99),
+        Threefry4x32(99),
         unnormalized_standard_kernel,
         ImportanceSampling(normalization_factor; nsamples=64);
         threaded=false,
@@ -105,22 +105,23 @@ function validate_native_gaussians()
         atol=8eps(),
     )
 
-    rng = Xoshiro(404)
-    scalar_draw = rand(rng, scalar32)
-    spherical_draw = rand(rng, spherical)
-    diagonal_draw = rand(rng, diagonal)
-    factor_draw = rand(rng, factor)
+    rng = Threefry4x32(404)
+    scalar_draw, rng = rand_next(rng, scalar32)
+    spherical_draw, rng = rand_next(rng, spherical)
+    diagonal_draw, rng = rand_next(rng, diagonal)
+    factor_draw, rng = rand_next(rng, factor)
     @assert only(Base.return_types(SphericalGaussian, Tuple{Float32,Float32})) ===
             typeof(scalar32)
-    @assert only(Base.return_types(rand, Tuple{typeof(rng),typeof(scalar32)})) === Float32
+    @assert only(Base.return_types(rand_next, Tuple{typeof(rng),typeof(scalar32)})) ===
+            Tuple{Float32,typeof(rng)}
     @assert only(
         Base.return_types(
             DensityInterface.logdensityof,
             Tuple{typeof(scalar32),Float32},
         ),
     ) === Float32
-    @assert only(Base.return_types(rand, Tuple{typeof(rng),typeof(factor)})) ===
-            Vector{Float64}
+    @assert only(Base.return_types(rand_next, Tuple{typeof(rng),typeof(factor)})) ===
+            Tuple{Vector{Float64},typeof(rng)}
     @assert only(
         Base.return_types(
             DensityInterface.logdensityof,
@@ -128,10 +129,10 @@ function validate_native_gaussians()
         ),
     ) === Float64
 
-    rand(rng, scalar32)
-    rand(rng, spherical)
-    rand(rng, diagonal)
-    rand(rng, factor)
+    rand_next(rng, scalar32)
+    rand_next(rng, spherical)
+    rand_next(rng, diagonal)
+    rand_next(rng, factor)
     DensityInterface.logdensityof(scalar32, scalar_draw)
     DensityInterface.logdensityof(spherical, spherical_draw)
     DensityInterface.logdensityof(diagonal, diagonal_draw)
@@ -147,10 +148,10 @@ function validate_native_gaussians()
         factor_constructor=Base.@allocated(
             FactorGaussian(Float64[1, -2], Float64[1.25 0; 0.4 0.8])
         ),
-        scalar_draw=Base.@allocated(rand(rng, scalar32)),
-        spherical_draw=Base.@allocated(rand(rng, spherical)),
-        diagonal_draw=Base.@allocated(rand(rng, diagonal)),
-        factor_draw=Base.@allocated(rand(rng, factor)),
+        scalar_draw=Base.@allocated(rand_next(rng, scalar32)),
+        spherical_draw=Base.@allocated(rand_next(rng, spherical)),
+        diagonal_draw=Base.@allocated(rand_next(rng, diagonal)),
+        factor_draw=Base.@allocated(rand_next(rng, factor)),
         scalar_logdensity=Base.@allocated(
             DensityInterface.logdensityof(scalar32, scalar_draw)
         ),

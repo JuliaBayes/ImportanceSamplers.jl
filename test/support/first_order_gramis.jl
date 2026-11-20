@@ -21,7 +21,7 @@ end
 
 struct FirstOrderGRAMISNonGaussian end
 
-mutable struct FirstOrderGRAMISPrefilledRNG{T} <: Random.AbstractRNG
+struct FirstOrderGRAMISPrefilledRNG{T} <: TestScriptedRNG
     batches::Vector{Vector{T}}
     next_batch::Int
 end
@@ -29,14 +29,14 @@ end
 FirstOrderGRAMISPrefilledRNG(batches::Vector{Vector{T}}) where {T} =
     FirstOrderGRAMISPrefilledRNG{T}(batches, 1)
 
-function Random.randn!(rng::FirstOrderGRAMISPrefilledRNG, destination::AbstractArray)
+function PureRNGs.randn_next!(rng::FirstOrderGRAMISPrefilledRNG, destination::AbstractArray; threaded=false)
+    isempty(destination) && return destination, rng
     batch = rng.batches[rng.next_batch]
     length(batch) == length(destination) || throw(
         DimensionMismatch("prefilled GRAMIS normal batch has the wrong length"),
     )
     copyto!(destination, 1, batch, 1, length(destination))
-    rng.next_batch += 1
-    return destination
+    return destination, FirstOrderGRAMISPrefilledRNG(rng.batches, rng.next_batch + 1)
 end
 
 struct FirstOrderGRAMISShiftedTarget{T}
@@ -112,7 +112,7 @@ function prepare_first_order_gramis(algorithm; threaded=false)
         grad=first_order_gramis_gradient!,
     )
     return prepare_sampler(
-        Random.Xoshiro(0x4752414d4953),
+        Threefry4x32(0x4752414d4953),
         target,
         algorithm;
         threaded,

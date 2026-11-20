@@ -1,26 +1,25 @@
 module CUDALAISValidation
 
-using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, Random, Test
+using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, PureRNGs, Test
 const IS = ImportanceSamplers
 include("../../test/support/lais.jl")
 
-Random.randn!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T}) where {T<:AbstractFloat} =
-    invoke(Random.randn!, Tuple{LAISScriptedRNG,AbstractArray}, rng, out)
-Random.rand!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T}) where {T<:AbstractFloat} =
-    invoke(Random.rand!, Tuple{LAISScriptedRNG,AbstractArray}, rng, out)
-
 # Present the same prescribed move buffers to the batched GPU implementation.
-function Random.randn!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,3}) where {T<:AbstractFloat}
+function PureRNGs.randn_next!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,3};
+    threaded=false,
+) where {T<:AbstractFloat}
     for step in axes(out, 3)
-        invoke(Random.randn!, Tuple{LAISScriptedRNG,AbstractArray}, rng, view(out, :, :, step))
+        _, rng = randn_next!(rng, view(out, :, :, step); threaded)
     end
-    return out
+    return out, rng
 end
-function Random.rand!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,2}) where {T<:AbstractFloat}
+function PureRNGs.rand_next!(rng::LAISScriptedRNG, out::CUDA.AnyCuArray{T,2};
+    threaded=false,
+) where {T<:AbstractFloat}
     for step in axes(out, 2)
-        invoke(Random.rand!, Tuple{LAISScriptedRNG,AbstractArray}, rng, view(out, :, step))
+        _, rng = rand_next!(rng, view(out, :, step); threaded)
     end
-    return out
+    return out, rng
 end
 
 function check_warmup_batch_boundary(device)
@@ -33,7 +32,7 @@ function check_warmup_batch_boundary(device)
     end
     algorithm = LAIS(ProposalBank([SphericalGaussian(0.0, 1.0), SphericalGaussian(0.0, 1.0)]);
         transition=RAM(1.0; tuning=WarmupTuning(257)), rounds=1, round_size=2)
-    base = device(prepare_sampler(Xoshiro(21), x -> 0.0, algorithm))
+    base = device(prepare_sampler(Threefry4x32(21), x -> 0.0, algorithm))
     sampler = scripted_sampler(base, [normals; [zeros(2)]], [[0.1, 0.1] for _ in 1:258])
     result = cpu_device()(importance_sample!(sampler))
     @test result.samples ≈ centres
@@ -58,7 +57,7 @@ function check_transfer_budget(result, rounds)
 end
 
 function check_failure_rollback(device)
-    base = device(prepare_sampler(Xoshiro(19), failure_target,
+    base = device(prepare_sampler(Threefry4x32(19), failure_target,
         LAIS(ProposalBank([SphericalGaussian(0.0, 1.0)]);
             transition=RAM(1.0; tuning=ContinuousTuning()), rounds=2, round_size=1)))
     normals = [[u] for u in (1.0, 0.0, 2.0, 0.5, 0.0, 0.5, 0.0)]
@@ -83,7 +82,7 @@ function check_fixed_rwm(device)
         transition=RandomWalkMetropolis(1.0), rounds=2, round_size=4)
     reference = importance_sample!(prepare_sampler(LAISScriptedRNG(normals, uniforms, 1, 1),
         scalar_target, algorithm))
-    base = device(prepare_sampler(Xoshiro(18), scalar_target, algorithm))
+    base = device(prepare_sampler(Threefry4x32(18), scalar_target, algorithm))
     result = cpu_device()(importance_sample!(scripted_sampler(base, normals, uniforms)))
     check_transfer_budget(result, 2)
     @test result.samples ≈ reference.samples
@@ -100,7 +99,7 @@ function check_smh(device)
         rounds=2, round_size=2)
     reference = importance_sample!(prepare_sampler(
         LAISScriptedRNG(normals, uniforms, 1, 1), scalar_target, algorithm))
-    base = device(prepare_sampler(Xoshiro(23), scalar_target, algorithm))
+    base = device(prepare_sampler(Threefry4x32(23), scalar_target, algorithm))
     # Existing device fixture consumes each decision-buffer column in order.
     decisions = [collect(column) for batch in uniforms for column in eachcol(batch)]
     result = cpu_device()(importance_sample!(scripted_sampler(base, normals, decisions)))
@@ -119,7 +118,7 @@ function check_smh_failure_rollback(device)
         transition=SampleMetropolisHastings(SphericalGaussian(0.0, 1.0); moves=2),
         rounds=1, round_size=2)
     for phase in (:candidate, :ordered)
-        base = device(prepare_sampler(Xoshiro(24), smh_failure_target,
+        base = device(prepare_sampler(Threefry4x32(24), smh_failure_target,
             phase === :candidate, algorithm))
         normals = [[0.5, 1.0], zeros(2), [2.0, 2.5], [-0.5, -1.0], zeros(2)]
         # A candidate failure must win over invalid ordered arithmetic, even
@@ -152,7 +151,7 @@ function check_warmup_rollback(device)
     oracle = lais_ram_oracle(Float64)
     algorithm = LAIS(ProposalBank([FactorGaussian(zeros(2), Matrix{Float64}(I, 2, 2))]);
         transition=RAM([1.0 1.0; 1.0 2.0]; tuning=WarmupTuning(2)), rounds=1, round_size=1)
-    base = device(prepare_sampler(Xoshiro(20), QuadraticTarget{Float64}(), algorithm))
+    base = device(prepare_sampler(Threefry4x32(20), QuadraticTarget{Float64}(), algorithm))
     # Zero direction fails the first move. Later queued moves cannot erase it.
     normals = [zeros(2), ones(2), ones(2), oracle.normals..., zeros(2)]
     uniforms = [[0.1], [0.1], [0.1], ([u] for u in oracle.uniforms)...]
@@ -169,9 +168,9 @@ end
 
 function check_retarget_and_reuse(device, source, oracle, algorithm, normals, uniforms)
     context = (; location=[0.5, -0.5])
-    changed = retarget(Xoshiro(91), source, shifted_target, context)
+    changed = retarget(Threefry4x32(91), source, shifted_target, context)
     learned = ProposalBank([FactorGaussian(oracle.centres[:, end], Matrix{Float64}(I, 2, 2))])
-    reference = device(prepare_sampler(Xoshiro(91), shifted_target, context,
+    reference = device(prepare_sampler(Threefry4x32(91), shifted_target, context,
         LAIS(learned; transition=RAM(cholesky(Symmetric(oracle.factor * oracle.factor'));
             tuning=ContinuousTuning()), rounds=3, round_size=1);
         factor_execution=BatchedFactorExecution()))
@@ -217,7 +216,7 @@ function main()
             tuning = warmup ? WarmupTuning(2) : ContinuousTuning()
             algorithm = LAIS(bank; transition=RAM(T[1 1; 1 2]; tuning),
                 rounds=warmup ? 1 : 3, round_size=1)
-            base = device(prepare_sampler(Xoshiro(17), QuadraticTarget{T}(),
+            base = device(prepare_sampler(Threefry4x32(17), QuadraticTarget{T}(),
                 algorithm; factor_execution=policy))
             normals = warmup ? [oracle.normals; [zeros(T, 2)]] :
                 reduce(vcat, [[u, zeros(T, 2)] for u in oracle.normals])

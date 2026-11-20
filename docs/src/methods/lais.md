@@ -4,10 +4,14 @@ LAIS uses an upper MCMC process to move proposal centres.
 It then draws lower importance samples around those centres.
 Only the lower samples enter the returned weighted result.
 
+For gradient-based upper moves, select [`HamiltonianMonteCarlo`](@ref).
+The [Hamiltonian IS guide](@ref hais-method) compares this LAIS transition with
+the distinct HAIS method, which adds cooperative centre selection.
+
 ## Random-walk Metropolis
 
 ```@example lais
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 bank = ProposalBank([
@@ -18,7 +22,7 @@ algorithm = LAIS(
     bank; transition=RandomWalkMetropolis(0.5),
     rounds=10, round_size=1_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 
 (mean=mean(samples), draws=length(samples))
@@ -38,7 +42,7 @@ tuned_algorithm = LAIS(
     bank; transition=RAM(0.5; tuning=WarmupTuning(100)),
     rounds=10, round_size=1_000,
 )
-tuned = prepare_sampler(Xoshiro(43), logtarget, tuned_algorithm)
+tuned = prepare_sampler(Threefry4x32(43), logtarget, tuned_algorithm)
 tuned_samples = importance_sample!(tuned)
 
 mean(tuned_samples)
@@ -52,8 +56,9 @@ Later calls do not repeat completed warmup.
 Its tuning index continues across successful calls.
 
 RAM uses acceptance probabilities, including rejected moves.
-It does not fit the lower proposal scales.
-Those scales require separate specification or an independent pilot fit.
+It does not itself fit the lower proposal scales. Set `adapt_scales=true` on
+`LAIS` for the separate [lower-width update](@ref lower-width-adaptation).
+The default retains the supplied lower scales.
 
 Upper covariance inputs may be an isotropic variance, SPD matrix, `Cholesky` factorization,
 or a vector with one covariance specification per chain.
@@ -69,7 +74,7 @@ interacting_algorithm = LAIS(
     bank; transition=upper,
     rounds=10, round_size=1_000,
 )
-interacting = importance_sample(Xoshiro(44), logtarget, interacting_algorithm)
+interacting = importance_sample(Threefry4x32(44), logtarget, interacting_algorithm)
 
 mean(interacting)
 ```

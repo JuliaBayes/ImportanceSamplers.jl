@@ -43,9 +43,13 @@ end
 
 function _check_batch_mapping!(target, storage, capture)
     failure = _batch_failure_snapshot(target, storage).failure
+    return _throw_batch_mapping_failure(target.layout, failure, capture)
+end
+
+function _throw_batch_mapping_failure(layout, failure, capture)
     iszero(failure.count) && return nothing
     cause = InvalidTransformError(_native_transform_failure_reason(failure.reason_bits),
-        _native_failure_location(target.layout, failure.first_block))
+        _native_failure_location(layout, failure.first_block))
     capture || throw(cause)
     throw(SamplerExecutionError(:target, failure.first_logical_index,
         CapturedException(cause, backtrace())))
@@ -56,11 +60,35 @@ struct _NativeBatchTarget{L,T}
 end
 Adapt.@adapt_structure _NativeBatchTarget
 
+struct _SavingBatchTarget{T,V}
+    target::T
+    values::V
+end
+Adapt.@adapt_structure _SavingBatchTarget
+
+_save_target_evaluator(target::_NativeBatchTarget, ::Nothing) = target
+function _save_target_evaluator(target::_NativeBatchTarget{L}, values::AbstractVector) where {L}
+    saving = _SavingBatchTarget(target.target, values)
+    return _NativeBatchTarget{L,typeof(saving)}(saving)
+end
+_target_values(target::_NativeBatchTarget) = _target_values(target.target)
+_target_values(target::_SavingBatchTarget) = target.values
+
+function _invoke_batch_target!(target::_SavingBatchTarget, logs, samples, failures, execution;
+    transform=_NoSampleTransform())
+    _invoke_batch_target!(target.target, logs, samples, failures, execution; transform)
+    copyto!(target.values, logs)
+    return nothing
+end
+
 # Derivative kernels borrow the same scalar callable and context, without
 # retaining an unused host batch callback in their device arguments.
 _scalar_target(target) = target
-_scalar_target(target::_PreparedLogTarget) = isnothing(target.batch) ? target :
-    _PreparedLogTarget(target.logdensity, target.context, target.adtype, target.gradient)
+function _scalar_target(target::_PreparedLogTarget)
+    gradient = _scalar_gradient(target.gradient)
+    isnothing(target.batch) && isnothing(target.retain) && gradient === target.gradient && return target
+    return _PreparedLogTarget(target.logdensity, target.context, target.adtype, gradient)
+end
 _scalar_target(target::_NamedPreparedTarget) =
     _NamedPreparedTarget(_scalar_target(target.target), target.layout)
 _scalar_target(target::_BoundBatchTarget) = target.scalar
@@ -118,7 +146,7 @@ end
     logical, jacobian, reason, block = _coordinate_to_logical(layout, _native_sample_at(samples, index))
     jacobians[index] = jacobian
     if iszero(reason)
-        _store_named_result_values!(outputs, values(logical), index)
+        _store_named_result_values!(outputs, _result_blocks(logical), index)
     else
         jacobians[index] = eltype(jacobians)(NaN)
         failure_storage === nothing || _record_native_failure!(failure_storage, index, block, reason)
@@ -136,12 +164,13 @@ function _invoke_batch_target!(target::_BoundNamedTarget, logs, samples, failure
         mapping_failures = _allocate_failure_storage(backend, logs, length(logs))
         fill!(mapping_failures, zero(eltype(mapping_failures)))
     end
-    _map_named_batch_kernel!(backend)(values(mapped), jacobians, samples, target.layout, mapping_failures;
+    _map_named_batch_kernel!(backend)(_result_blocks(mapped), jacobians, samples, target.layout, mapping_failures;
         ndrange=length(logs), workgroupsize=_native_workgroupsize(execution, length(logs)))
     KernelAbstractions.synchronize(backend)
     _check_batch_mapping!(target, mapping_failures, failure_storage !== nothing)
     _invoke_batch_target!(target.target, logs, mapped, failure_storage, execution)
     logs .+= jacobians
+    _add_retained_batch_jacobians!(_retained_jacobians(target.target), jacobians)
     if failure_storage !== nothing
         _validate_batch_values_kernel!(backend)(logs, failure_storage;
             ndrange=length(logs), workgroupsize=_native_workgroupsize(execution, length(logs)))

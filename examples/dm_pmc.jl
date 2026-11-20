@@ -1,6 +1,6 @@
 using ImportanceSamplers
 import MLDataDevices
-using Random
+using PureRNGs
 
 function gaussian_component_logdensity(
     sample,
@@ -36,7 +36,7 @@ function main(;
     # Use LocalResampling() to retain one proposal lineage per sample group.
     algorithm = DeterministicMixturePMC(bank; rounds, round_size, resampling)
     sampler = prepare_sampler(
-        Xoshiro(0x444d504d43455841),
+        Threefry4x32(0x444d504d43455841),
         bimodal_logtarget,
         algorithm;
         threaded=false,

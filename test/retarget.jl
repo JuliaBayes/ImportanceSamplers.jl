@@ -2,7 +2,6 @@ using Test
 using ImportanceSamplers
 import DensityInterface
 import MLDataDevices
-import Random
 
 function retarget_logdensity(sample, p)
     displacement = sample - p.location
@@ -32,22 +31,6 @@ flat_shifted_correlated_logdensity(sample) =
 mutable struct CountingRetargetControl
     calls::Int
 end
-
-mutable struct RetargetNoncopyableRNG{R<:Random.AbstractRNG} <: Random.AbstractRNG
-    rng::R
-end
-
-Base.copy(rng::RetargetNoncopyableRNG) = rng
-Random.rand!(
-    rng::RetargetNoncopyableRNG,
-    destination::AbstractArray{T},
-) where {T} =
-    Random.rand!(rng.rng, destination)
-Random.randn!(
-    rng::RetargetNoncopyableRNG,
-    destination::AbstractArray{T},
-) where {T} =
-    Random.randn!(rng.rng, destination)
 
 function (control::CountingRetargetControl)(round)
     control.calls += 1
@@ -94,10 +77,12 @@ function assert_same_public_proposal(actual, expected)
         @test DensityInterface.logdensityof(actual, point) ≈
               DensityInterface.logdensityof(expected, point)
     end
-    actual_rng = Random.Xoshiro(0x7961)
-    expected_rng = copy(actual_rng)
+    actual_rng = Threefry4x32(0x7961)
+    expected_rng = actual_rng
     for _ in 1:3
-        @test rand(actual_rng, actual) ≈ rand(expected_rng, expected)
+        actual_draw, actual_rng = rand_next(actual_rng, actual)
+        expected_draw, expected_rng = rand_next(expected_rng, expected)
+        @test actual_draw ≈ expected_draw
     end
 end
 
@@ -112,14 +97,14 @@ function assert_retarget_equivalent(
     seed,
 )
     source = prepare_sampler(
-        Random.Xoshiro(seed),
+        Threefry4x32(seed),
         old_target,
         old_context,
         algorithm;
         threaded=false,
     )
     control = prepare_sampler(
-        Random.Xoshiro(seed),
+        Threefry4x32(seed),
         old_target,
         old_context,
         algorithm;
@@ -128,9 +113,9 @@ function assert_retarget_equivalent(
     assert_same_result(importance_sample!(source), importance_sample!(control))
     committed = current_proposal(source)
 
-    rng = Random.Xoshiro(seed + 1)
+    rng = Threefry4x32(seed + 1)
     expected = prepare_sampler(
-        copy(rng),
+        rng,
         new_target,
         new_context,
         rebuild(committed);
@@ -157,14 +142,14 @@ end
         round_size=128,
     )
     named = prepare_sampler(
-        Random.Xoshiro(43),
+        Threefry4x32(43),
         named_correlated_logdensity,
         algorithm;
         transform=layout,
         threaded=false,
     )
     flat = prepare_sampler(
-        Random.Xoshiro(43),
+        Threefry4x32(43),
         flat_correlated_logdensity,
         algorithm;
         threaded=false,
@@ -185,14 +170,14 @@ end
     @test named_first.logweights == retained_first.logweights
     assert_same_public_proposal(current_proposal(named), current_proposal(flat))
 
-    retarget_rng = Random.Xoshiro(0x7962)
+    retarget_rng = Threefry4x32(0x7962)
     named_retargeted = retarget(
-        copy(retarget_rng),
+        retarget_rng,
         named,
         named_shifted_correlated_logdensity,
     )
     flat_retargeted = retarget(
-        copy(retarget_rng),
+        retarget_rng,
         flat,
         flat_shifted_correlated_logdensity,
     )
@@ -292,7 +277,7 @@ end
         FactorGaussian(fill(1.0, 2), [1.0 0.0; 0.0 1.0]),
     ])
     source = prepare_sampler(
-        Random.Xoshiro(13),
+        Threefry4x32(13),
         target,
         (offset=0.0, location=zeros(2)),
         FirstOrderGRAMIS(
@@ -308,7 +293,7 @@ end
     @test all(proposal -> iszero(proposal.location), committed.proposals)
 
     retargeted = retarget(
-        Random.Xoshiro(14),
+        Threefry4x32(14),
         source,
         target,
         (offset=0.0, location=zeros(2)),
@@ -332,7 +317,7 @@ end
         repulsion_strength=control,
     )
     source = prepare_sampler(
-        Random.Xoshiro(0x7950),
+        Threefry4x32(0x7950),
         LogTarget(retarget_logdensity; grad=retarget_gradient!),
         (offset=0.0, location=[0.0]),
         algorithm;
@@ -340,14 +325,14 @@ end
     )
     @test control.calls == 2
     retarget(
-        Random.Xoshiro(0x7951),
+        Threefry4x32(0x7951),
         source,
         LogTarget(retarget_logdensity; grad=retarget_gradient!),
         (offset=1.0, location=[0.5]),
     )
     @test control.calls == 2
 
-    rng = Random.Xoshiro(0x7952)
+    rng = Threefry4x32(0x7952)
     dm_source = prepare_sampler(
         rng,
         retarget_logdensity,
@@ -362,22 +347,23 @@ end
         );
         threaded=false,
     )
-    @test_throws ArgumentError retarget(
+    retargeted = retarget(
         rng,
         dm_source,
         retarget_logdensity,
         (offset=1.0, location=0.5),
     )
+    @test current_rng(retargeted) == current_rng(dm_source) == rng
 
     context_free_source = prepare_sampler(
-        Random.Xoshiro(0x7953),
+        Threefry4x32(0x7953),
         retarget_origin_logdensity,
         AMIS(SphericalGaussian(0.0, 1.0); rounds=1, round_size=8);
         threaded=false,
     )
     importance_sample!(context_free_source)
     context_free = @inferred retarget(
-        Random.Xoshiro(0x7954),
+        Threefry4x32(0x7954),
         context_free_source,
         retarget_shifted_logdensity,
     )
@@ -395,7 +381,7 @@ end
         round_size=8,
     )
     source = prepare_sampler(
-        Random.Xoshiro(0x7940),
+        Threefry4x32(0x7940),
         retarget_array_logdensity,
         (offset=[0.0], location=[0.0]),
         algorithm;
@@ -403,7 +389,7 @@ end
     ) |> device
     importance_sample!(source)
     sampler = @inferred retarget(
-        RetargetNoncopyableRNG(Random.Xoshiro(0x7941)),
+        Threefry4x32(0x7941),
         source,
         retarget_array_logdensity,
         (offset=[1.0], location=[0.5]),

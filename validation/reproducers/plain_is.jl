@@ -1,7 +1,7 @@
 using DensityInterface
 using ImportanceSamplers
 using Pkg
-using Random
+using PureRNGs
 
 const VALIDATION_SEED = 0x76c4f2a19b038d45
 const SCALAR_TYPE = Float64
@@ -24,11 +24,12 @@ struct GaussianProposal{T<:AbstractFloat}
     end
 end
 
-function Random.rand(
-    rng::Random.AbstractRNG,
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG,
     proposal::GaussianProposal{T},
 ) where {T}
-    return proposal.mean + proposal.scale * randn(rng, T)
+    normal, next_rng = randn_next(rng, T)
+    return proposal.mean + proposal.scale * normal, next_rng
 end
 
 function gaussian_logdensity(x, mean, scale)
@@ -77,7 +78,7 @@ function validate_equal_normalized_target()
     logtarget(x) = gaussian_logdensity(x, 0.0, 1.0)
     algorithm = ImportanceSampling(proposal; nsamples=EQUAL_SAMPLE_COUNT)
     result = importance_sample(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         logtarget,
         algorithm;
         threaded=false,
@@ -112,7 +113,7 @@ function validate_gaussian_mean_and_normalizer()
                    gaussian_logdensity(x, target_mean, target_scale)
     algorithm = ImportanceSampling(proposal; nsamples=GAUSSIAN_SAMPLE_COUNT)
     result = importance_sample(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         logtarget,
         algorithm;
         threaded=false,

@@ -1,6 +1,6 @@
 using ImportanceSamplers
 using LinearAlgebra
-using Random
+using PureRNGs, Random
 
 const TRUE_COEFFICIENTS = [-0.4, 1.1, -0.8]
 const COEFFICIENT_NAMES = ("intercept", "x1", "x2")
@@ -162,7 +162,7 @@ function main(; pilot_samples=20_000, nsamples=100_000)
 
     # Use the normalized prior as a simple pilot proposal.
     pilot = importance_sample(
-        Xoshiro(0x50494c4f54495331),
+        Threefry4x32(0x50494c4f54495331),
         logistic_logtarget,
         context,
         ImportanceSampling(prior; nsamples=pilot_samples),
@@ -171,7 +171,7 @@ function main(; pilot_samples=20_000, nsamples=100_000)
 
     # Draw a fresh, independent final sample from the fitted proposal.
     result = importance_sample(
-        Xoshiro(0x49534c4f47495431),
+        Threefry4x32(0x49534c4f47495431),
         logistic_logtarget,
         context,
         ImportanceSampling(proposal; nsamples),

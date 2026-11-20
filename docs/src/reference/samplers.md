@@ -13,7 +13,9 @@ DeterministicMixturePMC
 APIS
 CAIS
 LAIS
+HAIS
 FirstOrderGRAMIS
+current_rng
 ```
 
 ## Static MIS schemes
@@ -39,6 +41,7 @@ LocalResampling
 ```@docs
 AbstractMCMCTransition
 RandomWalkMetropolis
+HamiltonianMonteCarlo
 RAM
 WarmupTuning
 ContinuousTuning

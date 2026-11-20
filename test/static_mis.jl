@@ -1,7 +1,6 @@
 using Test
 using ImportanceSamplers
 import DensityInterface
-import Random
 
 include("support/static_mis.jl")
 
@@ -86,7 +85,7 @@ end
     for masses in (nothing, Float64[1, 1])
         bank = isnothing(masses) ? ProposalBank([proposal32, proposal32]) :
                ProposalBank([proposal32, proposal32], masses)
-        result = importance_sample(Random.Xoshiro(17), target32,
+        result = importance_sample(Threefry4x32(17), target32,
             ImportanceSampling(bank; nsamples=32); threaded=false)
         T = isnothing(masses) ? Float32 : Float64
         @test eltype(result.logweights) === T
@@ -157,13 +156,13 @@ end
     proposals = [StaticMISGaussian(-1.0), StaticMISGaussian(1.0)]
     bank = ProposalBank(proposals, Float32[1.0f-8, 1.0f0])
     full = prepare_sampler(
-        Random.Xoshiro(0x5310),
+        Threefry4x32(0x5310),
         _ -> 0.0,
         ImportanceSampling(bank; nsamples=8, mis_scheme=StratifiedMixture());
         threaded=false,
     )
     partial = prepare_sampler(
-        Random.Xoshiro(0x5311),
+        Threefry4x32(0x5311),
         _ -> 0.0,
         ImportanceSampling(
             bank;
@@ -197,7 +196,7 @@ end
     )
 
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(42),
+        Threefry4x32(42),
         mixture_logtarget,
         algorithm;
         threaded=false,
@@ -238,7 +237,7 @@ end
     draws_before = first_proposal.draw_count[] + third_proposal.draw_count[]
     abstract_bank = ProposalBank(Any[first_proposal, third_proposal])
     @test_throws ArgumentError prepare_sampler(
-        Random.Xoshiro(44),
+        Threefry4x32(44),
         mixture_logtarget,
         ImportanceSampling(abstract_bank; nsamples=3);
         threaded=false,
@@ -260,7 +259,7 @@ end
     )
     nsamples = 20_000
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5301),
+        Threefry4x32(0x5301),
         mixture_logtarget,
         ImportanceSampling(
             bank;
@@ -310,7 +309,7 @@ end
         large_id = 3 - small_id
         small_proposal = proposals[small_id]
         target = sample -> DensityInterface.logdensityof(small_proposal, sample)
-        supported_sample = rand(Random.Xoshiro(0x5308), small_proposal)
+        supported_sample = first(rand_next(Threefry4x32(0x5308), small_proposal))
         @test isfinite(target(supported_sample))
         @test DensityInterface.logdensityof(
             proposals[large_id],
@@ -319,7 +318,7 @@ end
 
         for scheme in schemes
             sampler = @inferred prepare_sampler(
-                Random.Xoshiro(0x5309),
+                Threefry4x32(0x5309),
                 target,
                 ImportanceSampling(
                     ProposalBank(proposals, masses);
@@ -353,7 +352,7 @@ end
     target = sample -> static_mis_gaussian_logdensity(0.0, sample)
     nsamples = 1_001
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5302),
+        Threefry4x32(0x5302),
         target,
         ImportanceSampling(
             bank;
@@ -391,7 +390,7 @@ end
 
     for groups in invalid_groups
         events = Symbol[]
-        rng = StaticMISRecordingRNG(Random.Xoshiro(0x5303), events)
+        rng = StaticMISRecordingRNG(Threefry4x32(0x5303), events)
         algorithm = ImportanceSampling(
             bank;
             nsamples=8,
@@ -407,7 +406,7 @@ end
     end
 
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5304),
+        Threefry4x32(0x5304),
         target,
         ImportanceSampling(
             bank;
@@ -445,7 +444,7 @@ end
     groups = ((1, 2), (3, 4))
     nsamples = 101
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5305),
+        Threefry4x32(0x5305),
         StaticMISTableTarget(zeros(4)),
         ImportanceSampling(
             ProposalBank(proposals, nominal_masses);
@@ -488,14 +487,14 @@ end
     algorithm = ImportanceSampling(bank; nsamples=8)
 
     @test_throws DimensionMismatch prepare_sampler(
-        Random.Xoshiro(0x5200),
+        Threefry4x32(0x5200),
         StaticMISDimensionTarget{3}(),
         algorithm;
         threaded=false,
     )
 
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5201),
+        Threefry4x32(0x5201),
         StaticMISDimensionTarget{2}(),
         algorithm;
         threaded=false,
@@ -508,7 +507,7 @@ end
         [StaticMISGaussian(-1.0), StaticMISGaussian(1.0)],
     )
     unknown_dimension = @inferred prepare_sampler(
-        Random.Xoshiro(0x5202),
+        Threefry4x32(0x5202),
         StaticMISDimensionTarget{3}(),
         ImportanceSampling(external_bank; nsamples=4);
         threaded=false,
@@ -518,7 +517,7 @@ end
 
 @testset "stratified assignment failure location" begin
     proposals = [StaticMISGaussian(-1.0), StaticMISGaussian(1.0)]
-    rng = StaticMISFailingAssignmentRNG(Random.Xoshiro(0x5207), 0, 3)
+    rng = StaticMISFailingAssignmentRNG(Threefry4x32(0x5207), Ref(0), 3)
     sampler = prepare_sampler(
         rng,
         _ -> 0.0,
@@ -531,7 +530,7 @@ end
     @test (failure.phase, failure.sample_index) == (:proposal_draw, 3)
     @test failure.captured.ex isa StaticMISAssignmentFailure
     @test failure.captured.ex.sample_index == 3
-    @test rng.uniform_count == 3
+    @test rng.uniform_count[] == 3
     @test all(iszero(proposal.draw_count[]) for proposal in proposals)
 end
 
@@ -544,7 +543,7 @@ end
             StaticMISUniformProposal(1.0, Ref(0), events),
         ]
         bank = ProposalBank(proposals, [1, 3])
-        rng = StaticMISRecordingRNG(Random.Xoshiro(0x5202), events)
+        rng = StaticMISRecordingRNG(Threefry4x32(0x5202), events)
         result = importance_sample(
             rng,
             _ -> 0.0,
@@ -557,21 +556,20 @@ end
         @test events[(nsamples + 1):end] == repeat([:draw, :random], nsamples)
         @test sum(proposal.draw_count[] for proposal in proposals) == nsamples
 
-        expected_rng = Random.Xoshiro(0x5202)
+        expected_rng = Threefry4x32(0x5202)
         active_ids = sortperm(bank.masses; alg=Base.Sort.MergeSort)
         cdf = cumsum(bank.masses[active_ids])
         cdf[end] = 1.0
-        expected_slots = [
-            searchsortedfirst(
-                cdf,
-                scheme isa RandomMixture ? rand(expected_rng) :
-                ((sample_index - 1) + rand(expected_rng)) / nsamples,
-            ) for sample_index in 1:nsamples
-        ]
-        expected_samples = [
-            proposals[active_ids[slot]].location + rand(expected_rng) for
-            slot in expected_slots
-        ]
+        expected_slots = map(1:nsamples) do sample_index
+            uniform, expected_rng = rand_next(expected_rng, Float64)
+            threshold = scheme isa RandomMixture ? uniform :
+                        ((sample_index - 1) + uniform) / nsamples
+            searchsortedfirst(cdf, threshold)
+        end
+        expected_samples = map(expected_slots) do slot
+            offset, expected_rng = rand_next(expected_rng, Float64)
+            proposals[active_ids[slot]].location + offset
+        end
         @test result.provenance.proposal_id == active_ids[expected_slots]
         @test result.samples == expected_samples
     end
@@ -593,7 +591,7 @@ function static_mis_table_result(
     ]
     bank = ProposalBank(proposals)
     sampler = prepare_sampler(
-        Random.Xoshiro(0x5203),
+        Threefry4x32(0x5203),
         StaticMISTableTarget(target_logs),
         ImportanceSampling(bank; nsamples=2);
         threaded,
@@ -616,7 +614,7 @@ function static_mis_denominator_table_result(
         ) for proposal_id in 1:nproposals
     ]
     return importance_sample(
-        Random.Xoshiro(0x5306),
+        Threefry4x32(0x5306),
         StaticMISTableTarget(target_logs),
         ImportanceSampling(
             ProposalBank(proposals);
@@ -683,7 +681,7 @@ end
     )
         proposals = [StaticMISGaussian(0.0), StaticMISGaussian(0.0)]
         result = importance_sample(
-            Random.Xoshiro(0x530a),
+            Threefry4x32(0x530a),
             target,
             ImportanceSampling(
                 ProposalBank(proposals, [1, 3]);
@@ -731,7 +729,7 @@ end
         StaticMISTableProposal(i, Float32(i), float32_logs) for i in 1:2
     ]
     float32_result = @inferred importance_sample(
-        Random.Xoshiro(44),
+        Threefry4x32(44),
         StaticMISTableTarget(zeros(Float32, 2)),
         ImportanceSampling(
             ProposalBank(float32_proposals, Float32[1, 3]);
@@ -748,7 +746,7 @@ end
     )
     big_mass_bank = ProposalBank(big_mass_proposals, BigFloat[1, 3])
     big_mass_result = @inferred importance_sample(
-        Random.Xoshiro(45),
+        Threefry4x32(45),
         StaticMISTableTarget(zeros(2)),
         ImportanceSampling(big_mass_bank; nsamples=2);
         threaded=false,
@@ -844,13 +842,13 @@ end
     )
     caller_task = current_task()
     serial_result = importance_sample(
-        Random.Xoshiro(0x5204),
+        Threefry4x32(0x5204),
         StaticMISThreadTarget(serial_state),
         ImportanceSampling(serial_bank; nsamples=nsamples);
         threaded=false,
     )
     threaded_result = @inferred importance_sample(
-        Random.Xoshiro(0x5204),
+        Threefry4x32(0x5204),
         StaticMISThreadTarget(threaded_state),
         ImportanceSampling(threaded_bank; nsamples=nsamples);
         threaded=true,
@@ -896,13 +894,13 @@ end
     )
         algorithm = ImportanceSampling(bank; nsamples, mis_scheme=scheme)
         serial = @inferred importance_sample(
-            Random.Xoshiro(0x5307),
+            Threefry4x32(0x5307),
             target,
             algorithm;
             threaded=false,
         )
         threaded = @inferred importance_sample(
-            Random.Xoshiro(0x5307),
+            Threefry4x32(0x5307),
             target,
             algorithm;
             threaded=true,

@@ -1,24 +1,25 @@
 module CUDANPMCValidation
 
-using CUDA, ImportanceSamplers, MLDataDevices, Random, Test, LinearAlgebra
+using CUDA, ImportanceSamplers, MLDataDevices, Test, LinearAlgebra
+using PureRNGs
 
 struct QuadraticTarget{T} end
 struct TruncatedTarget end
 (::TruncatedTarget)(x) = x > -5 ? -abs2(x) / 2 : -Inf
 
-mutable struct RoundNormals{A} <: Random.AbstractRNG
+struct RoundNormals{A} <: PureRNGs.AbstractPureRNG
     batches::A
     index::Int
 end
-function Random.randn!(rng::RoundNormals, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::RoundNormals, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, RoundNormals(rng.batches, rng.index + 1)
 end
 
 function check_sparse_rollback(device)
     initial = SphericalGaussian(0.0, 1.0)
-    base = device(prepare_sampler(Xoshiro(71), TruncatedTarget(),
+    base = device(prepare_sampler(Threefry4x32(71), TruncatedTarget(),
         NPMC(initial; rounds=2, round_size=9)))
     normal = [-2.0, -1.0, -0.5, -0.2, 0.0, 0.2, 0.5, 1.0, 2.0]
     batches = CUDA.CuArray(hcat(normal, normal, normal, vcat(fill(-100.0, 8), 0.0)))
@@ -92,7 +93,7 @@ function main()
             target = QuadraticTarget{T}()
             schedule = [4096, 2048, 4096]
             options = isnothing(policy) ? (;) : (; factor_execution=policy)
-            prepared = device(prepare_sampler(Xoshiro(42), target,
+            prepared = device(prepare_sampler(Threefry4x32(42), target,
                 NPMC(proposal; rounds=3, round_size=schedule); options...))
             result = importance_sample!(prepared)
             @test result.samples isa CUDA.AnyCuArray

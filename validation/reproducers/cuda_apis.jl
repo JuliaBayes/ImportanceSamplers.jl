@@ -1,6 +1,7 @@
 module CUDAAPISValidation
 
-using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, Random, Test
+using CUDA, ImportanceSamplers, LinearAlgebra, MLDataDevices, Test
+using PureRNGs
 
 const IS = ImportanceSamplers
 
@@ -13,15 +14,15 @@ end
 struct TruncatedTarget end
 (::TruncatedTarget)(x) = x > -50 ? -abs2(x) / 2 : -Inf
 
-mutable struct RoundNormals{A} <: Random.AbstractRNG
+struct RoundNormals{A} <: PureRNGs.AbstractPureRNG
     batches::A
     index::Int
 end
 
-function Random.randn!(rng::RoundNormals, destination::CUDA.AnyCuArray)
+function PureRNGs.randn_next!(rng::RoundNormals, destination::CUDA.AnyCuArray; threaded=false)
+    isempty(destination) && return destination, rng
     copyto!(destination, view(rng.batches, :, rng.index))
-    rng.index += 1
-    return destination
+    return destination, RoundNormals(rng.batches, rng.index + 1)
 end
 
 location_vector(proposal) = proposal.location isa Real ?
@@ -130,7 +131,7 @@ function check_local_zero_rollback(device)
     normal = [-0.5, 0.0, 0.5, -0.5, 0.0, 0.5]
     batches = CuArray(hcat(normal, reverse(normal), normal, fill(-100.0, 6)))
     source = prepare_sampler(
-        Xoshiro(101),
+        Threefry4x32(101),
         TruncatedTarget(),
         APIS(validation_bank(Float64, true); rounds=2, round_size=6),
     )
@@ -174,7 +175,7 @@ function main()
         check_local_zero_rollback(device)
         scalar_bank = validation_bank(Float32, true)
         scalar = device(prepare_sampler(
-            Xoshiro(102),
+            Threefry4x32(102),
             QuadraticTarget{Float32}(),
             APIS(scalar_bank; rounds=2, round_size=schedule),
         ))
@@ -203,7 +204,7 @@ function main()
 
         factor_bank = validation_bank(Float64, false)
         factor = device(prepare_sampler(
-            Xoshiro(103),
+            Threefry4x32(103),
             QuadraticTarget{Float64}(),
             APIS(factor_bank; rounds=2, round_size=schedule);
             factor_execution=BatchedFactorExecution(),

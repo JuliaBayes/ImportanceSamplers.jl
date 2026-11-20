@@ -3,7 +3,6 @@ using ImportanceSamplers
 import DensityInterface
 import LinearAlgebra
 import LogExpFunctions
-import Random
 
 const ISK = ImportanceSamplers
 
@@ -42,22 +41,24 @@ struct StaticMISKernelConstantTarget{T}
 end
 (target::StaticMISKernelConstantTarget{T})(::T) where {T} = target.value
 
-mutable struct StaticMISKernelPrefilledRNG{T} <: Random.AbstractRNG
+struct StaticMISKernelPrefilledRNG{T} <: TestScriptedRNG
     uniforms::Vector{T}
     normals::Vector{T}
     calls::Vector{Symbol}
 end
 
-function Random.rand!(rng::StaticMISKernelPrefilledRNG{T}, values::Vector{T}) where {T}
+function PureRNGs.rand_next!(rng::StaticMISKernelPrefilledRNG{T}, values::Vector{T}; threaded=false) where {T}
+    isempty(values) && return values, rng
     push!(rng.calls, :uniform)
     copyto!(values, rng.uniforms)
-    return values
+    return values, rng
 end
 
-function Random.randn!(rng::StaticMISKernelPrefilledRNG{T}, values::Vector{T}) where {T}
+function PureRNGs.randn_next!(rng::StaticMISKernelPrefilledRNG{T}, values::Vector{T}; threaded=false) where {T}
+    isempty(values) && return values, rng
     push!(rng.calls, :normal)
     copyto!(values, rng.normals)
-    return values
+    return values, rng
 end
 
 function caught_static_mis_kernel_failure(f)
@@ -93,11 +94,12 @@ function generic_bank_preparation_allocated(bank)
     return @allocated ISK._prepare_active_proposal_bank(bank)
 end
 
-function Random.rand(
-    rng::Random.AbstractRNG,
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG,
     proposal::StaticMISKernelExternalGaussian{T},
 ) where {T}
-    return proposal.location + randn(rng, T)
+    offset, rng = randn_next(rng, T)
+    return proposal.location + offset, rng
 end
 
 function DensityInterface.logdensityof(
@@ -156,7 +158,7 @@ end
     )
     coherent = @inferred ISK._pack_native_radial_bank(coherent_bank)
     partial = prepare_sampler(
-        Random.Xoshiro(0x5408),
+        Threefry4x32(0x5408),
         _ -> 0.0f0,
         ImportanceSampling(
             coherent_bank;
@@ -326,8 +328,7 @@ end
     )
 
     for (index, bank) in pairs(invalid_banks)
-        rng = Random.Xoshiro(0x5400 + index)
-        expected_rng = copy(rng)
+        rng = Threefry4x32(0x5400 + index)
         error_type = index == 2 ? DimensionMismatch : ArgumentError
         @test_throws error_type prepare_sampler(
             rng,
@@ -335,7 +336,6 @@ end
             ImportanceSampling(bank; nsamples=8);
             threaded=false,
         )
-        @test rand(rng) == rand(expected_rng)
     end
 end
 
@@ -345,7 +345,7 @@ end
         StaticMISKernelExternalGaussian(1.0),
     ]
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5404),
+        Threefry4x32(0x5404),
         sample -> -abs2(sample) / 2,
         ImportanceSampling(ProposalBank(proposals); nsamples=8);
         threaded=false,
@@ -361,7 +361,7 @@ end
         ],
     )
     factor_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5405),
+        Threefry4x32(0x5405),
         StaticMISKernelVectorTarget{Float64}(),
         ImportanceSampling(
             factor_bank;
@@ -370,7 +370,7 @@ end
         threaded=false,
     )
     transformed_sampler = prepare_sampler(
-        Random.Xoshiro(0x5406),
+        Threefry4x32(0x5406),
         StaticMISKernelVectorTarget{Float64}(),
         ImportanceSampling(
             ProposalBank(
@@ -390,7 +390,7 @@ end
         threaded=false,
     )
     product_sampler = prepare_sampler(
-        Random.Xoshiro(0x5407),
+        Threefry4x32(0x5407),
         sample -> -abs2(sample.x),
         ImportanceSampling(
             ProposalBank(
@@ -418,7 +418,7 @@ end
         BigFloat[1, 3],
     )
     big_mass_factor_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x540a),
+        Threefry4x32(0x540a),
         StaticMISKernelVectorTarget{Float64}(),
         ImportanceSampling(big_mass_factor_bank; nsamples=8);
         threaded=false,
@@ -444,7 +444,7 @@ end
     @test 2static_allocation <= 3generic_allocation
 
     erased_factor_sampler = prepare_sampler(
-        Random.Xoshiro(0x5409),
+        Threefry4x32(0x5409),
         StaticMISKernelVectorTarget{Float64}(),
         ImportanceSampling(
             ProposalBank(
@@ -524,8 +524,8 @@ function static_mis_kernel_oracle(rng, packed, scheme, target, nsamples)
     dimension = size(packed.locations, 1)
     uniforms = Vector{eltype(packed.cdf)}(undef, nsamples)
     normals = Vector{T}(undef, dimension * nsamples)
-    Random.rand!(rng, uniforms)
-    Random.randn!(rng, normals)
+    _, rng = rand_next!(rng, uniforms)
+    randn_next!(rng, normals)
 
     assignments = [
         static_mis_kernel_assignment(
@@ -950,14 +950,14 @@ end
 
         for threaded in (false, true)
             sampler = prepare_sampler(
-                Random.Xoshiro(0x5410),
+                Threefry4x32(0x5410),
                 target,
                 ImportanceSampling(bank; nsamples, mis_scheme=scheme);
                 threaded,
             )
             packed = sampler.method_state.bank
             oracle = static_mis_kernel_oracle(
-                copy(sampler.rng),
+                current_rng(sampler),
                 packed,
                 scheme,
                 target,
@@ -997,14 +997,14 @@ end
 
         for threaded in (false, true)
             sampler = prepare_sampler(
-                Random.Xoshiro(0x5411),
+                Threefry4x32(0x5411),
                 target,
                 ImportanceSampling(bank; nsamples, mis_scheme=scheme);
                 threaded,
             )
             packed = sampler.method_state.bank
             oracle = static_mis_kernel_oracle(
-                copy(sampler.rng),
+                current_rng(sampler),
                 packed,
                 scheme,
                 target,
@@ -1031,7 +1031,7 @@ end
             T[1, 3],
         )
         scalar_sampler = @inferred prepare_sampler(
-            Random.Xoshiro(0x5420),
+            Threefry4x32(0x5420),
             StaticMISKernelScalarTarget{T}(),
             ImportanceSampling(scalar_bank; nsamples=16);
             threaded=false,
@@ -1046,7 +1046,7 @@ end
             T[1, 3],
         )
         vector_sampler = @inferred prepare_sampler(
-            Random.Xoshiro(0x5421),
+            Threefry4x32(0x5421),
             StaticMISKernelVectorTarget{T}(),
             ImportanceSampling(vector_bank; nsamples=16);
             threaded=false,
@@ -1152,7 +1152,7 @@ end
         algorithm = ImportanceSampling(bank; nsamples=2)
 
         zero_weight = importance_sample(
-            Random.Xoshiro(0x5430),
+            Threefry4x32(0x5430),
             StaticMISKernelConstantTarget(T(-Inf)),
             algorithm;
             threaded,
@@ -1163,7 +1163,7 @@ end
         for invalid_target in (T(NaN), T(Inf))
             failure = caught_static_mis_kernel_failure() do
                 importance_sample(
-                    Random.Xoshiro(0x5431),
+                    Threefry4x32(0x5431),
                     StaticMISKernelConstantTarget(invalid_target),
                     algorithm;
                     threaded,
@@ -1287,7 +1287,7 @@ end
                  StaticMISKernelScalarTarget{T}() :
                  StaticMISKernelVectorTarget{T}()
         sampler = prepare_sampler(
-            Random.Xoshiro(0x5440),
+            Threefry4x32(0x5440),
             target,
             ImportanceSampling(
                 ProposalBank(proposals, T[1, 3]);

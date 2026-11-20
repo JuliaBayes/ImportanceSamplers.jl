@@ -3,10 +3,55 @@
 A proposal supplies normalized draws and their log density.
 Its support must cover the regions that contribute to the target integral.
 
+## Reading native proposal parameters
+
+Native Gaussian, Student-t, Gamma, Laplace, and box proposals support
+`Statistics.mean`, `var`, `std`, and `cov`. Scalar proposals return scalar
+moments; vector proposals return marginal means, variances and standard
+deviations, and a covariance matrix. Independent and spherical covariances
+retain a `Diagonal` representation; correlated covariances are materialized.
+Array results preserve precision and device placement without implicit host
+transfers. Means and diagonal standard deviations can borrow proposal storage;
+treat returned parameters as read-only or explicitly `copy` them before mutation.
+Moments are computed at the proposal's precision. Unrepresentable covariance
+matrices can contain `Inf` or `NaN` from overflow; `std` or the stored scale
+factor can remain usable when a variance or covariance cannot be represented.
+
+```@example proposals
+using ImportanceSamplers, Statistics
+
+q = DiagonalGaussian(Float32[1, -1], Float32[2, 3])
+(mean(q), var(q), cov(q), proposal_scale_factor(q))
+```
+
+[`proposal_scale_factor`](@ref) reads a Gaussian or Student-t proposal's stored
+scale: a scalar for spherical proposals, a `Diagonal` wrapper for diagonal
+proposals, or the stored lower-triangular matrix for factor proposals. The result
+borrows storage without copying or transferring parameters. For Student-t
+proposals this is an elliptical scale factor, not a covariance factor.
+
+[`current_proposal`](@ref) still returns an independent native snapshot, so its
+parameters remain unchanged when the prepared sampler runs again. No methods
+for `ProductProposal` or `TransformedProposal` are supplied: named block layouts
+need an explicit covariance convention, and nonlinear transformed moments are
+not the moments of the base proposal. Individual product blocks or an explicit
+transformed proposal's `.base` can be inspected in their own coordinates.
+
+With Distributions.jl loaded, `Normal(q)` converts a scalar native Gaussian and
+`MvNormal(q)` converts a vector native Gaussian. These constructors require CPU
+parameters: transfer accelerator proposals explicitly first. Spherical and
+diagonal Gaussian representations are retained. Factor conversion copies the
+stored lower factor and materializes the covariance required by Distributions,
+without refactorization or inversion. Vector means may share storage with the
+native proposal and must be treated as read-only.
+Spherical and diagonal conversion rejects coordinate variances that underflow
+to zero or overflow, since their ecosystem representation requires positive
+finite covariance values.
+
 ## Gaussian proposals
 
 ```@example proposals
-using ImportanceSamplers, Random, LinearAlgebra
+using ImportanceSamplers, PureRNGs, LinearAlgebra
 
 scalar = SphericalGaussian(0.0, 2.0)
 spherical = SphericalGaussian(zeros(3), 2.0)
@@ -15,7 +60,8 @@ diagonal = DiagonalGaussian(zeros(3), [0.5, 1.0, 2.0])
 C = [1.0 0.6 0.0; 0.6 2.0 0.2; 0.0 0.2 1.0]
 correlated = FactorGaussian(zeros(3), cholesky(Symmetric(C)))
 
-rand(Xoshiro(7), correlated)
+draw, next_rng = rand_next(Threefry4x32(7), correlated)
+draw
 ```
 
 | Constructor | Scale argument | Gaussian covariance |
@@ -37,7 +83,8 @@ proposal = FactorStudentT(
     5.0, zeros(3),
     cholesky(Symmetric(C)),
 )
-rand(Xoshiro(7), proposal)
+draw, next_rng = rand_next(Threefry4x32(7), proposal)
+draw
 ```
 
 Student-t constructors follow the same layouts:
@@ -61,6 +108,13 @@ To obtain a desired covariance factor `Lcov`, use
 A multivariate Student-t draw uses one shared random radial scale.
 A diagonal scale therefore does not make its coordinates independent.
 
+`mean` is the location when `nu > 1` and otherwise returns shape-preserving
+`NaN` values. Finite covariance exists only for `nu > 2`. Following
+Distributions.jl conventions, scalar `var` and `std` are `Inf` for
+`1 < nu <= 2` and `NaN` for `nu <= 1`; multivariate `var`, `std`, and `cov`
+return shape-preserving `NaN` values whenever `nu <= 2`. These values retain
+the proposal's floating-point precision.
+
 The adaptive methods keep `nu` fixed.
 AMIS, NPMC, CAIS, and FirstOrderGRAMIS require `nu > 2` because they fit covariance.
 Location-only methods accept any finite `nu > 0`.
@@ -75,7 +129,7 @@ The proposal copies vector bounds and has constant density within the box.
 ```@example proposals
 box = BoxUniform([-2.0, 0.0], [2.0, 3.0])
 box_samples = importance_sample(
-    Xoshiro(17), box, ImportanceSampling(box; nsamples=256),
+    Threefry4x32(17), box, ImportanceSampling(box; nsamples=256),
 )
 extrema(box_samples.logweights)
 ```
@@ -100,7 +154,7 @@ coordinates with means `shape .* scale` and variances `shape .* scale.^2`.
 ```@example proposals
 gamma = IndependentGamma([0.5, 5.0], [2.0, 0.2])
 gamma_samples = importance_sample(
-    Xoshiro(18), gamma, ImportanceSampling(gamma; nsamples=256),
+    Threefry4x32(18), gamma, ImportanceSampling(gamma; nsamples=256),
 )
 extrema(gamma_samples.logweights)
 ```
@@ -122,7 +176,7 @@ gamma_bank = ProposalBank([
     IndependentGamma([24.0, 28.0], [0.25, 0.25]),
 ])
 gamma_target = IndependentGamma([30.0, 36.0], [0.2, 0.2])
-gamma_prepared = prepare_sampler(Xoshiro(20), gamma_target,
+gamma_prepared = prepare_sampler(Threefry4x32(20), gamma_target,
     APIS(gamma_bank; rounds=3, round_size=1_024))
 importance_sample!(gamma_prepared)
 current_proposal(gamma_prepared)
@@ -142,7 +196,7 @@ Each coordinate uses one uniform draw, without rejection sampling.
 
 ```@example proposals
 laplace = IndependentLaplace([0.0, 1.0], [1.0, 0.5])
-prepared = prepare_sampler(Xoshiro(19), laplace,
+prepared = prepare_sampler(Threefry4x32(19), laplace,
     AMIS(laplace; rounds=3, round_size=1_000))
 laplace_samples = importance_sample!(prepared)
 current_proposal(prepared)
@@ -246,11 +300,12 @@ To expose its components to MIS, construct
 Implement these two operations for the same normalized measure:
 
 ```julia
-Random.rand(rng, proposal)
+PureRNGs.rand_next(rng, proposal)
 DensityInterface.logdensityof(proposal, sample)
 ```
 
-A draw may be a scalar, vector, or named tuple of scalar/vector leaves.
+`rand_next` returns the draw and the continued RNG. A draw may be a scalar,
+vector, or named tuple of scalar/vector leaves.
 Every draw must keep the same structure, numeric types, and dimensions.
 
 See [Custom proposals and transitions](@ref extension-guide) for a complete example.

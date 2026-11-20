@@ -1,6 +1,7 @@
 module SamplerSupportTable
 
-using ImportanceSamplers, Random
+using ImportanceSamplers
+using PureRNGs
 import MLDataDevices
 
 scalar_target(x::T) where {T} = -(abs2(x) + log(T(2) * T(pi))) / T(2)
@@ -63,6 +64,18 @@ function support_cases()
             target=LogTarget(vector_target; grad=gradient!), limits=cooperative),
         case("LAIS: RWM", "factor Gaussian bank", LAIS(bank;
             transition=RandomWalkMetropolis(0.25f0), rounds=2, round_size=128)),
+        case("LAIS: HMC", "factor Gaussian bank; supplied gradient", LAIS(bank;
+            transition=HamiltonianMonteCarlo(; step_size=0.1f0, leapfrog_steps=3),
+            rounds=2, round_size=128); target=LogTarget(vector_target; grad=gradient!),
+            limits=(metal=:hamiltonian_backend_unsupported,
+                reactant_cpu=:hamiltonian_backend_unsupported,
+                reactant_gpu=:hamiltonian_backend_unsupported)),
+        case("HAIS", "factor Gaussian bank; supplied gradient", HAIS(bank;
+            transition=HamiltonianMonteCarlo(; step_size=0.1f0, leapfrog_steps=3),
+            rounds=2, round_size=128); target=LogTarget(vector_target; grad=gradient!),
+            limits=(metal=:hamiltonian_backend_unsupported,
+                reactant_cpu=:hamiltonian_backend_unsupported,
+                reactant_gpu=:hamiltonian_backend_unsupported)),
         case("LAIS: RAM", "factor Gaussian bank; four warmup moves", LAIS(bank;
             transition=RAM(0.25f0; tuning=WarmupTuning(4)), rounds=2, round_size=128);
             limits=(reactant_cpu=:reactant_cpu_transition_tuning,)),
@@ -84,7 +97,8 @@ sample_arrays(x::NamedTuple) = values(x)
 
 function check_support_case(row; device=MLDataDevices.CPUDevice(),
     backend=:cpu, isresident=x -> x isa Array, threaded=true)
-    sampler = prepare_sampler(Xoshiro(73), row.target, row.algorithm;
+    rng = Threefry4x32(73)
+    sampler = prepare_sampler(rng, row.target, row.algorithm;
         threaded, row.keywords...)
     prepared = try
         device(sampler)

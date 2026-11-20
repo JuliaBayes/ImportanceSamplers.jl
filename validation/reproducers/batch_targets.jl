@@ -1,4 +1,5 @@
-using ImportanceSamplers, Random, Test
+using ImportanceSamplers, Test
+using PureRNGs: Threefry4x32
 import MLDataDevices
 
 function batch_reference_logtarget(x, p)
@@ -23,8 +24,9 @@ function verify_named_batch_target(device; T=Float32)
     p = (; scale=T(2))
     scalar = LogTarget(batch_named_logtarget)
     batch = LogTarget(batch_named_logtarget; batch=batch_named_values!)
-    a = device(prepare_sampler(Xoshiro(18), scalar, p, algorithm; transform))
-    b = device(prepare_sampler(Xoshiro(18), batch, p, algorithm; transform))
+    rng = Threefry4x32(18)
+    a = device(prepare_sampler(rng, scalar, p, algorithm; transform))
+    b = device(prepare_sampler(rng, batch, p, algorithm; transform))
     expected, actual = importance_sample!(a), importance_sample!(b)
     @testset "named batch layout on $(typeof(device))" begin
         @test all(Array(x) ≈ Array(y) for (x, y) in zip(actual.samples, expected.samples))
@@ -72,8 +74,9 @@ function verify_batch_targets(device; T=Float32, select=nothing)
         for (name, algorithm) in pairs(algorithms)
             isnothing(select) || name in select || continue
             @testset "$name" begin
-                a = device(prepare_sampler(Xoshiro(55), scalar, p, algorithm))
-                b = device(prepare_sampler(Xoshiro(55), batch, p, algorithm))
+                rng = Threefry4x32(55)
+                a = device(prepare_sampler(rng, scalar, p, algorithm))
+                b = device(prepare_sampler(rng, batch, p, algorithm))
                 expected, actual = importance_sample!(a), importance_sample!(b)
                 tolerance = 8sqrt(eps(T))
                 @test Array(actual.samples) ≈ Array(expected.samples) rtol=tolerance atol=tolerance

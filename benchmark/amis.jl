@@ -4,7 +4,7 @@ using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
+using PureRNGs
 using Serialization
 using Sockets
 
@@ -107,7 +107,7 @@ function amis_prepare(device_kind, ::Type{T}, geometry, dimension, schedule, see
         round_size=collect(schedule),
     )
     sampler = prepare_sampler(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         AMISBenchmarkTarget{T}(),
         algorithm;
         threaded=true,
@@ -413,7 +413,8 @@ function guard_prepare(method, device_kind, seed)
                     round_size=AMIS_GUARD_SAMPLE_COUNT,
                 )
     sampler = prepare_sampler(
-        Xoshiro(seed), AMISBenchmarkTarget{T}(), algorithm; threaded=true,
+        Threefry4x32(seed),
+        AMISBenchmarkTarget{T}(), algorithm; threaded=true,
     )
     return device_kind === :cpu ? sampler : amis_cuda_device()(sampler)
 end

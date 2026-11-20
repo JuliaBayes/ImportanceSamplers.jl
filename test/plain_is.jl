@@ -1,8 +1,6 @@
 import DensityInterface
 import LogDensityProblems
 import MLDataDevices
-import Random
-import Random: rand
 
 const IS = ImportanceSamplers
 
@@ -59,20 +57,20 @@ struct AlternatingLeafTypeProposal
     draw_count::Base.RefValue{Int}
 end
 
-function rand(rng::Random.AbstractRNG, proposal::AlternatingLeafTypeProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::AlternatingLeafTypeProposal)
     proposal.draw_count[] += 1
-    value = rand(rng)
-    return isone(proposal.draw_count[]) ? value : Float32(value)
+    value, rng = rand_next(rng, Float64)
+    return (isone(proposal.draw_count[]) ? value : Float32(value)), rng
 end
 
 struct AlternatingStructureProposal
     draw_count::Base.RefValue{Int}
 end
 
-function rand(rng::Random.AbstractRNG, proposal::AlternatingStructureProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::AlternatingStructureProposal)
     proposal.draw_count[] += 1
-    value = rand(rng)
-    return isone(proposal.draw_count[]) ? (value=value,) : (value=[value],)
+    value, rng = rand_next(rng, Float64)
+    return (isone(proposal.draw_count[]) ? (value=value,) : (value=[value],)), rng
 end
 
 IS._proposal_dimension(proposal::TestVectorProposal) = length(proposal.location)
@@ -149,14 +147,14 @@ end
 
 @testset "generic batch storage" begin
     scalar_proposal = TestScalarProposal(1.0)
-    scalar_batch = _draw_test_batch(Random.Xoshiro(11), scalar_proposal, 5)
+    scalar_batch = _draw_test_batch(Threefry4x32(11), scalar_proposal, 5)
     @test scalar_batch isa Vector{Float64}
     @test scalar_proposal.draw_count[] == 5
     @test IS._sample_count(scalar_batch) == 5
     @test [IS._sample_at(scalar_batch, i) for i in 1:5] == scalar_proposal.history
 
     vector_proposal = TestVectorProposal(Float32[1, -1])
-    vector_batch = _draw_test_batch(Random.Xoshiro(22), vector_proposal, 4)
+    vector_batch = _draw_test_batch(Threefry4x32(22), vector_proposal, 4)
     @test vector_batch isa Matrix{Float32}
     @test size(vector_batch) == (2, 4)
     @test vector_proposal.draw_count[] == 4
@@ -165,12 +163,12 @@ end
 
     abstract_elements = TestAbstractElementVectorProposal()
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(23), abstract_elements, 2
+        Threefry4x32(23), abstract_elements, 2
     )
     @test abstract_elements.draw_count[] == 1
 
     named_proposal = TestNamedProposal(Float64)
-    named_batch = _draw_test_batch(Random.Xoshiro(33), named_proposal, 3)
+    named_batch = _draw_test_batch(Threefry4x32(33), named_proposal, 3)
     @test named_batch isa NamedTuple
     @test named_batch.location isa Vector{Float64}
     @test named_batch.state.position isa Matrix{Float64}
@@ -187,36 +185,36 @@ end
 
     leaf_mismatch = AlternatingLeafTypeProposal(Ref(0))
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(44), leaf_mismatch, 2
+        Threefry4x32(44), leaf_mismatch, 2
     )
     @test leaf_mismatch.draw_count[] == 2
 
     structure_mismatch = AlternatingStructureProposal(Ref(0))
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(55), structure_mismatch, 2
+        Threefry4x32(55), structure_mismatch, 2
     )
     @test structure_mismatch.draw_count[] == 2
 
     length_mismatch = TestChangingVectorLengthProposal()
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(66), length_mismatch, 2
+        Threefry4x32(66), length_mismatch, 2
     )
     @test length_mismatch.draw_count[] == 2
 
     empty_named = TestEmptyNamedProposal()
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(77), empty_named, 1
+        Threefry4x32(77), empty_named, 1
     )
     @test empty_named.draw_count[] == 1
 
     nested_empty_named = TestNestedEmptyNamedProposal()
     @test_throws SamplerExecutionError _draw_test_batch(
-        Random.Xoshiro(88), nested_empty_named, 1
+        Threefry4x32(88), nested_empty_named, 1
     )
     @test nested_empty_named.draw_count[] == 1
 
     reused_buffer = TestReusedVectorBufferProposal(zeros(2))
-    reused_batch = _draw_test_batch(Random.Xoshiro(99), reused_buffer, 3)
+    reused_batch = _draw_test_batch(Threefry4x32(99), reused_buffer, 3)
     @test reused_buffer.draw_count[] == 3
     @test [copy(IS._sample_at(reused_batch, i)) for i in 1:3] ==
           reused_buffer.history
@@ -246,10 +244,10 @@ function PreparedSequenceProposal(values::Vector{T}, logdensities::Vector{L}) wh
     )
 end
 
-function rand(::Random.AbstractRNG, proposal::PreparedSequenceProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, proposal::PreparedSequenceProposal)
     proposal.draw_index += 1
     push!(proposal.draw_tasks, current_task())
-    return proposal.values[proposal.draw_index]
+    return proposal.values[proposal.draw_index], rng
 end
 
 function DensityInterface.logdensityof(
@@ -267,7 +265,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 @testset "prepared serial importance sampling" begin
     identity_proposal = TestScalarProposal(0.0)
     identity_algorithm = ImportanceSampling(identity_proposal; nsamples=8)
-    identity_rng = Random.Xoshiro(101)
+    identity_rng = Threefry4x32(101)
     identity_sampler = prepare_sampler(
         identity_rng,
         sample -> DensityInterface.logdensityof(identity_proposal, sample),
@@ -294,7 +292,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
     @test identity_result.diagnostics.transfers.bytes == 0
 
     batched_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(101),
+        Threefry4x32(101),
         sample -> DensityInterface.logdensityof(identity_proposal, sample),
         identity_algorithm;
         factor_execution=BatchedFactorExecution(),
@@ -304,14 +302,14 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
     @test importance_sample!(batched_sampler).diagnostics.factor_execution_policy ===
           :batched
     @test_throws ArgumentError prepare_sampler(
-        Random.Xoshiro(101),
+        Threefry4x32(101),
         sample -> DensityInterface.logdensityof(identity_proposal, sample),
         identity_algorithm;
         factor_execution=UnsupportedFactorExecution(),
         threaded=false,
     )
     @test_throws ArgumentError prepare_sampler(
-        Random.Xoshiro(101),
+        Threefry4x32(101),
         sample -> DensityInterface.logdensityof(identity_proposal, sample),
         identity_algorithm;
         factor_execution=:batched,
@@ -321,7 +319,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
     @testset "preparation resolves known targets once" begin
         mismatched_proposal = TestVectorProposal(zeros(2))
         @test_throws DimensionMismatch prepare_sampler(
-            Random.Xoshiro(102),
+            Threefry4x32(102),
             WrongDimensionTarget(),
             ImportanceSampling(mismatched_proposal; nsamples=2);
             threaded=false,
@@ -331,7 +329,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
         counted_target = CountingDensityTarget(Ref(0), Ref(0))
         counted_proposal = TestScalarProposal(0.0)
         counted_sampler = prepare_sampler(
-            Random.Xoshiro(103),
+            Threefry4x32(103),
             counted_target,
             ImportanceSampling(counted_proposal; nsamples=2);
             threaded=false,
@@ -345,7 +343,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
         priority_proposal = TestVectorProposal(zeros(2))
         priority_result = importance_sample(
-            Random.Xoshiro(104),
+            Threefry4x32(104),
             LogTarget(PriorityTarget()),
             ImportanceSampling(priority_proposal; nsamples=2);
             threaded=false,
@@ -359,7 +357,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
         contextual_proposal = TestScalarProposal(0.0)
         contextual_result = importance_sample(
-            Random.Xoshiro(105),
+            Threefry4x32(105),
             (sample, p) -> p.shift - abs2(sample),
             (shift=2.5,),
             ImportanceSampling(contextual_proposal; nsamples=2);
@@ -375,14 +373,14 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
     base_proposal = TestScalarProposal(0.5)
     shifted_proposal = TestScalarProposal(0.5)
     base_sampler = prepare_sampler(
-        Random.Xoshiro(202),
+        Threefry4x32(202),
         sample -> DensityInterface.logdensityof(base_proposal, sample),
         ImportanceSampling(base_proposal; nsamples=7);
         threaded=false,
     )
     shift = 3.25
     shifted_sampler = prepare_sampler(
-        Random.Xoshiro(202),
+        Threefry4x32(202),
         (sample, context) ->
             DensityInterface.logdensityof(shifted_proposal, sample) + context.shift,
         (shift=shift,),
@@ -397,7 +395,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
     mixed_proposal = PreparedSequenceProposal([1.0, 2.0, 3.0], zeros(3))
     mixed_sampler = prepare_sampler(
-        Random.Xoshiro(303),
+        Threefry4x32(303),
         sample -> sample == 2.0 ? -Inf : sample,
         ImportanceSampling(mixed_proposal; nsamples=3);
         threaded=false,
@@ -417,7 +415,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
         return 2sample
     end
     raw_sampler = prepare_sampler(
-        Random.Xoshiro(404),
+        Threefry4x32(404),
         raw_target,
         ImportanceSampling(raw_proposal; nsamples=3);
         threaded=false,
@@ -430,7 +428,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
     float32_proposal = PreparedSequenceProposal(Float32[1, 2], zeros(Float32, 2))
     float32_sampler = prepare_sampler(
-        Random.Xoshiro(505),
+        Threefry4x32(505),
         identity,
         ImportanceSampling(float32_proposal; nsamples=2);
         threaded=false,
@@ -476,7 +474,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
             proposal = PreparedSequenceProposal([1.0, 2.0], zeros(Float32, 2))
             target = sample -> target_logs[Int(sample)]
             sampler = prepare_sampler(
-                Random.Xoshiro(506),
+                Threefry4x32(506),
                 target,
                 ImportanceSampling(proposal; nsamples=2);
                 threaded=false,
@@ -493,7 +491,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
         for (proposal_logs, expected_weights) in proposal_type_cases
             proposal = PreparedSequenceProposal([1.0, 2.0], proposal_logs)
             sampler = prepare_sampler(
-                Random.Xoshiro(507),
+                Threefry4x32(507),
                 _ -> 0.0f0,
                 ImportanceSampling(proposal; nsamples=2);
                 threaded=false,
@@ -511,7 +509,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
             return sample
         end
         phase_sampler = prepare_sampler(
-            Random.Xoshiro(508),
+            Threefry4x32(508),
             phase_target,
             ImportanceSampling(phase_proposal; nsamples=3);
             threaded=false,
@@ -530,7 +528,7 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
     infinite_proposal = PreparedSequenceProposal([1.0], [Inf])
     infinite_sampler = prepare_sampler(
-        Random.Xoshiro(606),
+        Threefry4x32(606),
         _ -> 0.0,
         ImportanceSampling(infinite_proposal; nsamples=1);
         threaded=false,
@@ -541,11 +539,13 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
 
     stream_proposal = TestScalarProposal(-0.25)
     stream_algorithm = ImportanceSampling(stream_proposal; nsamples=4)
-    supplied_rng = Random.Xoshiro(707)
-    expected_rng = Random.Xoshiro(707)
+    supplied_rng = Threefry4x32(707)
+    expected_rng = Threefry4x32(707)
     expected_proposal = TestScalarProposal(-0.25)
-    expected_first = [rand(expected_rng, expected_proposal) for _ in 1:4]
-    expected_second = [rand(expected_rng, expected_proposal) for _ in 1:4]
+    expected = map(1:8) do _
+        value, expected_rng = rand_next(expected_rng, expected_proposal)
+        value
+    end
     stream_sampler = prepare_sampler(
         supplied_rng,
         sample -> DensityInterface.logdensityof(stream_proposal, sample),
@@ -557,29 +557,29 @@ struct UnsupportedFactorExecution <: ImportanceSamplers._AbstractFactorExecution
     saved_first_logweights = copy(first_result.logweights)
     second_result = importance_sample!(stream_sampler)
 
-    @test first_result.samples == expected_first
-    @test second_result.samples == expected_second
+    @test first_result.samples == expected[1:4]
+    @test second_result.samples == expected[5:8]
     @test first_result.samples == saved_first_samples
     @test first_result.logweights == saved_first_logweights
     @test first_result.samples !== second_result.samples
     @test first_result.logweights !== second_result.logweights
-    @test rand(supplied_rng) == rand(expected_rng)
+    @test current_rng(stream_sampler) == expected_rng
 end
 
 @testset "one-shot importance sampling" begin
-    context_free_state = Random.Xoshiro(1301)
+    context_free_state = Threefry4x32(1301)
     one_shot_proposal = TestScalarProposal(0.25)
     prepared_proposal = TestScalarProposal(0.25)
     one_shot_algorithm = ImportanceSampling(one_shot_proposal; nsamples=9)
     prepared_algorithm = ImportanceSampling(prepared_proposal; nsamples=9)
     one_shot_result = importance_sample(
-        copy(context_free_state),
+        context_free_state,
         sample -> DensityInterface.logdensityof(one_shot_proposal, sample),
         one_shot_algorithm;
         threaded=false,
     )
     prepared_sampler = prepare_sampler(
-        copy(context_free_state),
+        context_free_state,
         sample -> DensityInterface.logdensityof(prepared_proposal, sample),
         prepared_algorithm;
         threaded=false,
@@ -591,12 +591,12 @@ end
     @test normalized_weights(one_shot_result) == normalized_weights(prepared_result)
     @test lognormalizer(one_shot_result) == lognormalizer(prepared_result)
 
-    contextual_state = Random.Xoshiro(1302)
+    contextual_state = Threefry4x32(1302)
     contextual_one_shot_proposal = TestScalarProposal(-0.5)
     contextual_prepared_proposal = TestScalarProposal(-0.5)
     context = (shift=2.75,)
     contextual_one_shot = importance_sample(
-        copy(contextual_state),
+        contextual_state,
         (sample, p) ->
             DensityInterface.logdensityof(contextual_one_shot_proposal, sample) +
             p.shift,
@@ -605,7 +605,7 @@ end
         threaded=false,
     )
     contextual_sampler = prepare_sampler(
-        copy(contextual_state),
+        contextual_state,
         (sample, p) ->
             DensityInterface.logdensityof(contextual_prepared_proposal, sample) +
             p.shift,
@@ -625,7 +625,7 @@ end
     inference_target = sample -> DensityInterface.logdensityof(inference_proposal, sample)
     inferred_algorithm = @inferred ImportanceSampling(inference_proposal; nsamples=4)
     inferred_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(1303),
+        Threefry4x32(1303),
         inference_target,
         inferred_algorithm;
         threaded=false,
@@ -639,7 +639,7 @@ end
     inferred_one_shot_target =
         sample -> DensityInterface.logdensityof(inferred_one_shot_proposal, sample)
     inferred_one_shot = @inferred importance_sample(
-        Random.Xoshiro(1304),
+        Threefry4x32(1304),
         inferred_one_shot_target,
         ImportanceSampling(inferred_one_shot_proposal; nsamples=4);
         threaded=false,
@@ -655,7 +655,7 @@ end
     lognormal_target(x)::Float64 =
         -0.5 * abs2(log(x)) - log(x) - 0.5 * log(2pi)
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x7102),
+        Threefry4x32(0x7102),
         lognormal_target,
         ImportanceSampling(proposal; nsamples=64);
         threaded=false,

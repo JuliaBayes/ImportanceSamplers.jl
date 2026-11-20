@@ -12,6 +12,7 @@ import LinearAlgebra
 import LogDensityProblems
 import LogExpFunctions
 import MLDataDevices
+import PureRNGs
 import Random
 import Statistics
 import SpecialFunctions
@@ -45,6 +46,9 @@ export AbstractImportanceSampler,
     FirstOrderGRAMIS,
     FirstOrderGRAMISRoundError,
     FusedFactorExecution,
+    HamiltonianMonteCarlo,
+    HAIS,
+    HAISRoundError,
     ImportanceSampling,
     IndependentGamma,
     IndependentLaplace,
@@ -63,7 +67,9 @@ export AbstractImportanceSampler,
     ContinuousTuning,
     MultinomialResampling,
     PartialDeterministicMixture,
+    ParetoSmoothedSamples,
     ProposalBank,
+    QuadraticCoupling,
     RandomMixture,
     SamplerAlreadyExecutedError,
     SamplerBusyError,
@@ -73,6 +79,7 @@ export AbstractImportanceSampler,
     SphericalGaussian,
     SphericalStudentT,
     StandardMIS,
+    SteinControlVariate,
     StratifiedMixture,
     PositiveTransform,
     ProductProposal,
@@ -82,18 +89,26 @@ export AbstractImportanceSampler,
     WeightedSamples,
     WeightedSampleView,
     current_proposal,
+    current_rng,
+    control_variate_mean,
+    fit_control_variate,
+    fit_transport,
     importance_sample,
     importance_sample!,
     lognormalizer,
     normalized_weights,
+    psis,
+    proposal_scale_factor,
     prepare_sampler,
+    RetainCoordinates,
     retarget,
-    resample
+    resample_next
 
 include("proposals.jl")
 include("transforms.jl")
 include("independent_proposals.jl")
 include("laplace_proposals.jl")
+include("proposal_statistics.jl")
 include("proposal_composition.jl")
 include("proposal_banks.jl")
 include("targets.jl")
@@ -103,11 +118,14 @@ include("named_derivatives.jl")
 include("methods/importance_sampling.jl")
 include("storage.jl")
 include("execution.jl")
+include("pure_proposals.jl")
 include("methods/static_mis.jl")
 include("population_preparation.jl")
 include("methods/dm_pmc.jl")
 include("mcmc_transitions.jl")
 include("methods/lais.jl")
+include("hamiltonian.jl")
+include("methods/hais.jl")
 include("methods/apis.jl")
 include("methods/cais.jl")
 include("adaptive_gaussian.jl")
@@ -132,10 +150,19 @@ include("cais_execution.jl")
 include("dm_pmc_execution.jl")
 include("apis_execution.jl")
 include("lais_execution.jl")
+include("hais_execution.jl")
+include("lower_width_adaptation.jl")
+include("hamiltonian_integration.jl")
+include("hamiltonian_device.jl")
 include("mcmc_transition_kernels.jl")
 include("results.jl")
+include("psis.jl")
 include("resampling.jl")
 include("statistics.jl")
 include("batched_targets.jl")
+include("fitted_transport.jl")
+include("batched_gradients.jl")
+include("retained_coordinates.jl")
+include("control_variates.jl")
 
 end # module ImportanceSamplers

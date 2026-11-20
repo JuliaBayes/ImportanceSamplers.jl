@@ -1,7 +1,17 @@
+struct _BatchedGradient{G,B}
+    scalar::G
+    batch::B
+end
+
+_with_batch_gradient(gradient, ::Nothing) = gradient
+_with_batch_gradient(gradient, batch) = _BatchedGradient(gradient, batch)
+_scalar_gradient(gradient) = gradient
+_scalar_gradient(gradient::_BatchedGradient) = gradient.scalar
+
 """
     LogTarget(logdensity)
-    LogTarget(logdensity, adtype; grad=nothing, batch=nothing)
-    LogTarget(logdensity; grad=nothing, batch=nothing)
+    LogTarget(logdensity, adtype; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing)
+    LogTarget(logdensity; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing)
 
 Mark `logdensity` as a package callable target.
 
@@ -18,6 +28,7 @@ closure captures cannot be transferred reliably.
 | Batch values | `batch!(values, samples)` | `batch!(values, samples, p)` | Optional; fill every value |
 | In-place gradient | `grad!(g, sample)` | `grad!(g, sample, p)` | Optional explicit derivative |
 | Out-of-place gradient | `grad(sample)` | `grad(sample, p)` | CPU-only alternative to an in-place gradient |
+| Batch values and gradients | `batch_grad!(values, gradients, samples)` | `batch_grad!(values, gradients, samples, p)` | Optional combined derivative callback |
 
 Pass one gradient form through `grad=` or select an automatic backend through
 `adtype`. Only gradient-based methods such as [`FirstOrderGRAMIS`](@ref) need
@@ -30,6 +41,11 @@ return value is ignored. Samples are a vector for scalar parameters, a
 dimension-by-count matrix for vector parameters, or a named tuple of batch
 leaves for named parameters. With `transform=`, leaves contain logical values
 and the package adds the Jacobian. Batch widths can change, but never equal zero.
+`values[j]` corresponds to sample `j` (column `j` for vector parameters).
+Retained sampling batches preserve this order in the result, including with a
+[`ProposalBank`](@ref). [`AMIS`](@ref) concatenates these batches in round order.
+Do not concatenate every callback invocation: adaptation trials, upper MCMC
+evaluations, and padded candidates need not appear in the result.
 
 Inputs are borrowed and read-only. Retain neither inputs nor output buffers.
 Each value must be independent of batch width and other samples. `-Inf` is valid,
@@ -55,36 +71,61 @@ CPU-only. See the device guide for backend-specific limits.
 `batch` changes value evaluation only. Automatic differentiation still uses the
 scalar callable and can evaluate its primal while computing a gradient.
 
+Pass `batch_grad=batch_grad!` for combined accelerator values and gradients,
+taking priority over scalar gradients and AD in accelerator score phases.
+The callback fills `values` and `gradients` for independent columns of `samples`.
+It takes an optional final context `p`, like `batch`. On CPU, `grad` or `adtype`
+remains preferred. Without either, CPU workers call `batch_grad` on one-column
+batches; this fallback requires a thread-safe callback or `threaded=false`.
+Accept views and varying positive widths. The return value is ignored.
+Write every value and every gradient at finite-density points. Return `-Inf`
+safely outside support; the corresponding gradient is ignored. Do not throw
+only because one column lies outside support. Never mix columns or normalize
+their joint density. Inputs are read-only and outputs are borrowed.
+With named transforms, both sample and gradient batches have logical fields;
+the package adds Jacobians and pulls gradients back to sampling coordinates.
+Named mapping checks can synchronize once per batch. Flat batches require no
+per-gradient host readback. `batch` remains separate for value-only phases.
+
 With a named `transform=` layout, the callable receives named logical parameters.
 An explicit gradient differentiates only this logical target. Write scalar
 gradient fields with `g.field[]` and vector fields with `g.field[i]`. The package
 adds the transform pullback and Jacobian derivative. Borrowed inputs and gradient
 buffers must not escape the callback. CPU automatic gradients use ordinary arrays
 in the composed target through DifferentiationInterface.
+
+Pass `retain=RetainCoordinates(...)` to save an expensive parameter map during
+returned importance draws. Trial and derivative evaluations keep the ordinary
+callable. See [`RetainCoordinates`](@ref) for the output-buffer contract.
 """
-struct LogTarget{F,A<:ADTypes.AbstractADType,G,B}
+struct LogTarget{F,A<:ADTypes.AbstractADType,G,B,R}
     logdensity::F
     adtype::A
     grad::G
     batch::B
+    retain::R
 end
 
-LogTarget(f, adtype::ADTypes.AbstractADType; grad=nothing, batch=nothing) =
-    LogTarget(f, adtype, grad, batch)
-LogTarget(f; grad=nothing, batch=nothing) =
-    LogTarget(f, ADTypes.NoAutoDiff(), grad, batch)
+LogTarget(f, adtype::ADTypes.AbstractADType; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing) =
+    LogTarget(f, adtype, _with_batch_gradient(grad, batch_grad), batch, retain)
+LogTarget(f; grad=nothing, batch=nothing, batch_grad=nothing, retain=nothing) =
+    LogTarget(f, ADTypes.NoAutoDiff(); grad, batch, batch_grad, retain)
 LogTarget(f, adtype, grad) = LogTarget(f, adtype, grad, nothing)
+LogTarget(f, adtype, grad, batch) = LogTarget(f, adtype, grad, batch, nothing)
 
 struct _NoTargetContext end
 
-struct _PreparedLogTarget{F,P,A<:ADTypes.AbstractADType,G,B}
+struct _PreparedLogTarget{F,P,A<:ADTypes.AbstractADType,G,B,R}
     logdensity::F
     context::P
     adtype::A
     gradient::G
     batch::B
+    retain::R
 end
 
+_PreparedLogTarget(f, p, adtype, gradient, batch) =
+    _PreparedLogTarget(f, p, adtype, gradient, batch, nothing)
 _PreparedLogTarget(f, p, adtype, gradient) =
     _PreparedLogTarget(f, p, adtype, gradient, nothing)
 
@@ -115,6 +156,7 @@ struct _BoundBatchTarget{T,B,P,C} <: _BoundTarget
 end
 
 Adapt.@adapt_structure LogTarget
+Adapt.@adapt_structure _BatchedGradient
 Adapt.@adapt_structure _PreparedLogTarget
 Adapt.@adapt_structure _BoundContextFreeTarget
 Adapt.@adapt_structure _BoundContextualTarget
@@ -154,6 +196,10 @@ end
 _copy_target_callable(device::MLDataDevices.AbstractDevice, target) =
     _copy_to_device(device, target)
 
+_copy_target_callable(device::MLDataDevices.AbstractDevice, gradient::_BatchedGradient) =
+    _BatchedGradient(_copy_target_callable(device, gradient.scalar),
+        _copy_target_callable(device, gradient.batch))
+
 function _transfer_prepared_target(
     device::MLDataDevices.AbstractDevice,
     target::_PreparedLogTarget,
@@ -164,6 +210,7 @@ function _transfer_prepared_target(
         _copy_to_device(device, target.adtype),
         _copy_target_callable(device, target.gradient),
         _copy_target_callable(device, target.batch),
+        _copy_target_callable(device, target.retain),
     )
 end
 
@@ -174,6 +221,7 @@ function _target_has_opaque_host_closure(target::_PreparedLogTarget)
     return _has_opaque_host_closure(target.logdensity) ||
            _has_opaque_host_closure(target.gradient) ||
            _has_opaque_host_closure(target.batch) ||
+           _has_opaque_host_closure(target.retain) ||
            _has_opaque_host_closure(target.context)
 end
 
@@ -184,6 +232,7 @@ function _target_has_opaque_host_closure(
     return _target_callable_has_opaque_host_closure(target.logdensity, device) ||
            _target_callable_has_opaque_host_closure(target.gradient, device) ||
            _target_callable_has_opaque_host_closure(target.batch, device) ||
+           _target_callable_has_opaque_host_closure(target.retain, device) ||
            _has_opaque_host_closure(target.context)
 end
 
@@ -197,6 +246,10 @@ end
 
 _target_callable_has_opaque_host_closure(target, device) =
     _has_opaque_host_closure(target)
+
+_target_callable_has_opaque_host_closure(gradient::_BatchedGradient, device) =
+    _target_callable_has_opaque_host_closure(gradient.scalar, device) ||
+    _target_callable_has_opaque_host_closure(gradient.batch, device)
 
 function _target_has_opaque_host_closure(target::_BoundLogDensityProblemsTarget)
     return _has_opaque_host_closure(target.target)
@@ -215,11 +268,16 @@ function _target_transfer_rewrites_opaque_closure(target::_PreparedLogTarget)
     return _field_transfer_rewrites_opaque_closure(target.logdensity) ||
            _field_transfer_rewrites_opaque_closure(target.gradient) ||
            _field_transfer_rewrites_opaque_closure(target.batch) ||
+           _field_transfer_rewrites_opaque_closure(target.retain) ||
            _field_transfer_rewrites_opaque_closure(target.context)
 end
 
 _field_transfer_rewrites_opaque_closure(value) =
     !(value isa Function) && _has_opaque_host_closure(value)
+
+_field_transfer_rewrites_opaque_closure(gradient::_BatchedGradient) =
+    _field_transfer_rewrites_opaque_closure(gradient.scalar) ||
+    _field_transfer_rewrites_opaque_closure(gradient.batch)
 
 function _target_transfer_rewrites_opaque_closure(target::_BoundTarget)
     return _target_has_opaque_host_closure(target)
@@ -278,7 +336,7 @@ end
 function _has_opaque_host_closure(
     target::Union{
         Number,
-        Random.AbstractRNG,
+        PureRNGs.AbstractPureRNG,
         AbstractString,
         Symbol,
         Nothing,
@@ -313,6 +371,7 @@ function _prepare_target(target::LogTarget, proposal)
         target.adtype,
         target.grad,
         target.batch,
+        target.retain,
     )
 end
 
@@ -323,6 +382,7 @@ function _prepare_target(target::LogTarget, context, proposal)
         target.adtype,
         target.grad,
         target.batch,
+        target.retain,
     )
 end
 

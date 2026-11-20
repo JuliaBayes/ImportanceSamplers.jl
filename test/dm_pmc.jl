@@ -1,9 +1,7 @@
 using Test
 using ImportanceSamplers
 import MLDataDevices
-import Random
 
-include("support/dm_pmc.jl")
 
 const DMPMCIS = ImportanceSamplers
 
@@ -79,7 +77,7 @@ end
         round_size=[13, 14, 13],
     )
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5600),
+        Threefry4x32(0x5600),
         DMPMCTarget{Float64}(),
         algorithm;
         threaded=false,
@@ -125,7 +123,7 @@ end
         [1, 1, 1],
     )
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5601),
+        Threefry4x32(0x5601),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(bank; rounds=3, round_size=[4, 4, 4]);
         threaded=false,
@@ -154,13 +152,12 @@ end
     @test @allocated(DMPMCIS._dm_pmc_round_counts(exact_masses, round_size, 1)) < 1_000_000
 end
 
-@testset "DM-PMC allocation rejects uncovered active proposals before RNG use" begin
+@testset "DM-PMC allocation rejects uncovered active proposals" begin
     bank = ProposalBank(
         [SphericalGaussian(Float64(id), 1.0) for id in 1:3],
         [100, 1, 1],
     )
-    rng = Random.Xoshiro(0x5602)
-    expected_rng = copy(rng)
+    rng = Threefry4x32(0x5602)
 
     @test_throws ArgumentError prepare_sampler(
         rng,
@@ -168,7 +165,6 @@ end
         DeterministicMixturePMC(bank; rounds=1, round_size=3);
         threaded=false,
     )
-    @test rand(rng, UInt64) == rand(expected_rng, UInt64)
 end
 
 @testset "DM-PMC native preparation and scalar inference" begin
@@ -189,19 +185,19 @@ end
     ])
 
     sampler32 = @inferred prepare_sampler(
-        Random.Xoshiro(0x5603),
+        Threefry4x32(0x5603),
         DMPMCTarget{Float32}(),
         DeterministicMixturePMC(spherical32; rounds=2, round_size=8);
         threaded=false,
     )
     diagonal_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5604),
+        Threefry4x32(0x5604),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(diagonal64; rounds=2, round_size=[4, 5]);
         threaded=false,
     )
     factor_sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5605),
+        Threefry4x32(0x5605),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(factor64; rounds=2, round_size=4);
         threaded=false,
@@ -232,7 +228,7 @@ end
     original_proposals = copy(configured_bank.proposals)
     original_masses = copy(configured_bank.masses)
     inert_sampler = prepare_sampler(
-        Random.Xoshiro(0x5606),
+        Threefry4x32(0x5606),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(configured_bank; rounds=1, round_size=4);
         threaded=false,
@@ -276,13 +272,13 @@ end
         vector_algorithm,
     )
     scalar_source = prepare_sampler(
-        Random.Xoshiro(0x5607),
+        Threefry4x32(0x5607),
         DMPMCTarget{Float64}(),
         scalar_algorithm;
         threaded=false,
     )
     vector_source = prepare_sampler(
-        Random.Xoshiro(0x5608),
+        Threefry4x32(0x5608),
         DMPMCTarget{Float64}(),
         vector_algorithm;
         threaded=false,
@@ -347,7 +343,7 @@ end
     )
     sources = map(enumerate(source_banks)) do (index, bank)
         prepare_sampler(
-            Random.Xoshiro(0x5608 + index),
+            Threefry4x32(0x5608 + index),
             DMPMCTarget{Float64}(),
             DeterministicMixturePMC(bank; rounds=1, round_size=2);
             threaded=false,
@@ -403,7 +399,7 @@ end
     cpu32 = MLDataDevices.cpu_device(Float32)
     diagonal = cpu32(
         prepare_sampler(
-            Random.Xoshiro(0x5609),
+            Threefry4x32(0x5609),
             DMPMCTarget{Float64}(),
             DeterministicMixturePMC(diagonal_bank; rounds=1, round_size=1);
             threaded=false,
@@ -411,7 +407,7 @@ end
     )
     factor = cpu32(
         prepare_sampler(
-            Random.Xoshiro(0x560a),
+            Threefry4x32(0x560a),
             DMPMCTarget{Float64}(),
             DeterministicMixturePMC(factor_bank; rounds=1, round_size=1);
             threaded=false,
@@ -434,7 +430,7 @@ end
 
     for (index, proposal) in pairs(invalid_proposals)
         source = prepare_sampler(
-            Random.Xoshiro(0x560a + index),
+            Threefry4x32(0x560a + index),
             DMPMCTarget{Float64}(),
             DeterministicMixturePMC(
                 ProposalBank([proposal]);
@@ -448,7 +444,7 @@ end
 
     inert = DiagonalGaussian([1e100], [1.0])
     inert_source = prepare_sampler(
-        Random.Xoshiro(0x560e),
+        Threefry4x32(0x560e),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(
             ProposalBank(
@@ -505,13 +501,13 @@ end
         factor_algorithm,
     )
     diagonal_source = prepare_sampler(
-        Random.Xoshiro(0x5607),
+        Threefry4x32(0x5607),
         DMPMCTarget{Float64}(),
         diagonal_algorithm;
         threaded=false,
     )
     factor_source = prepare_sampler(
-        Random.Xoshiro(0x5608),
+        Threefry4x32(0x5608),
         DMPMCTarget{Float64}(),
         factor_algorithm;
         threaded=false,
@@ -586,7 +582,7 @@ end
     @test isempty(dm_pmc_unbound_methods)
 end
 
-@testset "DM-PMC rejects unsupported banks before RNG use" begin
+@testset "DM-PMC rejects unsupported banks" begin
     transformed = ProposalBank([
         TransformedProposal(SphericalGaussian(-1.0, 1.0), IdentityTransform()),
         TransformedProposal(SphericalGaussian(1.0, 1.0), IdentityTransform()),
@@ -602,15 +598,13 @@ end
     )
 
     for (index, bank) in pairs((transformed, product, generic, bigfloat_masses))
-        rng = Random.Xoshiro(0x5610 + index)
-        expected_rng = copy(rng)
+        rng = Threefry4x32(0x5610 + index)
         @test_throws ArgumentError prepare_sampler(
             rng,
             _ -> 0.0,
             DeterministicMixturePMC(bank; rounds=1, round_size=4);
             threaded=false,
         )
-        @test rand(rng, UInt64) == rand(expected_rng, UInt64)
     end
 end
 
@@ -618,7 +612,7 @@ end
     proposal = SphericalGaussian(0.0, 1.0)
     algorithm = ImportanceSampling(proposal; nsamples=8)
     sampler = @inferred prepare_sampler(
-        Random.Xoshiro(0x5620),
+        Threefry4x32(0x5620),
         DMPMCTarget{Float64}(),
         algorithm;
         threaded=false,
@@ -638,7 +632,7 @@ end
         SphericalGaussian(1.0, 1.0),
     ])
     sampler = prepare_sampler(
-        Random.Xoshiro(0x5630),
+        Threefry4x32(0x5630),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(bank; rounds=2, round_size=4);
         threaded=false,
@@ -660,13 +654,13 @@ dm_pmc_context_target(sample, context) = context.shift - abs2(sample) / 2
     )
 
     context_free = importance_sample(
-        Random.Xoshiro(0x5631),
+        Threefry4x32(0x5631),
         DMPMCTarget{Float64}(),
         algorithm;
         threaded=false,
     )
     contextual = importance_sample(
-        Random.Xoshiro(0x5632),
+        Threefry4x32(0x5632),
         dm_pmc_context_target,
         (shift=0.25,),
         algorithm;
@@ -684,16 +678,16 @@ dm_pmc_context_target(sample, context) = context.shift - abs2(sample) / 2
     )
     context_free_method = which(
         importance_sample,
-        (Random.Xoshiro, DMPMCTarget{Float64}, typeof(algorithm)),
+        (typeof(Threefry4x32(0)), DMPMCTarget{Float64}, typeof(algorithm)),
     )
     importance_method = which(
         importance_sample,
-        (Random.Xoshiro, DMPMCTarget{Float64}, typeof(importance_algorithm)),
+        (typeof(Threefry4x32(0)), DMPMCTarget{Float64}, typeof(importance_algorithm)),
     )
     contextual_method = which(
         importance_sample,
         (
-            Random.Xoshiro,
+            typeof(Threefry4x32(0)),
             typeof(dm_pmc_context_target),
             @NamedTuple{shift::Float64},
             typeof(algorithm),
@@ -702,7 +696,7 @@ dm_pmc_context_target(sample, context) = context.shift - abs2(sample) / 2
     contextual_importance_method = which(
         importance_sample,
         (
-            Random.Xoshiro,
+            typeof(Threefry4x32(0)),
             typeof(dm_pmc_context_target),
             @NamedTuple{shift::Float64},
             typeof(importance_algorithm),
@@ -975,7 +969,7 @@ end
         [1.0, 0.0, 2.0],
     )
     sampler = prepare_sampler(
-        Random.Xoshiro(0x43555252454e54),
+        Threefry4x32(0x43555252454e54),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(bank; rounds=2, round_size=[5, 7]);
         threaded=false,
@@ -1027,7 +1021,7 @@ end
     @test sampler.algorithm.bank.masses == bank.masses
 
     plain = prepare_sampler(
-        Random.Xoshiro(0x43555252454e55),
+        Threefry4x32(0x43555252454e55),
         DMPMCTarget{Float64}(),
         ImportanceSampling(SphericalGaussian(0.0, 1.0); nsamples=2);
         threaded=false,
@@ -1040,7 +1034,7 @@ end
     )
     nonidempotent_masses.masses .= [0.1, 0.2, 0.3, 0.4]
     mass_sampler = prepare_sampler(
-        Random.Xoshiro(0x43555252454e56),
+        Threefry4x32(0x43555252454e56),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(nonidempotent_masses; rounds=1, round_size=10);
         threaded=false,
@@ -1066,7 +1060,7 @@ end
         algorithm = DeterministicMixturePMC(bank; rounds=2, round_size=[5, 7])
         result = @inferred importance_sample!(
             prepare_sampler(
-                Random.Xoshiro(0x5640 + index),
+                Threefry4x32(0x5640 + index),
                 DMPMCTarget{Float64}(),
                 algorithm;
                 factor_execution=index == 2 ?
@@ -1089,7 +1083,7 @@ end
     round_size = 4_096
     rounds = 3
     sampler = prepare_sampler(
-        Random.Xoshiro(0x5650),
+        Threefry4x32(0x5650),
         DMPMCTarget{Float64}(),
         DeterministicMixturePMC(
             ProposalBank([
@@ -1185,8 +1179,8 @@ end
     @test target_failure.diagnostics.completed_rounds == 1
     @test !haskey(target_failure.diagnostics, :committed_rounds)
     @test target_failure_sampler.method_state.bank.locations == target_initial
-    @test target_failure_rng.normal_index == 3
-    @test target_failure_rng.uniform_index == 2
+    @test current_rng(target_failure_sampler).normal_index == 3
+    @test current_rng(target_failure_sampler).uniform_index == 2
     @test occursin("round 2", sprint(showerror, target_failure))
     @test occursin("sample_and_weight", sprint(showerror, target_failure))
     @test occursin("intentional DM-PMC target failure", sprint(showerror, target_failure))
@@ -1211,8 +1205,8 @@ end
     @test zero_failure.diagnostics.completed_rounds == 1
     @test !haskey(zero_failure.diagnostics, :committed_rounds)
     @test zero_sampler.method_state.bank.locations == zero_initial
-    @test zero_rng.normal_index == 3
-    @test zero_rng.uniform_index == 2
+    @test current_rng(zero_sampler).normal_index == 3
+    @test current_rng(zero_sampler).uniform_index == 2
 
     result_sampler = dm_pmc_result_failure_sampler(prepare_sampler(
         DMPMCPrefilledRNG(deepcopy(normals), deepcopy(uniforms)),

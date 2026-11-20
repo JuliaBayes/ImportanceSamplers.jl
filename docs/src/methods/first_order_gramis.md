@@ -7,7 +7,7 @@ It is a first-order hybrid, not the Hessian-based GRAMIS algorithm.
 ## Example
 
 ```@example gramis
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 gradient!(g, x) = (g .= .-x; nothing)
@@ -21,7 +21,7 @@ algorithm = FirstOrderGRAMIS(
     repulsion_strength=0.0,
 )
 prepared = prepare_sampler(
-    Xoshiro(42), LogTarget(logtarget; grad=gradient!), algorithm,
+    Threefry4x32(42), LogTarget(logtarget; grad=gradient!), algorithm,
 )
 samples = importance_sample!(prepared)
 

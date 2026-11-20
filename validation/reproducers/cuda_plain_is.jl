@@ -1,10 +1,10 @@
 using CUDA
+using PureRNGs
 using DensityInterface
 using ImportanceSamplers
 using LinearAlgebra
 using MLDataDevices
 using Pkg
-using Random
 using Test
 
 include(joinpath(@__DIR__, "..", "cuda_plain_is_support.jl"))
@@ -46,8 +46,11 @@ end
     return context.shift[1] - abs2(sample) / 2
 end
 
-function Random.rand(rng::Random.AbstractRNG, proposal::GenericGaussian{T}) where {T}
-    return proposal.location + proposal.scale * randn(rng, T)
+function PureRNGs.rand_next(
+    rng::PureRNGs.AbstractPureRNG, proposal::GenericGaussian{T},
+) where {T}
+    normal, next_rng = randn_next(rng, T)
+    return proposal.location + proposal.scale * normal, next_rng
 end
 
 @inline function DensityInterface.logdensityof(proposal::GenericGaussian{T}, sample) where {T}
@@ -388,14 +391,14 @@ _explicit_array_transfer(arrays::NamedTuple) = map(_explicit_array_transfer, arr
 function validate_case(device, ::Type{T}, case, seed) where {T}
     algorithm = ImportanceSampling(case.proposal; nsamples=VALIDATION_SAMPLES)
     cpu = importance_sample(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         case.target,
         case.context,
         algorithm;
         threaded=false,
     )
     prepared = prepare_sampler(
-        Xoshiro(seed),
+        Threefry4x32(seed),
         case.target,
         case.context,
         algorithm;
@@ -457,7 +460,7 @@ function validate_rejections(device)
     captured = T[0.25]
     captured_target = (sample, p) -> p.shift[1] + captured[1] - abs2(sample) / 2
     captured_prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         captured_target,
         (shift=T[0.5],),
         ImportanceSampling(proposal; nsamples=16);
@@ -470,7 +473,7 @@ function validate_rejections(device)
 
     generic = GenericGaussian(zero(T), one(T))
     generic_prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         zero_logtarget,
         ImportanceSampling(generic; nsamples=16);
         threaded=true,
@@ -480,21 +483,20 @@ function validate_rejections(device)
     @test generic_error.reason === :generic_proposal_cpu_only
 
     unadapted_prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         contextual_scalar_logtarget,
         UnadaptedCUDAContext(T[0.25]),
         ImportanceSampling(proposal; nsamples=16);
         threaded=true,
     )
-    expected_unadapted_rng = copy(getfield(unadapted_prepared, :rng))
+    expected_unadapted_rng = current_rng(unadapted_prepared)
     unadapted_error = caught(() -> device(unadapted_prepared))
     @test unadapted_error isa SamplerDeviceError
     @test unadapted_error.reason === :kernel_argument_unsupported
-    @test rand(getfield(unadapted_prepared, :rng), UInt64) ==
-          rand(expected_unadapted_rng, UInt64)
+    @test current_rng(unadapted_prepared) == expected_unadapted_rng
 
     migration_source = prepare_sampler(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         contextual_scalar_logtarget,
         (shift=T[0.25],),
         ImportanceSampling(proposal; nsamples=16);
@@ -509,7 +511,7 @@ function validate_rejections(device)
         SimplexTransform(3),
     )
     invalid_prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED),
+        Threefry4x32(VALIDATION_SEED),
         zero_logtarget,
         ImportanceSampling(invalid; nsamples=FAILURE_SAMPLES);
         threaded=true,
@@ -527,7 +529,7 @@ function validate_context_execution(device)
     proposal = SphericalGaussian(zero(T), one(T))
 
     adapted = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(0x10)),
+        Threefry4x32(VALIDATION_SEED + UInt64(0x10)),
         contextual_scalar_logtarget,
         AdaptedCUDAContext(T[0.25]),
         ImportanceSampling(proposal; nsamples=16);
@@ -538,7 +540,7 @@ function validate_context_execution(device)
     @test adapted_result.logweights isa CuArray
 
     named = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(0x11)),
+        Threefry4x32(VALIDATION_SEED + UInt64(0x11)),
         contextual_scalar_logtarget,
         (shift=T[0.25],),
         ImportanceSampling(proposal; nsamples=2_048);
@@ -569,7 +571,7 @@ function validate_factor_batch_execution(device, ::Type{T}) where {T}
         scale=fill(T(1.2), dimension),
     )
     prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + 0x500),
+        Threefry4x32(VALIDATION_SEED + 0x500),
         vector_gaussian_logtarget,
         context,
         ImportanceSampling(proposal; nsamples);
@@ -604,7 +606,7 @@ function validate_public_preserving_device(device, ::Type{T}) where {T}
     proposal = DiagonalGaussian(T[0.25, -0.5], T[0.75, 1.25])
     context = (location=T[0.25, -0.5], scale=T[0.75, 1.25])
     source = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(sizeof(T))),
+        Threefry4x32(VALIDATION_SEED + UInt64(sizeof(T))),
         vector_gaussian_logtarget,
         context,
         ImportanceSampling(proposal; nsamples=16);
@@ -665,7 +667,7 @@ function validate_explicit_physical_device()
 
     for (case_index, case) in enumerate(cases)
         source = prepare_sampler(
-            Xoshiro(VALIDATION_SEED + UInt64(0x40 + case_index)),
+            Threefry4x32(VALIDATION_SEED + UInt64(0x40 + case_index)),
             case.target,
             case.context,
             ImportanceSampling(case.proposal; nsamples=2_048);
@@ -717,14 +719,14 @@ function validate_explicit_physical_device()
     return nothing
 end
 
-function validate_public_rng_ownership_and_replay(device)
+function validate_public_rng_continuation_and_replay(device)
     T = Float32
     algorithm = ImportanceSampling(
         SphericalGaussian(zero(T), one(T));
         nsamples=32,
     )
     make_prepared() = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(0x20)),
+        Threefry4x32(VALIDATION_SEED + UInt64(0x20)),
         zero_logtarget,
         algorithm;
         threaded=true,
@@ -732,17 +734,13 @@ function validate_public_rng_ownership_and_replay(device)
 
     first_prepared = make_prepared()
     second_prepared = make_prepared()
-    first_rng = getfield(first_prepared, :rng)
-    second_rng = getfield(second_prepared, :rng)
-    default_rng = CUDA.default_rng()
-    @test first_rng isa CUDA.RNG
-    @test second_rng isa CUDA.RNG
-    @test first_rng !== second_rng
-    @test first_rng !== default_rng
-    @test second_rng !== default_rng
+    initial_rng = current_rng(first_prepared)
 
     first_result = importance_sample!(first_prepared)
+    @test current_rng(first_prepared) != initial_rng
+    @test current_rng(second_prepared) == initial_rng
     second_result = importance_sample!(second_prepared)
+    @test current_rng(first_prepared) == current_rng(second_prepared)
     @test Array(first_result.samples) == Array(second_result.samples)
     @test Array(first_result.logweights) == Array(second_result.logweights)
 
@@ -761,7 +759,7 @@ function validate_failure_scratch_reuse_and_reset(device)
         IdentityTransform(),
     )
     prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(0x28)),
+        Threefry4x32(VALIDATION_SEED + UInt64(0x28)),
         zero_logtarget,
         ImportanceSampling(proposal; nsamples=FAILURE_SAMPLES);
         threaded=true,
@@ -818,7 +816,7 @@ end
 function validate_callable_and_view_transfers(device, ::Type{T}) where {T}
     target = AdaptableCUDAFunction(T[0.25])
     prepared = prepare_sampler(
-        Xoshiro(VALIDATION_SEED + UInt64(0x30) + UInt64(sizeof(T))),
+        Threefry4x32(VALIDATION_SEED + UInt64(0x30) + UInt64(sizeof(T))),
         target,
         (shift=T[0.5],),
         ImportanceSampling(
@@ -916,12 +914,12 @@ function main()
         @testset "context and one-thread launch contracts" begin
             validate_context_execution(device)
         end
-        @testset "public preserving device and owned RNG" begin
+        @testset "public preserving device and RNG continuation" begin
             for T in CUDA_PLAIN_IS_A100_TYPES
                 validate_public_preserving_device(device, T)
                 validate_callable_and_view_transfers(device, T)
             end
-            validate_public_rng_ownership_and_replay(device)
+            validate_public_rng_continuation_and_replay(device)
             validate_failure_scratch_reuse_and_reset(device)
         end
         @testset "explicit physical CUDA device" begin

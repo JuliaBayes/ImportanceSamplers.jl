@@ -6,12 +6,12 @@ It corrects the proposal draws with target-to-proposal density ratios.
 ## Example
 
 ```@example plain
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x) = -sum(abs2, x) / 2
 proposal = SphericalStudentT(5.0, zeros(3), 1.0)
 samples = importance_sample(
-    Xoshiro(42), logtarget,
+    Threefry4x32(42), logtarget,
     ImportanceSampling(proposal; nsamples=10_000),
 )
 

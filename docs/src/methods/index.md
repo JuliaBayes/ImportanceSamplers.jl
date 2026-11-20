@@ -39,6 +39,7 @@ No method dominates for every target, budget, and estimand.
 | [APIS](@ref apis-method) | Population means | Current equal population mixture |
 | [CAIS](@ref cais-method) | Population means and covariances | Generating proposal |
 | [LAIS](@ref lais-method) | Population centres, using upper MCMC | Current equal population mixture |
+| [HAIS](@ref hais-method) | Population centres, using HMC and cooperation | Current equal population mixture |
 | [First-order GRAMIS-CAIS](@ref gramis-method) | Gradient-driven means and local covariances | Current realized population mixture |
 
 GR-PMC and LR-PMC use `DeterministicMixturePMC` with different resampling policies.
@@ -70,6 +71,7 @@ The other adaptive methods retain each sample's original round weight.
 | DM-PMC | At least one draw for each active proposal |
 | APIS | Equal positive masses, divisible round size, at least two draws per proposal |
 | LAIS | Equal positive masses, divisible round size, at least one draw per proposal |
+| HAIS | Equal positive masses, divisible round size, at least one draw per proposal |
 | CAIS | Equal positive masses, divisible round size, at least `d + 2` draws per proposal |
 | FirstOrderGRAMIS | At least two distinct initial means, equal positive masses, at least `d + 2` draws per proposal |
 

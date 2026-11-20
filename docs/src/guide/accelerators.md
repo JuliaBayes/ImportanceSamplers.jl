@@ -6,7 +6,7 @@ The target data, proposal, random buffers, and adaptation state move together.
 ## Prepared state
 
 ```@example devices
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 import MLDataDevices
 
 function logtarget(x, p)
@@ -22,7 +22,7 @@ algorithm = ImportanceSampling(
     SphericalGaussian(zeros(Float32, 3), 1.5f0);
     nsamples=10_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, p, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, p, algorithm)
 nothing # hide
 ```
 
@@ -116,6 +116,8 @@ They do not imply that every user target compiles on every backend.
 | AMDGPU | Not validated or claimed | A KernelAbstractions backend alone does not supply full package support |
 
 Gaussian and Student-t proposals support every method, subject to backend limits.
+HMC-driven LAIS and HAIS require vector layouts and currently support ordinary
+CPU and native CUDA. Metal and Reactant HMC paths reject explicitly during setup.
 Boxes support fixed IS/static MIS. Independent Gamma and Laplace also support
 AMIS/N-PMC marginal moment adaptation and DM-PMC/APIS mean adaptation.
 Laplace also supports LAIS lower proposals. Gamma retains coordinate variance;
@@ -153,6 +155,12 @@ Do not infer bank support from a standalone transformed proposal.
 
 ## Residency and transfers
 
+[`psis`](@ref) has native CPU and CUDA checks in `Float32` and `Float64`.
+Its weights, sorting, and Pareto fit stay on the selected device. Only scalar
+diagnostics reach the host. Metal, AMDGPU, and Reactant PSIS paths are not yet
+validated or claimed. Transfer a result explicitly to ordinary CPU before
+smoothing on an unvalidated backend.
+
 Samples, log weights, proposal state, and numerical workspaces remain on the device.
 Bounded failure and round summaries can synchronize with the host.
 A batch callback can also require synchronization.
@@ -168,8 +176,11 @@ An accelerator-prepared sampler cannot itself migrate to another device or back 
 Use `current_proposal(MLDataDevices.CPUDevice(), sampler)` for a proposal snapshot.
 Use [`retarget`](@ref reuse-guide) to rebuild target-dependent state on the same device.
 
-Accelerator setup consumes a seed from the source RNG for a separate backend stream.
-Seeded replay assumes the same software, hardware, and execution configuration.
+All backends use a native PureRNGs generator. Transfer preserves its
+generator family, key, and position without consuming a replacement seed.
+The source and transferred handles start from the same snapshot. Split the RNG
+explicitly for independent runs. Normal draws and floating-point reductions
+need not agree bitwise across devices.
 
 ## State containers
 

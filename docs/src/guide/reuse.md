@@ -6,7 +6,7 @@ A prepared sampler stores the target, random stream, workspaces, and learned pro
 ## Repeated execution
 
 ```@example reuse
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 logtarget(x, p) = -sum(abs2, x .- p.centre) / 2
 p = (; centre=[1.0, -1.0])
@@ -14,10 +14,11 @@ algorithm = AMIS(
     SphericalGaussian(zeros(2), 2.0);
     rounds=3, round_size=1_000,
 )
-prepared = prepare_sampler(Xoshiro(42), logtarget, p, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, p, algorithm)
 
 first_run = importance_sample!(prepared)
 second_run = importance_sample!(prepared)
+next_rng = current_rng(prepared)
 (mean(first_run), mean(second_run))
 ```
 
@@ -49,13 +50,15 @@ Construct another algorithm to change its budget.
 Population methods have additional [allocation requirements](@ref choosing-method).
 A prepared call restarts round-indexed schedules at round one.
 LAIS transition state follows its separate tuning rules.
+HAIS retains its final post-sampling HMC/cooperation update for the next call.
+HMC warmup completes once and its production step size stays fixed during reuse.
 
 ## Proposal snapshots
 
 ```@example reuse
 proposal = current_proposal(prepared)
 final_samples = importance_sample(
-    Xoshiro(43), logtarget, p,
+    Threefry4x32(43), logtarget, p,
     ImportanceSampling(proposal; nsamples=5_000),
 )
 
@@ -66,8 +69,8 @@ This separates a pilot from production.
 The new algorithm controls its own count and method.
 `current_proposal` returns an independent snapshot, not a mutable view into the sampler.
 
-For a named transform layout, the snapshot uses numerical sampling coordinates.
-Pass the same layout to the new prepared sampler.
+For a named layout or [`QuadraticCoupling`](@ref), the snapshot uses latent sampling
+coordinates. Pass the same transform to the new prepared sampler.
 
 For an accelerator sampler, request an explicit CPU snapshot with
 `current_proposal(MLDataDevices.CPUDevice(), prepared)`.
@@ -77,14 +80,14 @@ This transfers the proposal, not the complete result or sampler.
 
 ```@example reuse
 new_p = (; centre=[1.5, -0.5])
-new_sampler = retarget(Xoshiro(44), prepared, logtarget, new_p)
+new_sampler = retarget(Threefry4x32(44), prepared, logtarget, new_p)
 new_samples = importance_sample!(new_sampler)
 
 mean(new_samples)
 ```
 
 `retarget` keeps the learned proposal, algorithm controls, count schedule, transform,
-execution policy, and device. It creates fresh target-dependent state and a new random stream.
+execution policy, and device. It creates fresh target-dependent state and starts from the supplied RNG.
 The original sampler remains usable.
 
 This operation supports every implemented adaptive method, including LAIS.
@@ -98,9 +101,13 @@ constructing fresh state on the original device. This is a setup cost, not a per
 
 ## Random streams and failures
 
-The sampler retains and advances the RNG supplied to preparation.
-Do not also consume it elsewhere when reproducibility matters.
-Use separate samplers and RNGs for concurrent runs.
+Each call stores its continued RNG, available with `current_rng(prepared)`.
+A native RNG is immutable. Passing the same snapshot to separate samplers
+repeats its stream. For independent runs, split once with `left, right = splitrng(rng)`
+and use each continuation separately.
+
+On Reactant, `current_rng` returns a compiled stream. Use it with `retarget` or
+`resample_next` on the same device. Fresh preparation does not accept a compiled stream.
 
 A prepared sampler is mutable and non-reentrant.
 An adaptive failure preserves the proposal committed before that call.

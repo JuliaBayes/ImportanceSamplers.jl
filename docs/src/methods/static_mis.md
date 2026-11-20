@@ -6,7 +6,7 @@ A complete scheme selects both the generating proposal and the weight denominato
 ## Bimodal example
 
 ```@example static
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 function logtarget(x)
     a = -abs2(x + 2) / 2 + log(0.3)
@@ -22,7 +22,7 @@ bank = ProposalBank([
 algorithm = ImportanceSampling(
     bank; nsamples=10_000, mis_scheme=StratifiedMixture(),
 )
-samples = importance_sample(Xoshiro(42), logtarget, algorithm)
+samples = importance_sample(Threefry4x32(42), logtarget, algorithm)
 
 (mean=mean(samples), reference_mean=0.8, lognormalizer=lognormalizer(samples))
 ```

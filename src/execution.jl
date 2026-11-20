@@ -13,7 +13,7 @@ function _threaded_foreach_worker(f, indices)
     chunk_size = cld(item_count, task_count)
     @sync for (worker, first_position) in enumerate(1:chunk_size:item_count)
         last_position = min(first_position + chunk_size - 1, item_count)
-        Threads.@spawn for position in first_position:last_position
+        Threads.@spawn for position = first_position:last_position
             @inbounds f(indices[position], worker)
         end
     end
@@ -120,8 +120,7 @@ function _logweight_summary(
     )
     maximum_logweight == eltype(logweights)(-Inf) && return (
         ess=zero(eltype(logweights)),
-        lognormalizer=eltype(logweights)(-Inf),
-    )
+        lognormalizer=eltype(logweights)(-Inf))
     scaled_sum = mapreduce(
         value -> exp(value - maximum_logweight),
         +,
@@ -188,8 +187,7 @@ end
 @inline function _scale_aware_ridge(
     previous_trace,
     dimension,
-    regularization::T,
-) where {T}
+    regularization::T) where {T}
     return regularization * previous_trace / T(dimension)
 end
 
@@ -268,11 +266,33 @@ struct _NativeCPUTarget{L,T,F}
     failures::F
 end
 
+struct _SavingTargetEvaluator{T,V}
+    evaluator::T
+    values::V
+end
+Adapt.@adapt_structure _SavingTargetEvaluator
+
+@inline function (target::_SavingTargetEvaluator)(sample, slot)
+    result = target.evaluator(sample, slot)
+    target.values[slot] = result[1]
+    return result
+end
+
+_save_target_evaluator(target, ::Nothing) = target
+_save_target_evaluator(target, values::AbstractVector) = _SavingTargetEvaluator(target, values)
+_target_values(target) = nothing
+_target_values(target::_SavingTargetEvaluator) = target.values
+
+_copy_logtarget_round!(::Nothing, values, indices) = nothing
+function _copy_logtarget_round!(output::AbstractVector, values, indices)
+    copyto!(view(output, indices), view(values, indices))
+    return nothing
+end
+
 const _NativeFusedNonidentityScalarTransform = Union{
     PositiveTransform,
     SoftplusTransform,
-    IntervalTransform,
-}
+    IntervalTransform}
 
 _execution_name(::_SerialCPUExecution) = :serial
 _execution_name(::_ThreadedCPUExecution) = :threaded
@@ -353,8 +373,7 @@ function _allocate_random_buffers(
     device,
     proposal,
     ::_SingleProposalMethodState,
-    nsamples,
-)
+    nsamples)
     return _allocate_random_buffers(device, proposal, nsamples)
 end
 
@@ -368,44 +387,51 @@ _native_failure_scratch(
     },
 ) = buffers.failure_scratch
 
-function _fill_random_buffers!(
-    rng,
-    buffers::Union{_RandomBuffers,_PackedStaticMISRandomBuffers},
+function _rand_uniform!(rng, values; threaded = false)
+    _, next_rng = PureRNGs.rand_next!(rng, values; threaded)
+    return next_rng
+end
+function _rand_normal!(rng, values; threaded = false)
+    _, next_rng = PureRNGs.randn_next!(rng, values; threaded)
+    return next_rng
+end
+function _draw_proposal!(sampler, proposal)
+    sample, sampler.rng = PureRNGs.rand_next(sampler.rng, proposal)
+    return sample
+end
+
+function _fill_random_buffers!(rng, buffers::Union{_RandomBuffers,_PackedStaticMISRandomBuffers};
+    threaded = false
 )
-    isempty(buffers.uniform) || Random.rand!(rng, buffers.uniform)
-    isempty(buffers.normal) || Random.randn!(rng, buffers.normal)
-    _fill_radial_buffers!(rng, buffers.radial)
-    return buffers
+    rng = _rand_uniform!(rng, buffers.uniform; threaded)
+    rng = _rand_normal!(rng, buffers.normal; threaded)
+    return _fill_radial_buffers!(rng, buffers.radial; threaded)
 end
 
-_fill_radial_buffers!(rng, ::Nothing) = nothing
-function _fill_radial_buffers!(rng, buffers::NamedTuple)
-    isempty(buffers.normal) || Random.randn!(rng, buffers.normal)
-    isempty(buffers.uniform) || Random.rand!(rng, buffers.uniform)
-    return nothing
+_fill_radial_buffers!(rng, ::Nothing; threaded = false) = rng
+function _fill_radial_buffers!(rng, buffers::NamedTuple; threaded = false)
+    rng = _rand_normal!(rng, buffers.normal; threaded)
+    return _rand_uniform!(rng, buffers.uniform; threaded)
 end
-
-_owned_backend_rng(
-    device::MLDataDevices.AbstractAcceleratorDevice,
-    ::UInt64,
-) = throw(SamplerDeviceError(device, :accelerator_rng_unavailable))
 
 function _importance_sample!(sampler, ::_SerialCPUExecution)
-    samples, logweights = _importance_sample_generic_cpu!(sampler, false)
-    return samples, logweights, (count=0, bytes=0)
+    samples, logweights, logtargets, retained = _importance_sample_generic_cpu!(sampler, false)
+    return samples, logweights, logtargets, retained, (count=0, bytes=0)
 end
 
 function _importance_sample!(sampler, ::_ThreadedCPUExecution)
-    samples, logweights = _importance_sample_generic_cpu!(sampler, true)
-    return samples, logweights, (count=0, bytes=0)
+    samples, logweights, logtargets, retained = _importance_sample_generic_cpu!(sampler, true)
+    return samples, logweights, logtargets, retained, (count=0, bytes=0)
 end
 
 function _importance_sample!(sampler, execution::_KernelExecution)
     transfers = _ResultTransferCounter(0, 0)
     proposal = sampler.algorithm.proposal
     nsamples = sampler.algorithm.nsamples
-    buffers = _capture_sampler_failure(:proposal_draw, 1) do
-        _fill_random_buffers!(sampler.rng, sampler.random_buffers)
+    buffers = sampler.random_buffers
+    _capture_sampler_failure(:proposal_draw, 1) do
+        sampler.rng =
+            _fill_random_buffers!(sampler.rng, buffers; threaded = sampler.threaded)
     end
     normal_buffer = buffers.normal
     base, transform = _native_fused_components(proposal)
@@ -416,6 +442,9 @@ function _importance_sample!(sampler, execution::_KernelExecution)
     end
     log_type = _resolve_native_logweight_type(target, base, typeof(binding_sample))
     logweights = similar(normal_buffer, log_type, nsamples)
+    logtargets = _allocate_saved_logtargets(sampler.save_logtargets, logweights)
+    retention = _retention_plan(sampler.target)
+    retained = _allocate_retained(retention, logweights, nsamples, binding_sample)
     failure_scratch = sampler.random_buffers.failure_scratch
     failure_record = failure_scratch.record
     target_failures = failure_scratch.target_failures
@@ -425,6 +454,8 @@ function _importance_sample!(sampler, execution::_KernelExecution)
         log_type,
         target_failures,
     )
+    target_evaluator = _save_retained_target(target_evaluator, logtargets, retention, retained,
+        KernelAbstractions.get_backend(normal_buffer), target_failures)
     _launch_native_batch!(samples, logweights, failure_record, buffers, target_evaluator,
         base, transform, execution, sampler.device, sampler.factor_execution)
     snapshot = _device_failure_snapshot(failure_record)
@@ -435,7 +466,7 @@ function _importance_sample!(sampler, execution::_KernelExecution)
         transform,
     )
     _record_reported_transfer!(transfers, snapshot.transfers.count, snapshot.transfers.bytes, Val(:failure_snapshot))
-    return samples, logweights, (count=transfers.count, bytes=transfers.bytes)
+    return samples, logweights, logtargets, retained, (count=transfers.count, bytes=transfers.bytes)
 end
 
 function _launch_native_batch!(samples, logweights, failure_record, buffers, target_evaluator,
@@ -444,8 +475,7 @@ function _launch_native_batch!(samples, logweights, failure_record, buffers, tar
         device,
         base,
         transform,
-        factor_execution,
-    )
+        factor_execution)
         _launch_native_factor_batch!(
             samples,
             logweights,
@@ -504,12 +534,14 @@ function _preflight_native_kernel_target(
     samples = _allocate_native_samples(buffers.normal, proposal, 1)
     binding_sample = _native_binding_sample(samples)
     bound_target = _bind_resolved_target(target, binding_sample)
+    retention = _retention_plan(target)
+    retained = _allocate_retained(retention, samples, 1, binding_sample)
+    bound_target = _bind_retained_target(bound_target, retention, retained)
     base, _ = _native_fused_components(proposal)
     log_type = _resolve_native_logweight_type(
         bound_target,
         base,
-        typeof(binding_sample),
-    )
+        typeof(binding_sample))
     target_argument = _native_device_evaluator(bound_target, log_type)
     backend = KernelAbstractions.get_backend(buffers.normal)
     kernel = _native_fused_kernel!(backend)
@@ -533,8 +565,7 @@ function _preflight_kernel_argument(device, kernel, argument)
         throw(SamplerDeviceError(device, :kernel_argument_unsupported))
     end
     isbits(converted) || throw(
-        SamplerDeviceError(device, :kernel_argument_unsupported),
-    )
+        SamplerDeviceError(device, :kernel_argument_unsupported))
     return nothing
 end
 
@@ -603,8 +634,7 @@ end
 function _allocate_native_samples(
     prototype,
     base::_NativeRadialProposal,
-    nsamples,
-)
+    nsamples)
     T = _native_fused_float_type(base)
     return base.location isa _NativeGaussianFloat ?
            similar(prototype, T, nsamples) :
@@ -724,13 +754,11 @@ function _device_failure_snapshot(record::_DeviceFailureRecord)
     failure = _decode_native_failure(count, values[2])
     draw_failure = _decode_native_failure(
         iszero(values[3]) ? zero(count) : one(count),
-        values[3],
-    )
+        values[3])
     return (
         failure=failure,
         draw_failure=draw_failure,
-        transfers=transfers,
-    )
+        transfers=transfers)
 end
 
 function _device_failure_snapshot(record::_DeviceFailureRecord{<:AbstractMatrix{UInt32}})
@@ -792,8 +820,7 @@ end
     @inbounds failures.slots[slot] = SamplerExecutionError(
         phase,
         slot,
-        CapturedException(cause, trace),
-    )
+        CapturedException(cause, trace))
     Threads.atomic_min!(failures.first_index, slot)
     return nothing
 end
@@ -805,7 +832,7 @@ end
 
 @inline function (evaluator::_NativeCPUTarget{L})(sample, slot) where {L}
     try
-        value = convert(L, evaluator.target(sample))
+        value = convert(L, _target_value(evaluator.target, sample, slot))
         reason = _native_target_reason(value)
         if !iszero(reason)
             cause = DomainError(value, "target log density may not be NaN or +Inf")

@@ -1,36 +1,37 @@
 using Test
 using ImportanceSamplers
 using MLDataDevices
-using Random
 using Statistics
 
-struct BoundaryUniformRNG{T} <: Random.AbstractRNG
+struct BoundaryUniformRNG{T} <: TestScriptedRNG
     values::Vector{T}
 end
 
-function Random.rand!(rng::BoundaryUniformRNG, values::AbstractArray)
+MLDataDevices.get_device(::BoundaryUniformRNG) = MLDataDevices.CPUDevice()
+
+function PureRNGs.rand_next!(rng::BoundaryUniformRNG, values::AbstractArray; threaded=false)
     copyto!(values, rng.values)
-    return values
+    return values, rng
 end
 
 @testset "public multinomial resampling" begin
     points = Float32.(1:65536)
     half = WeightedSamples(points, zeros(Float16, length(points)))
     single = WeightedSamples(points, zeros(Float32, length(points)))
-    @test resample(Random.Xoshiro(1), half, 16).samples ==
-          resample(Random.Xoshiro(1), single, 16).samples
+    @test first(resample_next(Threefry4x32(1), half, 16)).samples ==
+          first(resample_next(Threefry4x32(1), single, 16)).samples
 
     result = WeightedSamples([10.0, 20.0, 30.0], [-Inf, 0.0, -Inf])
 
-    draws = resample(Random.Xoshiro(11), result, 5)
+    draws, _ = resample_next(Threefry4x32(11), result, 5)
     @test draws isa UnweightedSamples
     @test length(draws) == 5
     @test draws.samples == fill(20.0, 5)
     @test draws[3] == 20.0
     @test collect(draws) == fill(20.0, 5)
 
-    default_count = resample(
-        Random.Xoshiro(12),
+    default_count, _ = resample_next(
+        Threefry4x32(12),
         result;
         method=MultinomialResampling(),
     )
@@ -40,13 +41,13 @@ end
         (location=[1.0, 2.0, 3.0], state=(position=[1.0 2.0 3.0; 4.0 5.0 6.0],)),
         [-Inf, 0.0, -Inf],
     )
-    structured_draws = resample(Random.Xoshiro(13), structured, 2)
+    structured_draws, _ = resample_next(Threefry4x32(13), structured, 2)
     @test structured_draws.samples.location == [2.0, 2.0]
     @test structured_draws.samples.state.position == [2.0 2.0; 5.0 5.0]
     @test structured_draws[1] == (location=2.0, state=(position=[2.0, 5.0],))
 
-    @test_throws AllZeroWeightsError resample(
-        Random.Xoshiro(14),
+    @test_throws AllZeroWeightsError resample_next(
+        Threefry4x32(14),
         WeightedSamples([1.0, 2.0], fill(-Inf, 2)),
     )
 end
@@ -55,13 +56,13 @@ end
     logweights = vcat(-Inf32, zeros(Float32, 6), -Inf32, zeros(Float32, 6), -Inf32)
     result = WeightedSamples(collect(eachindex(logweights)), logweights)
     uniforms = Float32[0, 0.5, prevfloat(1f0)]
-    @test resample(BoundaryUniformRNG(uniforms), result, 3).samples == [2, 9, 14]
+    @test first(resample_next(BoundaryUniformRNG(uniforms), result, 3)).samples == [2, 9, 14]
 
     logweights = fill(-Inf32, 259)
     logweights[1] = 0f0
     logweights[2] = logweights[66] = Float32(-24log(2))
     result = WeightedSamples(collect(eachindex(logweights)), logweights)
-    selected = only(resample(BoundaryUniformRNG(Float32[prevfloat(1f0)]), result, 1).samples)
+    selected = only(first(resample_next(BoundaryUniformRNG(Float32[prevfloat(1f0)]), result, 1)).samples)
     @test isfinite(logweights[selected])
 end
 

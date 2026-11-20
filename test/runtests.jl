@@ -1,11 +1,16 @@
 using Test
 using ImportanceSamplers
+using PureRNGs
 
 include("support/proposals.jl")
+include("support/dm_pmc.jl")
 
 test_files = if isempty(ARGS)
     [
         "algorithm",
+        "purerngs",
+        "purerngs_adaptive",
+        "purerngs_transitions",
         "static_mis",
         "static_mis_kernel",
         "adaptive_schedule",
@@ -17,21 +22,30 @@ test_files = if isempty(ARGS)
         "dm_pmc_kernel",
         "apis",
         "lais",
+        "hamiltonian",
+        "lower_widths",
         "cais",
         "first_order_gramis",
         "first_order_gramis_kernel",
         "device_api",
         "target_derivatives",
+        "batched_gradients",
         "plain_is",
         "batched_targets",
         "retarget",
         "threading",
         "results",
+        "saved_logtargets",
+        "retained_coordinates",
+        "psis",
+        "fitted_transport",
+        "control_variates",
         "resampling",
         "device_results",
         "failures",
         "kernel_execution",
         "native_proposals",
+        "proposal_statistics",
         "independent_proposals",
         "laplace_proposals",
         "independent_adaptation",

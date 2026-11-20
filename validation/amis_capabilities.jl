@@ -1,3 +1,5 @@
+using PureRNGs
+
 const AMIS_CAPABILITY_ROWS = (
     (
         label=:float32_scalar,
@@ -120,7 +122,7 @@ function checked_amis_capability_table()
         for (schedule_index, schedule_row) in enumerate(AMIS_SCHEDULE_CAPABILITY_ROWS)
             schedule = schedule_row.schedule(2)
             sampler = prepare_sampler(
-                Random.Xoshiro(10row_index + schedule_index),
+                Threefry4x32(10row_index + schedule_index),
                 AMISCapabilityTarget{row.type}(),
                 AMIS(
                     amis_capability_proposal(row);

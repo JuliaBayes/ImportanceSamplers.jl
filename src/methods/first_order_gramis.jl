@@ -617,12 +617,13 @@ function _prepare_method_state(algorithm::FirstOrderGRAMIS, prepared_target)
         packed,
         typeof(binding_sample),
     )
-    serial_gradient = _prepare_bound_gradient(prepared_target, binding_sample, 1)
+    serial_gradient = _prepare_bound_gradient(prepared_target, binding_sample, 1, log_type)
     worker_count = max(1, length(Threads.threadpooltids(:default)))
     threaded_gradient = _prepare_bound_gradient(
         prepared_target,
         binding_sample,
         worker_count,
+        log_type,
     )
     return _prepare_first_order_gramis_state(
         algorithm,
@@ -978,7 +979,7 @@ function _preflight_accelerator_method(
     binding_sample = view(bank.locations, :, 1)
     bound_target = _bind_resolved_target(target, binding_sample)
     log_type = eltype(workspace.round_logweights)
-    target_argument = _native_device_evaluator(bound_target, log_type)
+    target_argument = _native_device_evaluator(_preflight_retained_target(bound_target, target, workspace.round_logweights, binding_sample), log_type)
     backend = KernelAbstractions.get_backend(workspace.samples)
 
     sample_kernel = _mis_round_launch_kernel!(backend)

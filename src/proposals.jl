@@ -109,7 +109,7 @@ within-block covariance. Diagonal products use native CPU execution. Correlated
 products retain blockwise generic CPU execution where available and become dense
 native proposals on explicit accelerator transfer. Heterogeneous banks without
 a generic CPU route use native packing. Supported named transforms also follow
-these paths. Other products remain CPU-only. Direct `rand` uses the original blocks.
+these paths. Other products remain CPU-only. `PureRNGs.rand_next` uses the original blocks.
 Named LogDensityProblems targets retain the generic CPU path; use a callable
 target to prepare a native named sampler.
 """
@@ -528,18 +528,6 @@ function FactorStudentT(dof, location, factor)
     )
 end
 
-function _draw_gaussian(
-    rng::Random.AbstractRNG,
-    location::T,
-    scale::_SphericalGaussianScale{T},
-) where {T<:_NativeGaussianFloat}
-    return _gaussian_affine_coordinate(
-        location,
-        scale.scale,
-        Random.randn(rng, T),
-    )
-end
-
 @inline _gaussian_affine_coordinate(location, scale, normal) =
     location + scale * normal
 
@@ -718,23 +706,6 @@ function _gaussian_from_normal(
     return sample
 end
 
-function _draw_gaussian(
-    rng::Random.AbstractRNG,
-    location::Vector{T},
-    scale::Union{
-        _SphericalGaussianScale{T},
-        _DiagonalGaussianScale{Vector{T}},
-        _FactorGaussianScale{Matrix{T}},
-    },
-) where {T<:_NativeGaussianFloat}
-    normals = Random.randn(rng, T, length(location))
-    return _gaussian_from_normal(location, scale, normals)
-end
-
-function Random.rand(rng::Random.AbstractRNG, proposal::_GaussianProposal)
-    return _draw_gaussian(rng, proposal.location, proposal.scale)
-end
-
 @inline function _gamma_parameters(shape::T) where {T}
     offset = shape - T(1 / 3)
     return offset, inv(sqrt(offset)) / T(3)
@@ -748,58 +719,6 @@ end
                log(uniform) < T(0.5) * abs2(normal) +
                               offset * (one(T) - cube + log(cube))
     return offset * cube, accepted
-end
-
-function _rand_unit_gamma(rng::Random.AbstractRNG, shape::T) where {T<:_NativeGaussianFloat}
-    adjusted_shape = shape < one(T) ? shape + one(T) : shape
-    offset, coefficient = _gamma_parameters(adjusted_shape)
-    while true
-        gamma, accepted = _gamma_candidate(
-            offset,
-            coefficient,
-            Random.randn(rng, T),
-            Random.rand(rng, T),
-        )
-        accepted || continue
-        shape >= one(T) && return gamma
-        correction = Random.rand(rng, T)
-        correction > zero(T) && return gamma * correction^inv(shape)
-    end
-end
-
-function _student_t_multiplier(
-    rng::Random.AbstractRNG,
-    dof::T,
-) where {T<:_NativeGaussianFloat}
-    dof == one(T) && return inv(abs(Random.randn(rng, T)))
-    chi_square = T(2) * _rand_unit_gamma(rng, dof / T(2))
-    return sqrt(dof / chi_square)
-end
-
-function _draw_student_t(
-    rng::Random.AbstractRNG,
-    proposal::_StudentTProposal{F,T},
-) where {F,T<:_NativeGaussianFloat}
-    multiplier = _student_t_multiplier(rng, proposal.family.dof)
-    normal = Random.randn(rng, T) * multiplier
-    return _gaussian_affine_coordinate(
-        proposal.location,
-        proposal.scale.scale,
-        normal,
-    )
-end
-
-function _draw_student_t(
-    rng::Random.AbstractRNG,
-    proposal::_StudentTProposal{F,Vector{T}},
-) where {F,T<:_NativeGaussianFloat}
-    normals = Random.randn(rng, T, length(proposal.location))
-    normals .*= _student_t_multiplier(rng, proposal.family.dof)
-    return _gaussian_from_normal(proposal.location, proposal.scale, normals)
-end
-
-function Random.rand(rng::Random.AbstractRNG, proposal::_StudentTProposal)
-    return _draw_student_t(rng, proposal)
 end
 
 function _check_gaussian_sample_length(location, sample)
@@ -903,17 +822,6 @@ end
 
 _proposal_dimension(proposal::_GaussianProposal) = _gaussian_dimension(proposal.location)
 _proposal_dimension(proposal::_StudentTProposal) = _gaussian_dimension(proposal.location)
-
-_draw_product_values(rng::Random.AbstractRNG, ::Tuple{}) = ()
-
-function _draw_product_values(rng::Random.AbstractRNG, blocks::Tuple)
-    return (Random.rand(rng, first(blocks)), _draw_product_values(rng, Base.tail(blocks))...)
-end
-
-function Random.rand(rng::Random.AbstractRNG, proposal::ProductProposal)
-    block_values = _draw_product_values(rng, values(proposal.blocks))
-    return NamedTuple{keys(proposal.blocks)}(block_values)
-end
 
 function DensityInterface.logdensityof(
     proposal::ProductProposal{B},

@@ -8,7 +8,7 @@ The sampler works in flat numerical coordinates and presents logical parameters 
 This target has three positive weights that sum to one, a positive rate, and a real offset.
 
 ```@example transforms
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 layout = (
     weights=(1:2 => SimplexTransform(3)),
@@ -30,7 +30,7 @@ algorithm = AMIS(
     rounds=3, round_size=2_000,
 )
 prepared = prepare_sampler(
-    Xoshiro(42), logtarget, p, algorithm;
+    Threefry4x32(42), logtarget, p, algorithm;
     transform=layout,
 )
 samples = importance_sample!(prepared)
@@ -119,7 +119,7 @@ proposal = TransformedProposal(
     PositiveTransform(),
 )
 positive = importance_sample(
-    Xoshiro(9), x -> -x,
+    Threefry4x32(9), x -> -x,
     ImportanceSampling(proposal; nsamples=5_000),
 )
 
@@ -141,7 +141,8 @@ structured = TransformedProposal(
     (scale=PositiveTransform(),),
 )
 
-rand(Xoshiro(9), structured)
+draw, next_rng = rand_next(Threefry4x32(9), structured)
+draw
 ```
 
 An omitted known product field uses identity. Here `offset` stays unconstrained.

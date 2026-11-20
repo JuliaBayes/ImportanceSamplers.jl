@@ -373,7 +373,7 @@ function _preflight_amis_kernels(
     binding_sample = _native_binding_sample(samples)
     bound_target = _bind_resolved_target(target, binding_sample)
     log_type = eltype(workspace.logweights)
-    target_argument = _native_device_evaluator(bound_target, log_type)
+    target_argument = _native_device_evaluator(_preflight_retained_target(bound_target, target, buffers.normal, binding_sample), log_type)
     backend = KernelAbstractions.get_backend(buffers.normal)
     round_ids = similar(workspace.logweights, Int, 1)
     logtotal = log(eltype(method_state.logcounts)(last_sample))

@@ -1,7 +1,6 @@
 using Test
 using ImportanceSamplers
 import LinearAlgebra
-import Random
 
 const GRAMISKernelIS = ImportanceSamplers
 
@@ -22,7 +21,7 @@ end
 
 function gram_is_factor_policy_result(algorithm, policy)
     return importance_sample(
-        Random.Xoshiro(0x4752414d49534b45),
+        Threefry4x32(0x4752414d49534b45),
         GRAMISKernelTarget{Float64}(),
         algorithm;
         threaded=false,
@@ -297,7 +296,7 @@ end
 
 function gram_is_kernel_state(algorithm)
     sampler = prepare_sampler(
-        Random.Xoshiro(0x4752414d49535354),
+        Threefry4x32(0x4752414d49535354),
         LogTarget(
             gram_is_kernel_state_target;
             grad=gram_is_kernel_state_gradient!,

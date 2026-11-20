@@ -1,5 +1,5 @@
 using ImportanceSamplers
-using Random
+using PureRNGs
 using Statistics
 
 # A two-mode unnormalized target. APIS receives log densities directly.
@@ -17,7 +17,7 @@ bank = ProposalBank([
     SphericalGaussian( 5.0, 1.5),
 ])
 algorithm = APIS(bank; rounds=4, round_size=4_000)
-prepared = prepare_sampler(Xoshiro(42), logtarget, algorithm)
+prepared = prepare_sampler(Threefry4x32(42), logtarget, algorithm)
 samples = importance_sample!(prepared)
 learned = current_proposal(prepared)
 

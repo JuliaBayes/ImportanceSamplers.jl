@@ -1,5 +1,5 @@
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 function correlated_gaussian_logtarget(sample)::Float64
     # Solve the lower-triangular factor [1 0; 0.8 0.6] without an inverse.
@@ -16,7 +16,7 @@ function main(; rounds=4, round_size=1_000)
 
     # Preparation owns the copied schedule, RNG, reusable workspaces, and learned state.
     sampler = prepare_sampler(
-        Xoshiro(0x414d49534558414d),
+        Threefry4x32(0x414d49534558414d),
         correlated_gaussian_logtarget,
         algorithm;
         threaded=false,

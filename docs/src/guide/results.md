@@ -6,10 +6,10 @@ The samples and their weights together define the estimate.
 ## Weighted moments
 
 ```@example results
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 samples = importance_sample(
-    Xoshiro(42), x -> -sum(abs2, x) / 2,
+    Threefry4x32(42), x -> -sum(abs2, x) / 2,
     ImportanceSampling(SphericalGaussian(zeros(3), 1.5); nsamples=5_000),
 )
 
@@ -53,6 +53,15 @@ Iteration returns the same aligned records.
 `samples.logweights` holds the raw log weights.
 `samples.provenance` holds aligned identifiers when the method has proposals or rounds.
 `samples.diagnostics` contains run-level information.
+
+Pass `save_logtargets=true` to `prepare_sampler` or `importance_sample` to retain
+the exact target log densities used in weighting as `samples.logtargets`.
+These values are in sampling coordinates, including the forward log Jacobian
+when `transform=` is used, even when returned samples have logical coordinates.
+They are recorded during sampling without evaluating the target again.
+The default is `nothing`, with no additional sample-sized storage or work.
+Retained values remain aligned through slicing and explicit device copies;
+scalar indexing and iteration still return the same three-field records.
 
 Population methods expose `provenance.proposal_id`.
 Adaptive methods expose `provenance.round`.
@@ -105,13 +114,14 @@ Transfer a GPU result explicitly before using them.
 ## Resampling
 
 ```@example results
-draws = resample(Xoshiro(7), samples)
+draws, next_rng = resample_next(Threefry4x32(7), samples)
 (length(draws), mean(draws))
 ```
 
 The default is multinomial resampling with replacement.
 Omitting the count requests `length(samples)` draws.
-Use `resample(rng, samples, n)` for another count.
+Use `resample_next(rng, samples, n)` for another count. Pass the returned RNG to
+continue the stream.
 
 The returned `UnweightedSamples` contains no importance weights.
 Its summaries use ordinary unweighted definitions.
@@ -142,6 +152,19 @@ AMIS has additional [retrospective-weight caveats](@ref amis-method).
 
 If every raw log weight is `-Inf`, the plain IS result remains inspectable and
 `lognormalizer` returns `-Inf`. Normalized summaries throw `AllZeroWeightsError`.
+
+## Pareto smoothing
+
+[`psis(samples)`](@ref psis) creates a separate result with smoothed weights.
+The [Pareto smoothing guide](@ref psis-guide) compares it with raw IS on the same
+draws and explains diagnostics, bias, normalizers, and device support.
+
+## Score control variates
+
+[`fit_control_variate`](@ref) fits a correction for one functional from a pilot.
+[`control_variate_mean`](@ref) applies it to independent production samples.
+The [control-variate guide](@ref control-variates-guide) gives an example and
+the required target-score and boundary conditions. Samples and weights stay unchanged.
 
 ## Device results
 

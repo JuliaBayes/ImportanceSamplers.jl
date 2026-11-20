@@ -1,6 +1,6 @@
 module SignalBackgroundProposals
 
-using Random
+using PureRNGs
 import ImportanceSamplers as IS
 using ImportanceSamplers.KernelAbstractions: @kernel, @index
 
@@ -129,13 +129,14 @@ end
     return density
 end
 
-function Random.rand(rng::Random.AbstractRNG, q::SignalBackgroundProposal)
+function PureRNGs.rand_next(rng::PureRNGs.AbstractPureRNG, q::SignalBackgroundProposal)
     T = eltype(q.coefficients)
     x = Vector{T}(undef, 9)
-    reason = draw!(x, q, randn(rng, T, IS._native_normal_stride(q)),
-        rand(rng, T, IS._native_uniform_stride(q)), 1, 0)
+    normals, rng = randn_next(rng, T, IS._native_normal_stride(q))
+    uniforms, rng = rand_next(rng, T, IS._native_uniform_stride(q))
+    reason = draw!(x, q, normals, uniforms, 1, 0)
     iszero(reason) || error("conditional proposal draw exhausted")
-    return x
+    return x, rng
 end
 
 IS.DensityInterface.logdensityof(q::SignalBackgroundProposal, x::AbstractVector) =

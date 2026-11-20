@@ -1,6 +1,6 @@
 using BenchmarkTools
 using ImportanceSamplers
-using Random
+using PureRNGs
 
 const SMOKE_MODE = "--smoke" in ARGS
 const BENCHMARK_SEED = 0x4350554641494c
@@ -21,7 +21,7 @@ end
 function prepared_sampler(nsamples, threaded, seed)
     algorithm = ImportanceSampling(SphericalGaussian(0.25, 1.5); nsamples)
     return prepare_sampler(
-        Random.Xoshiro(seed),
+        Threefry4x32(seed),
         CPUFailureBenchmarkTarget(0.75),
         algorithm;
         threaded,

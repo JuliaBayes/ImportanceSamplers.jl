@@ -3,7 +3,7 @@ module CAISBenchmark
 using BenchmarkTools
 using ImportanceSamplers
 using MLDataDevices
-using Random
+using PureRNGs
 
 struct CorrelatedGaussianTarget{T} end
 function (::CorrelatedGaussianTarget{T})(x) where {T}
@@ -35,7 +35,7 @@ function measure(
     ]
     bank = ProposalBank(proposals, ones(T, proposal_count))
     source = prepare_sampler(
-        Xoshiro(42),
+        Threefry4x32(42),
         CorrelatedGaussianTarget{T}(),
         CAIS(bank; rounds, round_size);
         threaded,

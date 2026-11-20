@@ -11,23 +11,23 @@ CAIS, N-PMC, DM-PMC, and first-order GRAMIS-CAIS. Supports threaded CPU executio
 native Gaussian and Student-t proposals, constrained parameters, and optional
 CUDA, Metal, and Reactant paths with [documented support limits](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/accelerators/).
 
-Requires Julia 1.13 or later. Install the package in your project:
+Requires Julia 1.13 or later. Install ImportanceSamplers and PureRNGs:
 
 ```julia
 using Pkg
-Pkg.add("ImportanceSamplers")
+Pkg.add(["ImportanceSamplers", "PureRNGs"])
 ```
 
 Sample a three-dimensional standard Gaussian using a broader Gaussian proposal:
 
 ```julia
-using ImportanceSamplers, Random, Statistics
+using ImportanceSamplers, PureRNGs, Statistics
 
 proposal = SphericalGaussian(zeros(3), 1.5)
 logtarget(x) = -sum(abs2, x) / 2  # unnormalized log density, x is a 3-vector
 
 samples = importance_sample(
-    Xoshiro(42), logtarget, ImportanceSampling(proposal; nsamples=10_000),
+    Threefry4x32(42), logtarget, ImportanceSampling(proposal; nsamples=10_000),
 )
 
 mean(samples)           # coordinate means, approximately [0, 0, 0]
