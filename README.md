@@ -37,12 +37,12 @@ lognormalizer(samples)  # estimate of log integral(exp(logtarget(x)))
 ```
 
 The proposal must cover the target's support. Results retain samples and log
-weights. Transfer a prepared sampler explicitly with `device(sampler)` for
-accelerator execution.
+weights. For accelerator execution, apply an explicit MLDataDevices device to a
+prepared sampler. See the [Devices guide](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/accelerators/).
 
 ## Benchmarks
 
-[CPU and CUDA results](docs/src/guide/benchmarks.md)
+[CPU and CUDA results](https://juliabayes.org/ImportanceSamplers.jl/stable/guide/benchmarks/)
 compare six posterior models, with accuracy checks, timing details, and reproducible scripts.
 
 [Documentation](https://juliabayes.org/ImportanceSamplers.jl/stable/) ·
